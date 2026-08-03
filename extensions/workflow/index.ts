@@ -395,6 +395,29 @@ export default function workflow(pi: ExtensionAPI) {
     return response;
   };
 
+  const notifyNative = async (title: string, body: string) => {
+    try {
+      if (process.platform === "darwin") {
+        const escape = (value: string) =>
+          value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+        await pi.exec("osascript", [
+          "-e",
+          `display notification "${escape(body)}" with title "${escape(title)}"`,
+        ]);
+      } else if (process.platform === "linux") {
+        await pi.exec("notify-send", [title, body]);
+      } else if (process.platform === "win32") {
+        await pi.exec("powershell", [
+          "-NoProfile",
+          "-Command",
+          `New-BurntToastNotification -Text '${title.replace(/'/g, "''")}', '${body.replace(/'/g, "''")}'`,
+        ]);
+      }
+    } catch {
+      // Notifications are optional; the TUI and title remain authoritative.
+    }
+  };
+
   const showQuestionBatch = async (
     ctx: ExtensionContext,
     envelope: Extract<ControlEnvelope, { kind: "question_batch" }>,
@@ -412,6 +435,10 @@ export default function workflow(pi: ExtensionAPI) {
       status: "needs-input",
       lastEvent: `${questions.length} decision${questions.length === 1 ? "" : "s"} from ${envelope.stage}`,
     });
+    void notifyNative(
+      `${envelope.stage} needs you`,
+      "A workflow decision is waiting in Pi.",
+    );
     for (let index = 0; index < questions.length; index += 1) {
       const question = questions[index];
       const labels = question.options.map((option) => option.label);
@@ -474,6 +501,7 @@ export default function workflow(pi: ExtensionAPI) {
         `${envelope.stage} blocked: ${envelope.reason}`,
         "warning",
       );
+      void notifyNative(`${envelope.stage} blocked`, envelope.reason);
       return;
     }
     setState({
@@ -485,6 +513,7 @@ export default function workflow(pi: ExtensionAPI) {
       `${envelope.stage} complete${envelope.next ? ` · next ${envelope.next}` : ""}`,
       "info",
     );
+    void notifyNative(`${envelope.stage} complete`, envelope.summary);
   };
 
   const capabilitySnapshot = (ctx: ExtensionContext) => {
@@ -595,6 +624,7 @@ export default function workflow(pi: ExtensionAPI) {
       if (input.action === "status") {
         const response = await bridge((resolve) => ({ kind: "list", resolve }));
         if (!response.ok) throw new Error(response.error);
+        if (response.summaries) agents = response.summaries;
         return {
           content: [
             { type: "text", text: JSON.stringify({ state, agents }, null, 2) },
@@ -646,7 +676,9 @@ export default function workflow(pi: ExtensionAPI) {
         )
       ) {
         state = {
+          ...emptyWorkflowState(),
           ...saved,
+          stageAgentId: saved.stageAgentId ?? null,
           status: "recoverable",
           lastEvent: "previous run found; verify evidence before resuming",
         };
@@ -676,6 +708,11 @@ export default function workflow(pi: ExtensionAPI) {
     return {
       systemPrompt: `${event.systemPrompt}\n\n## Vraj route for this turn\n- Recommendation: ${decision.mode}${decision.stage ? ` via ${decision.stage}` : ""}\n- Reason: ${decision.reason}\n- Supporting skills: ${skills}\n- If this is fleet work, use the workflow tool to start the pinned stage and stop doing the stage's work in the coordinator turn.\n- If a stage result contains a control JSON envelope, honor it: the workflow extension handles questions; broker helper requests with sibling subagents; verify evidence before advancing.\n- Keep user-facing updates terse and put technical detail in /flow.`,
     };
+  });
+
+  pi.on("agent_settled", () => {
+    if (!state.activeStage)
+      setState({ status: "idle", lastEvent: "direct turn settled" });
   });
 
   pi.on("tool_execution_start", (event) => {
