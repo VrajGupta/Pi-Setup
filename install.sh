@@ -38,6 +38,9 @@ except (FileNotFoundError, json.JSONDecodeError):
 
 settings.update({
     "theme": "vraj-ink",
+    "defaultProvider": "openai-codex",
+    "defaultModel": "gpt-5.6-sol",
+    "defaultThinkingLevel": "high",
     "quietStartup": True,
     "hideThinkingBlock": True,
     "collapseChangelog": True,
