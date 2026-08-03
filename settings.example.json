@@ -1,0 +1,22 @@
+{
+  "theme": "vraj-ink",
+  "defaultProvider": "openai-codex",
+  "defaultModel": "gpt-5.6-sol",
+  "defaultThinkingLevel": "high",
+  "quietStartup": true,
+  "hideThinkingBlock": true,
+  "collapseChangelog": true,
+  "enableInstallTelemetry": false,
+  "steeringMode": "all",
+  "followUpMode": "one-at-a-time",
+  "compaction": {
+    "enabled": true,
+    "reserveTokens": 16384,
+    "keepRecentTokens": 20000
+  },
+  "retry": {
+    "enabled": true,
+    "maxRetries": 3,
+    "baseDelayMs": 2000
+  }
+}

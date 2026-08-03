@@ -1,0 +1,6 @@
+{
+  "app.tools.expand": "ctrl+o",
+  "app.thinking.toggle": "ctrl+t",
+  "app.session.togglePath": "ctrl+p",
+  "tui.input.newLine": ["shift+enter", "ctrl+j"]
+}

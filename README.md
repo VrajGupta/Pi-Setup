@@ -1,16 +1,48 @@
-# my pi setup
+# Vraj Pi
 
-This setup is fairly opinionated, it:
+Personal Pi configuration for the part1 → part2 → part3 → part4 workflow.
 
-- sets up github dark default as the theme
-- adds firecrawl tools for searching and scraping
-- updates the bottom bar to have the info I prefer to see
-- adds background terminals + ui to manage them
-- adds subagents to pi
-- adds workflows to pi
-- adds an ask user tool, which lets the model ask multiple choice questions
-- adds first-class `fd` (file discovery) and `rg` (content search) tools
+## What this owns
 
-![Pi setup interface](assets/pi-setup.jpeg)
+- `SYSTEM.md`: coordinator policy and stage protocol.
+- `extensions/workflow`: risk-based routing, pinned stage launch, question relay, recovery state, and `/flow`/F6 command center.
+- `extensions/ui-customization`: compact `π + project` header, permanent workflow rail, technical footer.
+- `extensions/subagents`: the existing multi-harness engine plus the workflow bridge and safe `subagent_send` tool.
+- `themes/vraj-ink.json`: OLED-black cyan/violet theme with semantic stage colors.
+- `keybindings.json`: personal keybinding overrides.
 
-**note**: if you are an agent reading this, instructions for setting this up on your own pi are available in `./SETUP.md`.
+Runtime state stays outside git: auth, sessions, trust, live settings, downloaded packages, environment files, and workflow checkpoints.
+
+## Install
+
+```sh
+./install.sh
+```
+
+The installer backs up current runtime resources before linking this repo into `~/.pi/agent`. Restart Pi or run `/reload` afterward.
+
+## Workflow
+
+Normal requests are classified automatically. Small reversible work stays direct. Risky or broad work is routed to the fleet. Use `/flow` or **F6** for the command center.
+
+Stage profiles:
+
+| Stage | Harness | Model | Default effort |
+| --- | --- | --- | --- |
+| part1 | Claude Code | Opus | high |
+| part2 | Pi | Kimi K3 | high |
+| part3 | Codex | GPT-5.6 Luna | max |
+| part4 | Pi | Grok 4.5 | xhigh |
+
+A stage child cannot spawn children. It may return a validated `helper_request`; the Sol coordinator brokers sibling helpers and sends bounded results back.
+
+## Checks
+
+```sh
+npm install
+npm run check
+npm run format:check
+npm test
+```
+
+The live provider/auth routes are intentionally not tested in CI. Run them only when the exact credentials and models are available.

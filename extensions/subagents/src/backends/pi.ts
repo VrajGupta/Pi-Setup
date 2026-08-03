@@ -45,6 +45,7 @@ const CHILD_EXCLUDED_TOOL_NAMES = [
   "subagent_cancel",
   "subagent_check",
   "subagent_list",
+  "subagent_send",
   "workflow",
   "ask_user",
 ] as const;

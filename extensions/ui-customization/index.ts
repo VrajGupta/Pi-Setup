@@ -3,7 +3,6 @@ import { relative } from "node:path";
 import type {
   ExtensionAPI,
   ExtensionContext,
-  ReadonlyFooterDataProvider,
 } from "@earendil-works/pi-coding-agent";
 import {
   getCapabilities,
@@ -12,139 +11,26 @@ import {
   visibleWidth,
 } from "@earendil-works/pi-tui";
 import {
-  emptyGitInfoState,
-  emptyModelInfoState,
   GIT_INFO_CHANNEL,
   MODEL_INFO_CHANNEL,
   REFRESH_CHANNEL,
+  emptyGitInfoState,
+  emptyModelInfoState,
   isGitInfoState,
   isModelInfoState,
+  type GitInfoState,
+  type ModelInfoState,
 } from "../shared/dashboard-state.ts";
+import {
+  WORKFLOW_STATE_CHANNEL,
+  emptyWorkflowState,
+  type StageName,
+  type WorkflowState,
+} from "../shared/workflow-state.ts";
 
-type Rgb = [number, number, number];
-interface RenderableNode {
-  children?: RenderableNode[];
-  invalidate(): void;
-  render(width: number): string[];
-}
+const STAGES: StageName[] = ["part1", "part2", "part3", "part4"];
 
-interface DashboardTui extends RenderableNode {
-  requestRender(force?: boolean): void;
-}
-
-const RESET = "\x1b[0m";
-const BOLD = "\x1b[1m";
-const PALETTE: Rgb[] = [
-  [22, 83, 189],
-  [48, 129, 247],
-  [93, 171, 255],
-  [151, 205, 255],
-  [93, 171, 255],
-  [48, 129, 247],
-];
-const TITLE_LINES = [
-  "  ██████╗  ██╗ ",
-  "  ██╔══██╗ ██║ ",
-  "  ██████╔╝ ██║ ",
-  "  ██╔═══╝  ██║ ",
-  "  ██║      ██║ ",
-  "  ╚═╝      ╚═╝ ",
-];
-const ANSI_PATTERN =
-  /[\u001B\u009B][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[a-zA-Z\d]*)*)?\u0007)|(?:(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]))/g;
-// eslint-disable-next-line no-control-regex
-const OSC_PATTERN =
-  /(?:\u001b\]|\u009d)(?:[^\u0007\u001b\u009c]|\u001b(?!\\))*(?:\u0007|\u001b\\|\u009c)/g;
-// eslint-disable-next-line no-control-regex
-const CSI_PATTERN = /(?:\u001b\[|\u009b)[0-?]*[ -/]*[@-~]/g;
-// eslint-disable-next-line no-control-regex
-const ESCAPE_PATTERN = /\u001b(?:[()][0-2A-Z]|[ -/]*[@-~])/g;
-
-function sanitizeTerminalLabel(text: string) {
-  return text
-    .replace(OSC_PATTERN, "")
-    .replace(CSI_PATTERN, "")
-    .replace(ESCAPE_PATTERN, "")
-    .replace(/[\u0000-\u001f\u007f-\u009f]/g, "");
-}
-
-function mix(a: number, b: number, amount: number) {
-  return Math.round(a + (b - a) * amount);
-}
-
-function sampleGradient(position: number) {
-  const wrapped = ((position % 1) + 1) % 1;
-  const scaled = wrapped * PALETTE.length;
-  const index = Math.floor(scaled);
-  const nextIndex = (index + 1) % PALETTE.length;
-  const amount = scaled - index;
-  const start = PALETTE[index]!;
-  const end = PALETTE[nextIndex]!;
-
-  return [
-    mix(start[0], end[0], amount),
-    mix(start[1], end[1], amount),
-    mix(start[2], end[2], amount),
-  ] satisfies Rgb;
-}
-
-function foreground([red, green, blue]: Rgb, text: string) {
-  return `\x1b[38;2;${red};${green};${blue}m${text}${RESET}`;
-}
-
-function gradientText(text: string, phase: number) {
-  const characters = [...text];
-  const span = Math.max(characters.length - 1, 1);
-
-  return characters
-    .map((character, index) =>
-      character === " "
-        ? character
-        : foreground(sampleGradient(index / span + phase), character),
-    )
-    .join("");
-}
-
-function hasChildren(
-  component: RenderableNode,
-): component is RenderableNode & { children: RenderableNode[] } {
-  return Array.isArray(component.children);
-}
-
-function renderedText(component: RenderableNode) {
-  try {
-    return component.render(200).join("\n").replace(ANSI_PATTERN, "");
-  } catch {
-    return "";
-  }
-}
-
-function hideThemesSection(component: RenderableNode) {
-  if (!hasChildren(component)) return false;
-
-  for (let index = 0; index < component.children.length; index += 1) {
-    const child = component.children[index]!;
-    const firstLine = renderedText(child)
-      .split("\n")
-      .find((line) => line.trim())
-      ?.trim();
-
-    if (firstLine === "[Themes]") {
-      const removeCount =
-        component.children[index + 1] &&
-        renderedText(component.children[index + 1]!).trim() === ""
-          ? 2
-          : 1;
-      component.children.splice(index, removeCount);
-      component.invalidate();
-      return true;
-    }
-
-    if (hideThemesSection(child)) return true;
-  }
-
-  return false;
-}
+type Activity = "idle" | "working" | "done" | "error";
 
 function formatTokens(tokens: number) {
   if (tokens < 1_000) return `${tokens}`;
@@ -155,171 +41,216 @@ function formatTokens(tokens: number) {
 function formatDirectory(cwd: string) {
   const home = homedir();
   if (cwd === home) return "~";
-  const display = cwd.startsWith(`${home}/`) ? `~/${relative(home, cwd)}` : cwd;
-  return sanitizeTerminalLabel(display);
-}
-
-function center(text: string, width: number) {
-  const padding = Math.max(0, Math.floor((width - visibleWidth(text)) / 2));
-  return truncateToWidth(`${" ".repeat(padding)}${text}`, width);
+  return cwd.startsWith(`${home}/`) ? `~/${relative(home, cwd)}` : cwd;
 }
 
 function columns(left: string, right: string, width: number) {
   if (!right) return truncateToWidth(left, width);
-
-  const naturalGap = width - visibleWidth(left) - visibleWidth(right);
-  if (naturalGap >= 1) return `${left}${" ".repeat(naturalGap)}${right}`;
-
-  const leftWidth = Math.max(1, Math.floor(width * 0.45));
+  const gap = width - visibleWidth(left) - visibleWidth(right);
+  if (gap >= 1) return `${left}${" ".repeat(gap)}${right}`;
+  const leftWidth = Math.max(1, Math.floor(width * 0.48));
   const rightWidth = Math.max(1, width - leftWidth - 1);
-  const fittedLeft = truncateToWidth(left, leftWidth);
-  const fittedRight = truncateToWidth(right, rightWidth);
-  const gap = Math.max(
-    1,
-    width - visibleWidth(fittedLeft) - visibleWidth(fittedRight),
-  );
   return truncateToWidth(
-    `${fittedLeft}${" ".repeat(gap)}${fittedRight}`,
+    `${truncateToWidth(left, leftWidth)} ${truncateToWidth(right, rightWidth)}`,
     width,
   );
 }
 
+function isWorkflowState(value: unknown): value is WorkflowState {
+  if (!value || typeof value !== "object") return false;
+  const state = value as Record<string, unknown>;
+  return (
+    typeof state.status === "string" && typeof state.updatedAt === "number"
+  );
+}
+
+function stageLabel(
+  stage: StageName,
+  activeStage: StageName | null,
+  status: WorkflowState["status"],
+  theme: ExtensionContext["ui"]["theme"],
+) {
+  const index = STAGES.indexOf(stage);
+  const activeIndex = activeStage ? STAGES.indexOf(activeStage) : -1;
+  const color =
+    stage === "part1"
+      ? "mdHeading"
+      : stage === "part2"
+        ? "accent"
+        : stage === "part3"
+          ? "warning"
+          : "success";
+  if (stage === activeStage) return theme.fg(color, `◉ ${stage}`);
+  if (status === "complete" || (activeIndex >= 0 && index < activeIndex))
+    return theme.fg("success", `✓ ${stage}`);
+  return theme.fg("dim", `· ${stage}`);
+}
+
+function activityGlyph(activity: Activity) {
+  if (activity === "working") return "·";
+  if (activity === "done") return "✓";
+  if (activity === "error") return "×";
+  return "○";
+}
+
+function titleFor(
+  ctx: ExtensionContext,
+  workflow: WorkflowState,
+  activity: Activity,
+) {
+  const glyph =
+    activity === "working"
+      ? "·"
+      : activity === "error"
+        ? "×"
+        : activity === "done"
+          ? "✓"
+          : "?";
+  const stage = workflow.activeStage ?? "idle";
+  return `${glyph} π ${formatDirectory(ctx.cwd)} · ${stage}`;
+}
+
 export default function uiCustomization(pi: ExtensionAPI) {
-  let title = "pi";
   let modelInfo = emptyModelInfoState();
   let gitInfo = emptyGitInfoState();
-  let requestRender: (() => void) | undefined;
-  let activeTui: DashboardTui | undefined;
-  let themeRemovalTimers: Array<ReturnType<typeof setTimeout>> = [];
+  let workflow = emptyWorkflowState();
+  let activity: Activity = "idle";
+  let activeTui: { requestRender(force?: boolean): void } | undefined;
+  let currentContext: ExtensionContext | undefined;
 
+  const refresh = () => activeTui?.requestRender();
   const stopModelListener = pi.events.on(MODEL_INFO_CHANNEL, (value) => {
     if (!isModelInfoState(value)) return;
     modelInfo = value;
-    requestRender?.();
+    refresh();
   });
-
   const stopGitListener = pi.events.on(GIT_INFO_CHANNEL, (value) => {
     if (!isGitInfoState(value)) return;
     gitInfo = value;
-    requestRender?.();
+    refresh();
   });
+  const stopWorkflowListener = pi.events.on(WORKFLOW_STATE_CHANNEL, (value) => {
+    if (!isWorkflowState(value)) return;
+    workflow = value;
+    if (currentContext)
+      currentContext.ui.setTitle(titleFor(currentContext, workflow, activity));
+    refresh();
+  });
+  const stopRefreshListener = pi.events.on(REFRESH_CHANNEL, refresh);
 
-  function scheduleThemeRemoval(tui: DashboardTui) {
-    for (const timer of themeRemovalTimers) clearTimeout(timer);
-    themeRemovalTimers = [];
-
-    for (const delay of [0, 50, 250, 1_000]) {
-      themeRemovalTimers.push(
-        setTimeout(() => {
-          if (hideThemesSection(tui)) tui.requestRender(true);
-        }, delay),
-      );
-    }
-  }
-
-  function install(ctx: ExtensionContext) {
+  const install = (ctx: ExtensionContext) => {
     if (ctx.mode !== "tui") return;
-
-    ctx.ui.setHeader((tui) => {
+    currentContext = ctx;
+    ctx.ui.setHeader((tui, theme) => {
       activeTui = tui;
-      requestRender = () => tui.requestRender();
-      scheduleThemeRemoval(tui);
-
       return {
         render(width: number) {
-          const art = TITLE_LINES.map((line, row) =>
-            center(gradientText(line, row * 0.045), width),
-          );
-          const subtitle = center(
-            `${BOLD}${gradientText(title, 0.18)}${RESET}`,
-            width,
-          );
-          return ["", ...art, subtitle, ""];
+          const identity =
+            theme.fg("accent", "π") +
+            theme.fg("text", ` ${formatDirectory(ctx.cwd)}`);
+          const route = workflow.route
+            ? `${workflow.route.mode}${workflow.route.stage ? `/${workflow.route.stage}` : ""}`
+            : "direct";
+          const right = theme.fg("muted", `${route} · ${workflow.status}`);
+          const rail = STAGES.map((stage) =>
+            stageLabel(stage, workflow.activeStage, workflow.status, theme),
+          ).join(theme.fg("dim", "  →  "));
+          return [
+            columns(identity, right, width),
+            truncateToWidth(` ${rail}`, width),
+          ];
         },
         invalidate() {},
       };
     });
 
-    ctx.ui.setFooter((tui, theme, footerData: ReadonlyFooterDataProvider) => {
-      requestRender = () => tui.requestRender();
-
+    ctx.ui.setFooter((tui, theme, footerData) => {
+      activeTui = tui;
       return {
         invalidate() {},
         render(width: number) {
-          const directory = theme.fg("text", formatDirectory(ctx.cwd));
-          const fileLabel = gitInfo.changedFiles === 1 ? "file" : "files";
-          let git = gitInfo.branch
-            ? `${gitInfo.branch} · ${gitInfo.changedFiles} ${fileLabel} changed`
-            : "";
-
-          if (gitInfo.pullRequest) {
-            const prLabel = `PR #${gitInfo.pullRequest.number}`;
-            const linkedPr = getCapabilities().hyperlinks
-              ? hyperlink(prLabel, gitInfo.pullRequest.url)
-              : prLabel;
-            git += ` · ${linkedPr}`;
-          }
-
-          const contextPercent =
+          const model = modelInfo.provider
+            ? `${modelInfo.provider}/${modelInfo.modelId}`
+            : modelInfo.modelId;
+          const runtime = `${model} · ${modelInfo.thinking} · ${activityGlyph(activity)} ${workflow.activeStage ?? "direct"}`;
+          const context =
             modelInfo.contextPercent === null
               ? "?"
-              : `${Math.round(modelInfo.contextPercent)}`;
-          const contextWindow =
-            modelInfo.contextWindow > 0
-              ? formatTokens(modelInfo.contextWindow)
-              : "?";
+              : `${Math.round(modelInfo.contextPercent)}%`;
+          const contextWindow = modelInfo.contextWindow
+            ? formatTokens(modelInfo.contextWindow)
+            : "?";
           const tps =
             modelInfo.tokensPerSecond === null
               ? "— tok/s"
               : `${Math.round(modelInfo.tokensPerSecond)} tok/s`;
-          const usage = `${contextPercent}%/${contextWindow} · $${modelInfo.cost.toFixed(2)} · ${tps}`;
-          const model = modelInfo.provider
-            ? `${modelInfo.provider}/${modelInfo.modelId} · ${modelInfo.thinking}`
-            : modelInfo.modelId;
-
+          const usage = `${context}/${contextWindow} · $${modelInfo.cost.toFixed(2)} · ${tps}`;
+          const git = gitInfo.branch
+            ? `${gitInfo.branch} · ${gitInfo.changedFiles} changed`
+            : "no git";
+          const pr =
+            gitInfo.pullRequest && getCapabilities().hyperlinks
+              ? hyperlink(
+                  `PR #${gitInfo.pullRequest.number}`,
+                  gitInfo.pullRequest.url,
+                )
+              : gitInfo.pullRequest
+                ? `PR #${gitInfo.pullRequest.number}`
+                : git;
           const lines = [
-            columns(directory, theme.fg("muted", model), width),
-            columns(theme.fg("muted", usage), theme.fg("muted", git), width),
+            columns(
+              theme.fg("text", formatDirectory(ctx.cwd)),
+              theme.fg("muted", runtime),
+              width,
+            ),
+            columns(theme.fg("muted", usage), theme.fg("muted", pr), width),
           ];
-
-          // Extension statuses render after the two dashboard lines, one per row.
-          const statuses = footerData.getExtensionStatuses();
-          const statusLines = Array.from(statuses.entries())
-            .sort(([a], [b]) => a.localeCompare(b))
-            .flatMap(([, text]) => text.split("\n"));
-          for (const statusLine of statusLines) {
-            lines.push(
-              truncateToWidth(statusLine, width, theme.fg("dim", "...")),
-            );
-          }
-
+          const statuses = Array.from(
+            footerData.getExtensionStatuses().values(),
+          ).flatMap((value) => value.split("\n"));
+          lines.push(...statuses.map((line) => truncateToWidth(line, width)));
           return lines;
         },
       };
     });
-
-    ctx.ui.setTitle(`pi · ${title}`);
+    ctx.ui.setTitle(titleFor(ctx, workflow, activity));
     pi.events.emit(REFRESH_CHANNEL, undefined);
-  }
+  };
 
   pi.on("session_start", (_event, ctx) => {
-    title = formatDirectory(ctx.cwd);
     modelInfo = emptyModelInfoState();
     gitInfo = emptyGitInfoState();
+    workflow = emptyWorkflowState();
+    activity = "idle";
     install(ctx);
   });
-
-  pi.on("resources_discover", () => {
-    if (activeTui) scheduleThemeRemoval(activeTui);
+  pi.on("agent_start", (_event, ctx) => {
+    activity = "working";
+    ctx.ui.setTitle(titleFor(ctx, workflow, activity));
+    refresh();
   });
-
+  pi.on("agent_settled", (_event, ctx) => {
+    activity = "done";
+    ctx.ui.setTitle(titleFor(ctx, workflow, activity));
+    refresh();
+  });
+  pi.on("agent_end", (event, ctx) => {
+    if (
+      event.messages.some(
+        (message) =>
+          message.role === "assistant" && message.stopReason === "error",
+      )
+    )
+      activity = "error";
+    ctx.ui.setTitle(titleFor(ctx, workflow, activity));
+  });
   pi.on("session_shutdown", (_event, ctx) => {
     stopModelListener();
     stopGitListener();
-    for (const timer of themeRemovalTimers) clearTimeout(timer);
-    themeRemovalTimers = [];
+    stopWorkflowListener();
+    stopRefreshListener();
     activeTui = undefined;
-    requestRender = undefined;
+    currentContext = undefined;
     if (ctx.mode === "tui") {
       ctx.ui.setHeader(undefined);
       ctx.ui.setFooter(undefined);

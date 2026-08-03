@@ -5,6 +5,7 @@ node_modules/
 bin/
 
 # Pi runtime and private state
+backups/
 sessions/
 /workflows/
 auth.json
