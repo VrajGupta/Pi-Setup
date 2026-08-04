@@ -37,6 +37,7 @@ import {
   type ControlEnvelope,
   type RouteDecision,
 } from "./src/policy.ts";
+import { assembleWorkflowSystemPrompt } from "./prompt-assembly.ts";
 
 const REASONING_LEVELS = [
   "off",
@@ -1019,9 +1020,13 @@ export default function workflow(pi: ExtensionAPI) {
       taskPreview: preview(event.prompt),
       lastEvent: `route · ${decision.mode}${decision.stage ? `/${decision.stage}` : ""}`,
     });
-    const skills = decision.skills.length ? decision.skills.join(", ") : "none";
+    // Human messages always go to the orchestrator; the stable assembly prefix
+    // retains this workflow rule while route data stays in the volatile suffix.
     return {
-      systemPrompt: `${event.systemPrompt}\n\n## Vraj route for this turn\n- Recommendation: ${decision.mode}${decision.stage ? ` via ${decision.stage}` : ""}\n- Reason: ${decision.reason}\n- Supporting skills: ${skills}\n- Human messages always go to the orchestrator, never directly to a stage. Interpret them first; relay to an active stage with workflow send only when needed.\n- If this is fleet work, use the workflow tool to start the pinned stage and stop doing the stage's work in the coordinator turn.\n- If a stage result contains a control JSON envelope, honor it: the workflow extension records questions as awaiting coordinator relay; broker helper requests with sibling subagents; verify evidence before advancing.\n- Keep user-facing updates terse and put technical detail in /flow.`,
+      systemPrompt: assembleWorkflowSystemPrompt({
+        baseSystemPrompt: event.systemPrompt,
+        route: decision,
+      }).systemPrompt,
     };
   });
 
