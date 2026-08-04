@@ -115,7 +115,7 @@ Status: **Done** · Blocked-by: PI-02 · Phase 1
 
 ## PI-05 — `/flow` parity, why-this-route, and plain-language status
 
-Status: **Debugger Ready** · Blocked-by: PI-04 · Phase 1
+Status: **Review Ready** · Blocked-by: PI-04 · Phase 1
 
 **What to build.** Bring `FlowPanel` in `extensions/workflow/index.ts` in line with the footer: the Agents tab lists stage rows first (using the same progress readings), the Overview tab states the route reason in one plain sentence, and the panel shows what it is waiting on when status is `needs-input`, `needs-helper`, or `blocked`.
 
@@ -152,6 +152,12 @@ Status: **Debugger Ready** · Blocked-by: PI-04 · Phase 1
 - Other PI-05 criteria passed: stage-first ordering with current planner/coder/debugger/reviewer labels, literal ` none tracked`, bounded rows, measured-only percent, waiting-state transitions, terminal-control stripping, and render-path I/O purity.
 - Full `npm test` exited 1: 163/165 Node tests passed; two live Claude backend tests failed because the account spend limit was reached. This is external to PI-05 but recorded exactly.
 - Route: **Debugger Ready** for fail-closed malformed authorization/cookie redaction plus a production-path regression test.
+
+**Debugger audit (2026-08-04, bounce 2/3).**
+- Baseline exact gate was green: 22 targeted tests passed and `tsc --noEmit` passed. The four-net audit found the reviewer-reported malformed-header leak and its missing regression coverage; no other in-scope failure or static error was found.
+- TDD fix: added a production-path regression for unbalanced Authorization/Cookie values in both orders, a subsequent sensitive header, neighboring ordinary text, and the existing balanced cases. Replaced quote-aware composite matching with an opaque-span matcher that does not parse or validate quotes/delimiters, preserves line boundaries for neighboring headers, and renders only `Authorization: [REDACTED]` / `Cookie: [REDACTED]`.
+- Evidence: `node --test --experimental-strip-types extensions/workflow/flow-panel.test.ts extensions/workflow/policy.test.ts && npm run check` → pass (23 tests; `tsc` clean); `npm run format:check` → pass; `git diff --check` → pass. `npm test` → 164/166 passed; the only failures were the known live Claude monthly spend-limit tests.
+- Handoff: `docs/handoffs/2026-08-04-debugger-pi05-bounce-2.md`. No unfixed follow-up within PI-05. Routing: → **Review Ready** for independent review.
 
 ---
 

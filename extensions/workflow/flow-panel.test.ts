@@ -266,6 +266,33 @@ test("composite authorization and cookie headers redact every parameter", () => 
   }
 });
 
+test("malformed auth headers fail closed without losing neighbors", () => {
+  const cases = [
+    {
+      value:
+        'ordinary before\nAuthorization: Digest username="unterminated malformed-auth-secret Cookie: session=malformed-cookie-secret\nX-Request-ID: ordinary-header\nordinary after',
+      secrets: ["malformed-auth-secret", "malformed-cookie-secret"],
+    },
+    {
+      value:
+        'ordinary before\nCookie: session="unterminated malformed-cookie-secret Authorization: Digest response=malformed-auth-secret\nX-Request-ID: ordinary-header\nordinary after',
+      secrets: ["malformed-cookie-secret", "malformed-auth-secret"],
+    },
+  ] as const;
+
+  for (const { value, secrets } of cases) {
+    const output = panel(state({ status: "blocked", lastEvent: value }))
+      .render(240)
+      .join("\n");
+    assert.match(output, /ordinary before/);
+    assert.match(output, /Authorization: \[REDACTED\]/);
+    assert.match(output, /Cookie: \[REDACTED\]/);
+    assert.match(output, /ordinary after/);
+    for (const secret of secrets)
+      assert.doesNotMatch(output, new RegExp(secret));
+  }
+});
+
 test("waiting statuses use explicit fallbacks and disappear after transition", () => {
   let current = state({ status: "running", lastEvent: "not waiting" });
   const flow = new FlowPanel(

@@ -106,8 +106,10 @@ const OSC_PATTERN =
 const CSI_PATTERN = /(?:\u001b\[|\u009b)[0-?]*[ -/]*[@-~]/g;
 // eslint-disable-next-line no-control-regex
 const ESCAPE_PATTERN = /\u001b(?:[()][0-2A-Z]|[ -/]*[@-~])/g;
-const COMPOSITE_HEADER_PATTERN =
-  /\b(Authorization|Cookie)\s*:\s*(?:(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^'"])*?)(?=\s+\b(?:Authorization|Cookie)\s*:|$)/gi;
+// Header values are opaque display data: do not inspect quote or delimiter
+// structure, and stop only at a line boundary or another sensitive header.
+const SENSITIVE_HEADER_PATTERN =
+  /\b(Authorization|Cookie)[ \t]*:[ \t]*[\s\S]*?(?=\r?\n|[ \t]+\b(?:Authorization|Cookie)[ \t]*:|$)/gi;
 
 function stringify(value: unknown, fallback = "") {
   try {
@@ -119,7 +121,7 @@ function stringify(value: unknown, fallback = "") {
 
 function redactSecrets(text: string) {
   return text
-    .replace(COMPOSITE_HEADER_PATTERN, "$1: [REDACTED]")
+    .replace(SENSITIVE_HEADER_PATTERN, "$1: [REDACTED]")
     .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [REDACTED]")
     .replace(
       /\b(sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9_]{12,}|eyJ[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,})\b/g,
@@ -136,15 +138,14 @@ function redactSecrets(text: string) {
 }
 
 function displayText(value: unknown, fallback = "") {
-  return redactSecrets(
-    stringify(value, fallback)
-      .replace(/\r\n?|\n|\t/g, " ")
-      .replace(OSC_PATTERN, "")
-      .replace(CSI_PATTERN, "")
-      .replace(ESCAPE_PATTERN, "")
-      // eslint-disable-next-line no-control-regex
-      .replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, ""),
-  )
+  const clean = stringify(value, fallback)
+    .replace(OSC_PATTERN, "")
+    .replace(CSI_PATTERN, "")
+    .replace(ESCAPE_PATTERN, "")
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, "");
+  return redactSecrets(clean)
+    .replace(/\r\n?|\n|\t/g, " ")
     .replace(/\s+/g, " ")
     .replace(/\bhttps?:\/\/[^\s]+/gi, "[URL]");
 }
