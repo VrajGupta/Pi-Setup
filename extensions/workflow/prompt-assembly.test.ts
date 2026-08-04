@@ -201,6 +201,52 @@ test("redacts AWS credentials through the production before_agent_start seam", a
   assert.doesNotMatch(result.systemPrompt, /SYNTHETIC_/);
 });
 
+test("redacts credential-bearing non-HTTP URLs through the production seam", async () => {
+  let beforeAgentStart: unknown;
+  const workflowPi = {
+    on(event: string, handler: unknown) {
+      if (event === "before_agent_start") beforeAgentStart = handler;
+    },
+    events: {
+      emit() {},
+      on() {
+        return () => {};
+      },
+    },
+    registerCommand() {},
+    registerShortcut() {},
+    registerTool() {},
+  } as unknown as ExtensionAPI;
+
+  workflowExtension(workflowPi);
+  assert.ok(beforeAgentStart);
+  const result = await (
+    beforeAgentStart as (
+      event: { prompt: string; systemPrompt: string },
+      ctx: { mode: "tui" },
+    ) => Promise<{ systemPrompt?: string } | undefined>
+  )(
+    {
+      prompt: "Explain the session tree",
+      systemPrompt: `CORE
+ordinary-before=keep
+DATABASE_URL=postgres://synthetic-user:SYNTHETIC_DATABASE_PASSWORD@db.example/test
+REDIS_URL=rediss://cache-user:SYNTHETIC_REDIS_PASSWORD@cache.example:6380/0
+MONGO_URI=mongodb+srv://mongo-user:SYNTHETIC_MONGO_PASSWORD@cluster.example/app
+BROKEN_DATABASE_URL=postgres:/synthetic-user:SYNTHETIC_MALFORMED_DATABASE_PASSWORD@db.example/test
+QUOTED_DATABASE_URL='postgres://synthetic-user:SYNTHETIC_QUOTED_DATABASE_PASSWORD@db.example/test'
+connect postgres:/synthetic-user:SYNTHETIC_UNLABELED_MALFORMED_PASSWORD@db.example/test
+ordinary-after=keep`,
+    },
+    { mode: "tui" },
+  );
+
+  assert.ok(result?.systemPrompt);
+  assert.doesNotMatch(result.systemPrompt, /SYNTHETIC_/);
+  assert.match(result.systemPrompt, /ordinary-before=keep/);
+  assert.match(result.systemPrompt, /ordinary-after=keep/);
+});
+
 test("uses the tested assembly seam on the production before_agent_start path", () => {
   const source = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
   assert.match(source, /from "\.\/prompt-assembly\.ts"/);

@@ -20,14 +20,14 @@ function redactPromptText(text: string) {
       "[REDACTED]",
     )
     .replace(
-      /(["']?(?:api[_-]?key|access[_-]?key|access[_-]?token|aws[_-]?access[_-]?key[_-]?id|authorization|cookie|credential|password|passwd|private[_-]?key|secret|token)["']?\s*[:=]\s*)(?:"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|["'][^\r\n]*|[^\r\n]+)/gi,
+      /(["']?(?:api[_-]?key|access[_-]?key|access[_-]?token|aws[_-]?access[_-]?key[_-]?id|authorization|cookie|credential|password|passwd|private[_-]?key|secret|token|[a-z][a-z0-9_-]*[_-](?:url|uri))["']?\s*[:=]\s*)(?:"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|["'][^\r\n]*|[^\r\n]+)/gi,
       "$1[REDACTED]",
     )
     .replace(
       /([?&](?:api[_-]?key|access[_-]?token|key|secret|token)=)[^&#\s]+/gi,
       "$1[REDACTED]",
     )
-    .replace(/\bhttps?:\/\/[^\s]+/gi, "[URL]");
+    .replace(/\b[a-z][a-z0-9+.-]*:\/{1,2}[^\s]+/gi, "[URL]");
 }
 
 export function assembleWorkflowSystemPrompt({
