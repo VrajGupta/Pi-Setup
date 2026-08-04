@@ -1,14 +1,17 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
+  cpSync,
   existsSync,
   lstatSync,
+  mkdtempSync,
   mkdirSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
@@ -25,13 +28,48 @@ const resources = [
   "keybindings.json",
 ];
 
-function runInstaller(args: string[]) {
-  const result = spawnSync(process.execPath, [installer, ...args], {
-    cwd: root,
+function runInstaller(
+  args: string[],
+  env = process.env,
+  script = installer,
+  cwd = root,
+) {
+  const result = spawnSync(process.execPath, [script, ...args], {
+    cwd,
+    env,
     encoding: "utf8",
   });
   assert.equal(result.status, 0, result.stderr);
   return result.stdout;
+}
+
+function runInstallerFailure(
+  args: string[],
+  env = process.env,
+  script = installer,
+  cwd = root,
+) {
+  const result = spawnSync(process.execPath, [script, ...args], {
+    cwd,
+    env,
+    encoding: "utf8",
+  });
+  assert.notEqual(result.status, 0, result.stdout);
+  return result;
+}
+
+function createFixture({ packageJson = true, nodeModules = true } = {}) {
+  const fixture = mkdtempSync(join(tmpdir(), "pi-agent-installer-fixture-"));
+  mkdirSync(join(fixture, "scripts"));
+  for (const directory of ["extensions", "skills", "themes"]) {
+    mkdirSync(join(fixture, directory));
+  }
+  if (nodeModules) mkdirSync(join(fixture, "node_modules"));
+  cpSync(installer, join(fixture, "scripts", "install.mjs"));
+  cpSync(join(root, "SYSTEM.md"), join(fixture, "SYSTEM.md"));
+  cpSync(join(root, "keybindings.json"), join(fixture, "keybindings.json"));
+  if (packageJson) writeFileSync(join(fixture, "package.json"), "{}\n");
+  return fixture;
 }
 
 test("installer dry-run reports every resource without creating its agent directory", () => {
@@ -87,5 +125,65 @@ test("installer is idempotent and its forced symlink failure copies resources", 
     );
   } finally {
     rmSync(temporary, { recursive: true, force: true });
+  }
+});
+
+test("installer refuses checkout-internal targets and empty env paths safely", () => {
+  const fixture = createFixture();
+  const temporary = mkdtempSync(join(tmpdir(), "pi-agent-installer-target-"));
+  const nested = join(fixture, "nested-agent");
+  const alias = join(temporary, "nested-agent-link");
+  mkdirSync(nested);
+  symlinkSync(nested, alias);
+
+  try {
+    const fixtureInstaller = join(fixture, "scripts", "install.mjs");
+    const result = runInstallerFailure(
+      ["--agent-dir", alias],
+      process.env,
+      fixtureInstaller,
+      fixture,
+    );
+    assert.match(result.stderr, /inside the checkout/i);
+    assert.equal(existsSync(join(nested, "settings.json")), false);
+    assert.equal(existsSync(join(nested, "extensions")), false);
+
+    const output = runInstaller(["--dry-run"], {
+      ...process.env,
+      PI_CODING_AGENT_DIR: "",
+    });
+    assert.equal(
+      output.includes(`Dry run: ${join(homedir(), ".pi", "agent")}`),
+      true,
+    );
+  } finally {
+    rmSync(temporary, { recursive: true, force: true });
+    rmSync(fixture, { recursive: true, force: true });
+  }
+});
+
+test("installer refuses a checkout missing package metadata before mutation", () => {
+  const fixture = createFixture({ nodeModules: false, packageJson: false });
+  const temporary = mkdtempSync(join(tmpdir(), "pi-agent-incomplete-"));
+  const agentDir = join(temporary, "agent");
+  mkdirSync(agentDir);
+  const settings = join(agentDir, "settings.json");
+  const original = JSON.stringify({ packages: ["npm:user-package"] });
+  writeFileSync(settings, original);
+
+  try {
+    const fixtureInstaller = join(fixture, "scripts", "install.mjs");
+    const result = runInstallerFailure(
+      ["--agent-dir", agentDir],
+      process.env,
+      fixtureInstaller,
+      fixture,
+    );
+    assert.match(result.stderr, /package\.json/);
+    assert.equal(readFileSync(settings, "utf8"), original);
+    assert.equal(existsSync(join(agentDir, "extensions")), false);
+  } finally {
+    rmSync(temporary, { recursive: true, force: true });
+    rmSync(fixture, { recursive: true, force: true });
   }
 });

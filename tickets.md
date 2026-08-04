@@ -255,7 +255,7 @@ Status: **Agent Ready** · Blocked-by: PI-06 (Done) · Phase 2 · GitHub issue #
 
 ## PI-08 — Windows support for the whole Pi workflow (INV-7)
 
-Status: **Debugger Ready** · Blocked-by: PI-07 · Phase 2
+Status: **Review Ready** · Blocked-by: PI-07 · Phase 2
 
 **What to build.** Replace the bash+python `install.sh` path with a cross-platform Node installer (`scripts/install.mjs`, invoked by both `install.sh` and a new `install.ps1`) that resolves the agent dir, links or copies resources, and merges settings; make every path join platform-safe; confirm the notification branch degrades cleanly on Windows; and document the Windows setup in `SETUP.md`.
 

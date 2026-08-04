@@ -12,7 +12,15 @@ import {
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
@@ -60,6 +68,41 @@ function requireCheckout() {
         `Refusing to install incomplete checkout; missing ${source}`,
       );
     }
+  }
+  if (
+    !existsSync(join(root, "node_modules")) &&
+    !existsSync(join(root, "package.json"))
+  ) {
+    throw new Error(
+      `Refusing to install incomplete checkout; missing ${join(root, "package.json")}`,
+    );
+  }
+}
+
+function realpathWithMissingTail(path) {
+  const missing = [];
+  let existing = path;
+  while (!lstatSync(existing, { throwIfNoEntry: false })) {
+    missing.unshift(basename(existing));
+    const parent = dirname(existing);
+    if (parent === existing)
+      throw new Error(`Cannot resolve install path: ${path}`);
+    existing = parent;
+  }
+  return join(realpathSync(existing), ...missing);
+}
+
+function requireSafeTarget(targetDir) {
+  const targetRelative = relative(root, realpathWithMissingTail(targetDir));
+  const isInsideCheckout =
+    targetRelative !== "" &&
+    targetRelative !== ".." &&
+    !targetRelative.startsWith(`..${sep}`) &&
+    !isAbsolute(targetRelative);
+  if (isInsideCheckout) {
+    throw new Error(
+      `Refusing to install into a path inside the checkout: ${targetDir}`,
+    );
   }
 }
 
@@ -191,11 +234,11 @@ function linkOrCopy(source, target, backup, forceCopy) {
 }
 
 export function install({ agentDir, dryRun = false, forceCopy = false } = {}) {
+  const configuredAgentDir = agentDir || process.env.PI_CODING_AGENT_DIR;
   const targetDir = resolve(
-    agentDir ??
-      process.env.PI_CODING_AGENT_DIR ??
-      join(homedir(), ".pi", "agent"),
+    configuredAgentDir || join(homedir(), ".pi", "agent"),
   );
+  requireSafeTarget(targetDir);
   requireCheckout();
   installDependencies(dryRun);
 
