@@ -114,15 +114,25 @@ test("an indeterminate reading renders no % character", () => {
   assert.ok(lines[3].includes("3t"));
 });
 
-test("a measured reading renders a rounded percent", () => {
-  const lines = renderFooter(
+test("a measured reading labels context use without a misleading rounded zero", () => {
+  const rounded = renderFooter(
     state({
       agents: [agent({ stage: "planner" })],
       readingFor: () =>
         buildReading({ source: "context", done: 1, total: 3, at: 10_000 }),
     }),
   );
-  assert.ok(lines[3].includes("33%"));
+  assert.ok(rounded[3].includes("33% ctx"));
+
+  const tiny = renderFooter(
+    state({
+      agents: [agent({ stage: "planner" })],
+      readingFor: () =>
+        buildReading({ source: "context", done: 1, total: 1_000, at: 10_000 }),
+    }),
+  );
+  assert.ok(tiny[3].includes("<1% ctx"));
+  assert.ok(!tiny[3].includes("0%"));
 });
 
 test("a stale reading renders with a leading ~", () => {

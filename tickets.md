@@ -6,6 +6,13 @@ Every `Verification-command` is run from the repo root and must exit 0 exactly w
 
 Status legend: `Planned` · `Agent Ready` · `Coding` · `Debugger Ready` · `Debugging` · `Review Ready` · `Reviewing` · `Done`
 
+## Immediate priority override
+
+1. **Orchestrator-only conversation** — normal user input must never be captured as direct stage steering; the coordinator interprets and relays when needed.
+2. **Honest stage telemetry** — explain elapsed/turn/context labels, suppress unavailable zero-token readings, and render tiny measured use as `<1% ctx`, never misleading `0%` task progress.
+3. **Todo list** — PI-10.
+4. **Footer/token-saving scope** — PI-06 through PI-09.
+
 ---
 
 ## PI-01 — Stage identity and start time on subagent summaries

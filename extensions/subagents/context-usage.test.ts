@@ -29,11 +29,15 @@ test("Claude occupancy treats null cache/output counts as zero", () => {
   );
 });
 
-test("Claude occupancy is unknown without a usable per-request usage", () => {
+test("Claude occupancy is unknown without usable nonzero per-request usage", () => {
   assert.equal(contextOccupancyTokens(undefined), undefined);
   assert.equal(contextOccupancyTokens(null), undefined);
   assert.equal(
     contextOccupancyTokens({ input_tokens: null, output_tokens: 5 }),
+    undefined,
+  );
+  assert.equal(
+    contextOccupancyTokens({ input_tokens: 0, output_tokens: 0 }),
     undefined,
   );
 });

@@ -164,7 +164,7 @@ function stageRow(
   const validReading = isValidReading(reading);
   const progress =
     validReading && reading.kind === "measured"
-      ? ` · ${Math.round(reading.percent)}%`
+      ? ` · ${reading.percent > 0 && reading.percent < 1 ? "<1" : Math.round(reading.percent)}% ctx`
       : "";
   const text = `${statusGlyph(agent.status)} ${stage} ${backend}/${model} · ${elapsed} · ${turns}t${progress}`;
   const stale = !validReading || !isFiniteNumber(now) || isStale(reading, now);

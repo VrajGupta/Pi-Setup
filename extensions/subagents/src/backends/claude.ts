@@ -248,12 +248,12 @@ export function contextOccupancyTokens(
   if (!usage || typeof usage.input_tokens !== "number") return undefined;
   const count = (value: number | null | undefined) =>
     typeof value === "number" && Number.isFinite(value) ? value : 0;
-  return (
+  const tokens =
     count(usage.input_tokens) +
     count(usage.cache_read_input_tokens) +
     count(usage.cache_creation_input_tokens) +
-    count(usage.output_tokens)
-  );
+    count(usage.output_tokens);
+  return tokens > 0 ? tokens : undefined;
 }
 
 function resultContextWindow(result: SDKResultMessage) {

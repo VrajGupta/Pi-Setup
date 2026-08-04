@@ -161,12 +161,19 @@ test("panel rows fit widths 40 and 120", () => {
   }
 });
 
-test("stage readings use shared measured progress and omit percent when indeterminate", () => {
+test("stage readings label measured context and omit percent when indeterminate", () => {
   const measured = panel(state(), [
     agent({ stage: "coder", contextTokens: 1, contextWindow: 2 }),
   ]);
   agentsTab(measured);
-  assert.match(measured.render(120).join("\n"), /50%/);
+  assert.match(measured.render(120).join("\n"), /50% ctx/);
+
+  const tiny = panel(state(), [
+    agent({ stage: "coder", contextTokens: 1, contextWindow: 1_000 }),
+  ]);
+  agentsTab(tiny);
+  assert.match(tiny.render(120).join("\n"), /<1% ctx/);
+  assert.doesNotMatch(tiny.render(120).join("\n"), /0%/);
 
   const indeterminate = panel(state(), [agent({ stage: "coder" })]);
   agentsTab(indeterminate);

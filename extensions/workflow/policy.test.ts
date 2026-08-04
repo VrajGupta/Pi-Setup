@@ -1,10 +1,7 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
-import {
-  canSteerStage,
-  classifyRequest,
-  parseControlEnvelope,
-} from "./src/policy.ts";
+import { classifyRequest, parseControlEnvelope } from "./src/policy.ts";
 
 test("routes high-risk work into planner", () => {
   const route = classifyRequest(
@@ -16,16 +13,10 @@ test("routes high-risk work into planner", () => {
   assert.deepEqual(route.skills, ["provider-integration-tdd"]);
 });
 
-test("only live workflow stages receive typed steering", () => {
-  assert.equal(
-    canSteerStage({ status: "running", stageAgentId: "sa-1" }),
-    true,
-  );
-  assert.equal(
-    canSteerStage({ status: "complete", stageAgentId: "sa-1" }),
-    false,
-  );
-  assert.equal(canSteerStage({ status: "running", stageAgentId: null }), false);
+test("normal user input always stays with the orchestrator", () => {
+  const source = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /pi\.on\(["']input["']/);
+  assert.match(source, /Human messages always go to the orchestrator/);
 });
 
 test("keeps explanations on the direct path", () => {

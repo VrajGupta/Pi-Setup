@@ -32,7 +32,6 @@ import { buildReading, isStale } from "../shared/stage-progress.ts";
 import {
   STAGE_PROFILES,
   buildStagePrompt,
-  canSteerStage,
   classifyRequest,
   parseControlEnvelope,
   type ControlEnvelope,
@@ -557,7 +556,7 @@ function agentText(
   });
   const progress =
     stageAgent && reading.kind === "measured"
-      ? ` · ${Math.round(reading.percent)}%`
+      ? ` · ${reading.percent > 0 && reading.percent < 1 ? "<1" : Math.round(reading.percent)}% ctx`
       : "";
   const stale = reading.kind === "indeterminate" || isStale(reading, now);
   return `${stale ? " ~" : " "} ${statusGlyph(agent.status)} ${stageAgent ? agent.stage : "helper"} · ${displayText(agent.id, "?")} · ${displayText(agent.title, "?")} · ${displayText(agent.backend, "?")}/${displayText(agent.modelLabel, "?") || "?"} · ${formatElapsed(safeElapsed(now, agent.startedAt))} · ${safeTurns(agent.turns)}t${progress}`;
@@ -1047,31 +1046,6 @@ export default function workflow(pi: ExtensionAPI) {
     publish();
   });
 
-  pi.on("input", async (event, ctx) => {
-    if (
-      ctx.mode !== "tui" ||
-      event.source !== "interactive" ||
-      event.images?.length ||
-      !canSteerStage(state)
-    )
-      return;
-
-    const stage = state.activeStage ?? "stage";
-    const stageAgentId = state.stageAgentId;
-    if (!stageAgentId) return;
-    try {
-      await sendToStage(stageAgentId, event.text);
-      ctx.ui.notify(`Steered ${stage}`, "info");
-      return { action: "handled" as const };
-    } catch (error) {
-      ctx.ui.notify(
-        `Could not steer ${stage}: ${error instanceof Error ? error.message : String(error)}`,
-        "error",
-      );
-      return;
-    }
-  });
-
   pi.on("before_agent_start", async (event, ctx) => {
     if (ctx.mode !== "tui") return;
     const decision =
@@ -1089,7 +1063,7 @@ export default function workflow(pi: ExtensionAPI) {
     });
     const skills = decision.skills.length ? decision.skills.join(", ") : "none";
     return {
-      systemPrompt: `${event.systemPrompt}\n\n## Vraj route for this turn\n- Recommendation: ${decision.mode}${decision.stage ? ` via ${decision.stage}` : ""}\n- Reason: ${decision.reason}\n- Supporting skills: ${skills}\n- If this is fleet work, use the workflow tool to start the pinned stage and stop doing the stage's work in the coordinator turn.\n- If a stage result contains a control JSON envelope, honor it: the workflow extension handles questions; broker helper requests with sibling subagents; verify evidence before advancing.\n- Keep user-facing updates terse and put technical detail in /flow.`,
+      systemPrompt: `${event.systemPrompt}\n\n## Vraj route for this turn\n- Recommendation: ${decision.mode}${decision.stage ? ` via ${decision.stage}` : ""}\n- Reason: ${decision.reason}\n- Supporting skills: ${skills}\n- Human messages always go to the orchestrator, never directly to a stage. Interpret them first; relay to an active stage with workflow send only when needed.\n- If this is fleet work, use the workflow tool to start the pinned stage and stop doing the stage's work in the coordinator turn.\n- If a stage result contains a control JSON envelope, honor it: the workflow extension handles questions; broker helper requests with sibling subagents; verify evidence before advancing.\n- Keep user-facing updates terse and put technical detail in /flow.`,
     };
   });
 
