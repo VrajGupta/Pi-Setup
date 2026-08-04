@@ -10,7 +10,7 @@ Status legend: `Planned` · `Agent Ready` · `Coding` · `Debugger Ready` · `De
 
 ## PI-01 — Stage identity and start time on subagent summaries
 
-Status: **Agent Ready** · Blocked-by: none · Phase 1
+Status: **Debugger Ready** · Blocked-by: none · Phase 1
 
 **What to build.** Extend `WorkflowSubagentSummary` in `extensions/shared/workflow-state.ts` with `stage?: StageName` and `startedAt: number` (epoch ms), extend `isWorkflowSubagentSummary` to validate them, tag agents spawned by `startStage` in `extensions/workflow/index.ts` with their stage, and pass both fields through `summarize` in `extensions/subagents/index.ts`.
 

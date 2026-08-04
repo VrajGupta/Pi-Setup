@@ -21,6 +21,7 @@ import {
   Scope,
   Stream,
 } from "effect";
+import type { StageName } from "../../shared/workflow-state.ts";
 import type { SubagentBackend, SubagentSession } from "./backend.ts";
 import { BackendRegistry } from "./backend.ts";
 import type {
@@ -80,6 +81,7 @@ interface MutableSnapshot {
   prompt: string;
   cwd: string;
   status: SubagentStatus;
+  stage?: StageName;
   createdAt: number;
   settledAt?: number;
   errorText?: string;
@@ -478,6 +480,7 @@ const makeManager = Effect.gen(function* () {
             prompt: task.prompt,
             cwd: task.cwd,
             status: "running",
+            stage: task.stage,
             createdAt: Date.now(),
             meta,
             usage: { contextWindow: meta.contextWindow },

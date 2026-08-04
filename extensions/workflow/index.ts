@@ -414,6 +414,7 @@ export default function workflow(pi: ExtensionAPI) {
       title: `${stage} · ${preview(task, 70)}`,
       cwd: ctx.cwd,
       harness: profile.harness,
+      stage,
       model: profile.model,
       reasoningEffort: reasoningEffort ?? profile.defaultReasoning,
       parent: {

@@ -41,6 +41,10 @@ export interface WorkflowSubagentSummary {
   title: string;
   status: "running" | "done" | "error";
   backend: "pi" | "claude" | "codex";
+  /** Set only for agents a workflow stage spawned; helpers stay untagged. */
+  stage?: StageName;
+  /** Epoch ms when the subagent was spawned. */
+  startedAt: number;
   modelLabel?: string;
   contextTokens?: number;
   contextWindow?: number;
@@ -76,6 +80,8 @@ export interface WorkflowSpawnRequest {
   title: string;
   cwd: string;
   harness: "pi" | "claude" | "codex";
+  /** Present only when a workflow stage spawned this agent. */
+  stage?: StageName;
   model?: string;
   reasoningEffort?: WorkflowReasoningEffort;
   parent: WorkflowParentContext;
@@ -126,7 +132,9 @@ export function isWorkflowBridgeRequest(
       typeof value.cwd === "string" &&
       (value.harness === "pi" ||
         value.harness === "claude" ||
-        value.harness === "codex")
+        value.harness === "codex") &&
+      (value.stage === undefined ||
+        (STAGE_NAMES as readonly string[]).includes(value.stage as string))
     );
   }
   if (value.kind === "send") {
@@ -148,6 +156,9 @@ export function isWorkflowSubagentSummary(
     (value.backend === "pi" ||
       value.backend === "claude" ||
       value.backend === "codex") &&
+    typeof value.startedAt === "number" &&
+    (value.stage === undefined ||
+      (STAGE_NAMES as readonly string[]).includes(value.stage as string)) &&
     typeof value.turns === "number"
   );
 }

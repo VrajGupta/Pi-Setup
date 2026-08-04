@@ -9,6 +9,7 @@
 
 import type { ModelRegistry } from "@earendil-works/pi-coding-agent";
 import { Data } from "effect";
+import type { StageName } from "../../shared/workflow-state.ts";
 
 export const BACKEND_NAMES = ["pi", "claude", "codex"] as const;
 export type BackendName = (typeof BACKEND_NAMES)[number];
@@ -60,6 +61,8 @@ export interface SpawnTask {
   readonly model?: string;
   /** Shared effort scale; each backend maps it to its native equivalent. */
   readonly reasoningEffort?: ReasoningEffort;
+  /** Workflow stage that spawned this agent; helpers leave it unset. */
+  readonly stage?: StageName;
   readonly parent: ParentContext;
 }
 
@@ -197,6 +200,7 @@ export interface SubagentSnapshot {
   readonly prompt: string;
   readonly cwd: string;
   readonly status: SubagentStatus;
+  readonly stage?: StageName;
   readonly createdAt: number;
   readonly settledAt?: number;
   readonly errorText?: string;
