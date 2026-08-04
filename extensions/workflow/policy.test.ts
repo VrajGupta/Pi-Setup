@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { classifyRequest, parseControlEnvelope } from "./src/policy.ts";
+import {
+  canSteerStage,
+  classifyRequest,
+  parseControlEnvelope,
+} from "./src/policy.ts";
 
 test("routes high-risk work into part1", () => {
   const route = classifyRequest(
@@ -10,6 +14,18 @@ test("routes high-risk work into part1", () => {
   assert.equal(route.stage, "part1");
   assert.equal(route.confidence, "high");
   assert.deepEqual(route.skills, ["provider-integration-tdd"]);
+});
+
+test("only live workflow stages receive typed steering", () => {
+  assert.equal(
+    canSteerStage({ status: "running", stageAgentId: "sa-1" }),
+    true,
+  );
+  assert.equal(
+    canSteerStage({ status: "complete", stageAgentId: "sa-1" }),
+    false,
+  );
+  assert.equal(canSteerStage({ status: "running", stageAgentId: null }), false);
 });
 
 test("keeps explanations on the direct path", () => {

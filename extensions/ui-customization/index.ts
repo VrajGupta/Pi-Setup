@@ -22,10 +22,13 @@ import {
   type ModelInfoState,
 } from "../shared/dashboard-state.ts";
 import {
+  SUBAGENT_STATE_CHANNEL,
   WORKFLOW_STATE_CHANNEL,
   emptyWorkflowState,
+  isWorkflowSubagentSummary,
   type StageName,
   type WorkflowState,
+  type WorkflowSubagentSummary,
 } from "../shared/workflow-state.ts";
 
 const STAGES: StageName[] = ["part1", "part2", "part3", "part4"];
@@ -86,6 +89,15 @@ function stageLabel(
   return theme.fg("dim", `· ${stage}`);
 }
 
+function railLabel(
+  workflow: WorkflowState,
+  theme: ExtensionContext["ui"]["theme"],
+) {
+  return STAGES.map((stage) =>
+    stageLabel(stage, workflow.activeStage, workflow.status, theme),
+  ).join(theme.fg("dim", "  →  "));
+}
+
 function activityGlyph(activity: Activity) {
   if (activity === "working") return "·";
   if (activity === "done") return "✓";
@@ -114,6 +126,7 @@ export default function uiCustomization(pi: ExtensionAPI) {
   let modelInfo = emptyModelInfoState();
   let gitInfo = emptyGitInfoState();
   let workflow = emptyWorkflowState();
+  let agents: WorkflowSubagentSummary[] = [];
   let activity: Activity = "idle";
   let activeTui: { requestRender(force?: boolean): void } | undefined;
   let currentContext: ExtensionContext | undefined;
@@ -136,6 +149,11 @@ export default function uiCustomization(pi: ExtensionAPI) {
       currentContext.ui.setTitle(titleFor(currentContext, workflow, activity));
     refresh();
   });
+  const stopSubagentListener = pi.events.on(SUBAGENT_STATE_CHANNEL, (value) => {
+    if (!Array.isArray(value)) return;
+    agents = value.filter(isWorkflowSubagentSummary);
+    refresh();
+  });
   const stopRefreshListener = pi.events.on(REFRESH_CHANNEL, refresh);
 
   const install = (ctx: ExtensionContext) => {
@@ -148,7 +166,30 @@ export default function uiCustomization(pi: ExtensionAPI) {
           const identity =
             theme.fg("accent", "π") +
             theme.fg("text", ` ${formatDirectory(ctx.cwd)}`);
-          return [truncateToWidth(identity, width)];
+          const route = workflow.route
+            ? `${workflow.route.mode}${workflow.route.stage ? `/${workflow.route.stage}` : ""}`
+            : "direct";
+          const running = agents.filter(
+            (agent) => agent.status === "running",
+          ).length;
+          const agentStatus = `${running} running · ${agents.length} tracked`;
+          const flowStatus = workflow.activeStage
+            ? `${workflow.status} · ${workflow.activeStage}`
+            : workflow.status;
+          const headerFlow =
+            theme.fg("accent", workflow.activeStage ? "STEER" : "FLOW") +
+            theme.fg("muted", ` ${route} · ${flowStatus}`);
+          const headerAgents =
+            theme.fg("mdHeading", "AGENTS") +
+            theme.fg("muted", ` ${agentStatus}`);
+          return [
+            columns(identity, headerFlow, width),
+            columns(
+              theme.fg("dim", ` ${railLabel(workflow, theme)}`),
+              headerAgents,
+              width,
+            ),
+          ];
         },
         invalidate() {},
       };
@@ -222,6 +263,7 @@ export default function uiCustomization(pi: ExtensionAPI) {
     modelInfo = emptyModelInfoState();
     gitInfo = emptyGitInfoState();
     workflow = emptyWorkflowState();
+    agents = [];
     activity = "idle";
     install(ctx);
   });
@@ -249,6 +291,7 @@ export default function uiCustomization(pi: ExtensionAPI) {
     stopModelListener();
     stopGitListener();
     stopWorkflowListener();
+    stopSubagentListener();
     stopRefreshListener();
     activeTui = undefined;
     currentContext = undefined;

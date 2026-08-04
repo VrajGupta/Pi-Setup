@@ -2,6 +2,7 @@ import {
   STAGE_NAMES,
   type StageName,
   type WorkflowReasoningEffort,
+  type WorkflowState,
 } from "../../shared/workflow-state.ts";
 
 export const STAGE_PROFILES = {
@@ -43,6 +44,15 @@ export const STAGE_PROFILES = {
     label: string;
   }
 >;
+
+export function canSteerStage(
+  state: Pick<WorkflowState, "status" | "stageAgentId">,
+) {
+  return (
+    state.stageAgentId !== null &&
+    ["running", "needs-input", "needs-helper"].includes(state.status)
+  );
+}
 
 export interface RouteDecision {
   mode: "direct" | "fleet";

@@ -7,7 +7,12 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
-import { Key, matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
+import {
+  Key,
+  matchesKey,
+  truncateToWidth,
+  visibleWidth,
+} from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import {
   SUBAGENT_BRIDGE_CHANNEL,
@@ -26,6 +31,7 @@ import {
 import {
   STAGE_PROFILES,
   buildStagePrompt,
+  canSteerStage,
   classifyRequest,
   parseControlEnvelope,
   type ControlEnvelope,
@@ -89,6 +95,7 @@ class FlowPanel {
 
   constructor(
     private readonly ctx: ExtensionContext,
+    private readonly theme: ExtensionContext["ui"]["theme"],
     private readonly getState: () => WorkflowState,
     private readonly getAgents: () => WorkflowSubagentSummary[],
     private readonly getUsed: () => string[],
@@ -118,17 +125,71 @@ class FlowPanel {
 
   render(width: number) {
     const state = this.getState();
+    const running = this.getAgents().filter(
+      (agent) => agent.status === "running",
+    ).length;
+    const tabs = this.tabs
+      .map((tab, index) =>
+        index === this.tab
+          ? this.theme.bg(
+              "selectedBg",
+              this.theme.fg("accent", this.theme.bold(` ${tab} `)),
+            )
+          : this.theme.fg("dim", ` ${tab} `),
+      )
+      .join(this.theme.fg("borderMuted", " · "));
+    const title =
+      this.theme.fg("accent", this.theme.bold(" π  FLOW CONTROL CENTER ")) +
+      this.theme.fg(
+        "muted",
+        ` · ${state.status} · ${running} agent${running === 1 ? "" : "s"}`,
+      );
     const lines = [
-      ` ${this.tabs.map((tab, index) => (index === this.tab ? `[${tab}]` : ` ${tab} `)).join("  ")}`,
-      "",
+      title,
+      tabs,
+      this.theme.fg("borderMuted", "─".repeat(Math.max(1, width - 4))),
       ...this.content(state),
       "",
-      " ←/→ or tab switch · esc close",
+      this.theme.fg("dim", " ←/→ or tab switch · esc close"),
     ];
-    return lines.map((line) => truncateToWidth(line, width));
+    return this.frame(lines, width);
   }
 
   invalidate() {}
+
+  private frame(lines: string[], width: number) {
+    const frameWidth = Math.max(8, width);
+    const contentWidth = frameWidth - 2;
+    const border = this.theme.fg("borderAccent", "│");
+    const fill = (line: string) => {
+      const clipped = truncateToWidth(line, frameWidth);
+      return this.theme.bg(
+        "customMessageBg",
+        `${clipped}${" ".repeat(Math.max(0, frameWidth - visibleWidth(clipped)))}`,
+      );
+    };
+    const body = (line: string) => {
+      const clipped = truncateToWidth(line, contentWidth - 2);
+      return fill(
+        `${border} ${clipped}${" ".repeat(Math.max(0, contentWidth - 2 - visibleWidth(clipped)))} ${border}`,
+      );
+    };
+    return [
+      fill(
+        this.theme.fg(
+          "borderAccent",
+          `╭${"─".repeat(Math.max(1, frameWidth - 2))}╮`,
+        ),
+      ),
+      ...lines.map(body),
+      fill(
+        this.theme.fg(
+          "borderAccent",
+          `╰${"─".repeat(Math.max(1, frameWidth - 2))}╯`,
+        ),
+      ),
+    ];
+  }
 
   private content(state: WorkflowState) {
     switch (this.tab) {
@@ -156,7 +217,7 @@ class FlowPanel {
         ? formatTokens(usage.contextWindow)
         : "?";
     return [
-      " π /flow",
+      this.theme.fg("mdHeading", " snapshot"),
       ` ${this.ctx.cwd}`,
       ` route   ${routeText(state.route)}`,
       ` status  ${state.status}${state.activeStage ? ` · ${state.activeStage}` : ""}`,
@@ -539,6 +600,7 @@ export default function workflow(pi: ExtensionAPI) {
       (tui, _theme, _keybindings, done) => {
         const panel = new FlowPanel(
           ctx,
+          _theme,
           () => state,
           () => agents,
           () => [...usedCapabilities],
@@ -554,8 +616,8 @@ export default function workflow(pi: ExtensionAPI) {
         overlayOptions: {
           anchor: "center",
           width: "88%",
-          maxHeight: "80%",
-          margin: 2,
+          maxHeight: "84%",
+          margin: 1,
         },
       },
     );
@@ -687,6 +749,31 @@ export default function workflow(pi: ExtensionAPI) {
       state = emptyWorkflowState();
     }
     publish();
+  });
+
+  pi.on("input", async (event, ctx) => {
+    if (
+      ctx.mode !== "tui" ||
+      event.source !== "interactive" ||
+      event.images?.length ||
+      !canSteerStage(state)
+    )
+      return;
+
+    const stage = state.activeStage ?? "stage";
+    const stageAgentId = state.stageAgentId;
+    if (!stageAgentId) return;
+    try {
+      await sendToStage(stageAgentId, event.text);
+      ctx.ui.notify(`Steered ${stage}`, "info");
+      return { action: "handled" as const };
+    } catch (error) {
+      ctx.ui.notify(
+        `Could not steer ${stage}: ${error instanceof Error ? error.message : String(error)}`,
+        "error",
+      );
+      return;
+    }
   });
 
   pi.on("before_agent_start", async (event, ctx) => {
