@@ -1,10 +1,151 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import type {
+  ExtensionCommandContext,
+  KeybindingsManager,
+  Theme,
+} from "@earendil-works/pi-coding-agent";
+import type { Component, TUI } from "@earendil-works/pi-tui";
+import type { SubagentSnapshot } from "./src/domain.ts";
+import type { SubagentReadModel } from "./src/manager.ts";
 import {
+  openSubagentTakeover,
   reconcileDashboardSelection,
   type DashboardSelection,
 } from "./src/ui/takeover.ts";
+
+type TakeoverComponent = Component & { dispose?(): void };
+
+type TakeoverFactory = (
+  tui: TUI,
+  theme: Theme,
+  keybindings: KeybindingsManager,
+  done: (result: null) => void,
+) => TakeoverComponent;
+
+type TakeoverInternals = {
+  input: { onSubmit?: (value: string) => void };
+};
+
+const snapshot = (stage?: SubagentSnapshot["stage"]): SubagentSnapshot => ({
+  id: "sa-1",
+  origin: "model",
+  backend: "codex",
+  title: "agent",
+  prompt: "prompt",
+  cwd: "/tmp",
+  status: "running",
+  ...(stage === undefined ? {} : { stage }),
+  createdAt: 1_000,
+  meta: { backend: "codex" },
+  usage: {},
+  transcript: [],
+  liveTools: [],
+  queued: [],
+  finalText: "",
+  turns: 0,
+});
+
+async function openForTest(snap: SubagentSnapshot) {
+  let component: TakeoverComponent | undefined;
+  let closed = false;
+  let aborts = 0;
+  let sends: string[] = [];
+  let renders = 0;
+  const tui = {
+    requestRender: () => {
+      renders++;
+    },
+    terminal: { rows: 30 },
+  } as unknown as TUI;
+  const theme = {
+    fg: (_color: string, text: string) => text,
+    bold: (text: string) => text,
+  } as unknown as Theme;
+  const bindings = new Set<string>();
+  const keybindings = {
+    matches: (data: string, key: string) => bindings.has(`${data}:${key}`),
+  } as unknown as KeybindingsManager;
+  const view = {
+    get: (id: string) => (id === snap.id ? snap : undefined),
+    subscribeTo: () => () => {},
+    requestAbort: () => {
+      aborts++;
+    },
+    requestSend: (_id: string, text: string) => {
+      sends.push(text);
+    },
+  } as unknown as SubagentReadModel;
+  const factoryContext = {
+    ui: {
+      custom: async (factory: unknown) => {
+        if (typeof factory !== "function") throw new Error("missing factory");
+        component = (factory as TakeoverFactory)(
+          tui,
+          theme,
+          keybindings,
+          () => {
+            closed = true;
+          },
+        );
+        return null;
+      },
+    },
+  } as unknown as ExtensionCommandContext;
+  await openSubagentTakeover(factoryContext, view, snap.id);
+  if (!component) throw new Error("takeover component was not created");
+  return {
+    component,
+    bindings,
+    get aborts() {
+      return aborts;
+    },
+    get sends() {
+      return sends;
+    },
+    get renders() {
+      return renders;
+    },
+    get closed() {
+      return closed;
+    },
+  };
+}
+
+test("workflow stage takeover cannot abort, but can scroll and close", async () => {
+  const harness = await openForTest(snapshot("debugger"));
+  try {
+    harness.bindings.add("clear:app.clear");
+    harness.component.handleInput?.("clear");
+    assert.equal(harness.aborts, 0);
+
+    harness.bindings.add("up:tui.editor.cursorUp");
+    harness.component.handleInput?.("up");
+    assert.equal(harness.renders, 1);
+
+    harness.bindings.add("escape:app.interrupt");
+    harness.component.handleInput?.("escape");
+    assert.equal(harness.closed, true);
+  } finally {
+    harness.component.dispose?.();
+  }
+});
+
+test("helper takeover retains abort and send behavior", async () => {
+  const harness = await openForTest(snapshot());
+  try {
+    harness.bindings.add("clear:app.clear");
+    harness.component.handleInput?.("clear");
+    assert.equal(harness.aborts, 1);
+
+    const internals = harness.component as unknown as TakeoverInternals;
+    internals.input.onSubmit?.(" follow up ");
+    assert.deepEqual(harness.sends, ["follow up"]);
+  } finally {
+    harness.component.dispose?.();
+  }
+});
 
 test("workflow stage takeovers never accept typed text", () => {
   const source = readFileSync(
@@ -13,11 +154,11 @@ test("workflow stage takeovers never accept typed text", () => {
   );
   assert.match(
     source,
-    /this\.input\.onSubmit = \(value: string\) => \{[\s\S]*if \(this\.snap\(\)\?\.stage\) return;[\s\S]*requestSend/,
+    /this\.input\.onSubmit = \(value: string\) => \{[\s\S]*if \(this\.snap\(\)\?\.stage !== undefined\) return;[\s\S]*requestSend/,
   );
   assert.match(
     source,
-    /if \(this\.snap\(\)\?\.stage\) return;\s*this\.input\.handleInput\(data\)/,
+    /if \(isStageTakeover\) return;\s*this\.input\.handleInput\(data\)/,
   );
   assert.match(source, /Vraj messages only the coordinator/);
   const tools = readFileSync(new URL("./index.ts", import.meta.url), "utf8");

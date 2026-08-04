@@ -125,6 +125,7 @@ function isValidReading(value: unknown): value is ProgressReading {
       reading.percent >= 0 &&
       reading.percent <= 100 &&
       isFiniteNumber(reading.done) &&
+      reading.done > 0 &&
       isFiniteNumber(reading.total) &&
       reading.total > 0 &&
       (PROGRESS_SOURCES as readonly unknown[]).includes(reading.source)

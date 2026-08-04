@@ -408,7 +408,7 @@ class TakeoverView implements Component, Focusable {
     this.input.onSubmit = (value: string) => {
       const text = value.trim();
       if (!text) return;
-      if (this.snap()?.stage) return;
+      if (this.snap()?.stage !== undefined) return;
       this.input.setValue("");
       this.view.requestSend(this.id, text);
       this.scrollOffset = 0;
@@ -449,9 +449,11 @@ class TakeoverView implements Component, Focusable {
   }
 
   handleInput(data: string): void {
+    const snap = this.snap();
+    const isStageTakeover = snap?.stage !== undefined;
     if (this.keybindings.matches(data, "app.clear")) {
-      const snap = this.snap();
-      if (snap?.status === "running") this.view.requestAbort(this.id);
+      if (!isStageTakeover && snap?.status === "running")
+        this.view.requestAbort(this.id);
       return;
     }
     if (
@@ -487,7 +489,7 @@ class TakeoverView implements Component, Focusable {
       this.tui.requestRender();
       return;
     }
-    if (this.snap()?.stage) return;
+    if (isStageTakeover) return;
     this.input.handleInput(data);
     this.tui.requestRender();
   }

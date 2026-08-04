@@ -69,7 +69,8 @@ export function buildReading(input: ReadingInput): ProgressReading {
     );
   }
   const { done, total } = input;
-  const measurable = isFiniteNumber(done) && isFiniteNumber(total) && total > 0;
+  const measurable =
+    isFiniteNumber(done) && isFiniteNumber(total) && done > 0 && total > 0;
   if (!measurable) {
     return makeIndeterminate(input.at, input.elapsedMs, input.turns);
   }
@@ -92,6 +93,7 @@ function isProgressReading(value: unknown): value is ProgressReading {
       value.percent >= 0 &&
       value.percent <= 100 &&
       isFiniteNumber(value.done) &&
+      value.done > 0 &&
       isFiniteNumber(value.total) &&
       value.total > 0 &&
       isProgressSource(value.source)

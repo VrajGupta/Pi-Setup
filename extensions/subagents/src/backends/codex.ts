@@ -94,6 +94,11 @@ function numberValue(value: unknown) {
     : undefined;
 }
 
+function positiveNumberValue(value: unknown) {
+  const number = numberValue(value);
+  return number !== undefined && number > 0 ? number : undefined;
+}
+
 function booleanValue(value: unknown) {
   return typeof value === "boolean" ? value : undefined;
 }
@@ -212,8 +217,8 @@ export function parseThreadTokenUsage(params: unknown) {
   const usage = record(record(params)?.tokenUsage);
   const last = record(usage?.last);
   return {
-    tokens: numberValue(last?.totalTokens),
-    contextWindow: numberValue(usage?.modelContextWindow),
+    tokens: positiveNumberValue(last?.totalTokens),
+    contextWindow: positiveNumberValue(usage?.modelContextWindow),
   };
 }
 

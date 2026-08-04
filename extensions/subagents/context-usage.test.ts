@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { buildReading } from "../shared/stage-progress.ts";
+import { renderFooter } from "../ui-customization/footer.ts";
 import { contextOccupancyTokens } from "./src/backends/claude.ts";
 import { parseThreadTokenUsage } from "./src/backends/codex.ts";
 import { formatContextUtilization } from "./src/format.ts";
@@ -141,4 +143,60 @@ test("Codex occupancy is unknown when last usage or window is absent", () => {
     tokens: undefined,
     contextWindow: undefined,
   });
+});
+
+test("Codex non-positive or non-finite occupancy stays unknown through stage rows", () => {
+  const theme = { fg: (_color: string, text: string) => text };
+  for (const totalTokens of [
+    0,
+    -1,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+    null,
+    "0",
+    {},
+    undefined,
+  ]) {
+    const usage = parseThreadTokenUsage(
+      codexParams({
+        last: { totalTokens },
+        modelContextWindow: 200_000,
+      }),
+    );
+    assert.equal(usage.tokens, undefined);
+    const reading = buildReading({
+      source: "context",
+      done: usage.tokens,
+      total: usage.contextWindow,
+      at: 10_000,
+    });
+    assert.equal(reading.kind, "indeterminate");
+    const row = renderFooter({
+      width: 120,
+      theme,
+      now: 10_000,
+      cwdLabel: "~/repo",
+      runtime: "pi/model",
+      rail: "flow",
+      routeStatus: "running",
+      usage: "",
+      pr: "",
+      agents: [
+        {
+          id: "stage-1",
+          title: "debugger",
+          status: "running",
+          backend: "codex",
+          stage: "debugger",
+          startedAt: 1_000,
+          turns: 1,
+        },
+      ],
+      statuses: [],
+      readingFor: () => reading,
+    })[3];
+    assert.ok(row);
+    assert.doesNotMatch(row, /%/);
+  }
 });

@@ -108,6 +108,29 @@ test("installer refuses malformed settings without overwriting them", () => {
   }
 });
 
+test("installer refuses non-object settings without overwriting them", () => {
+  const temporary = mkdtempSync(join(tmpdir(), "pi-agent-non-object-"));
+  const agentDir = join(temporary, "agent");
+  const settings = join(agentDir, "settings.json");
+  mkdirSync(agentDir);
+
+  try {
+    for (const original of ["null", "[]", "42", '"settings"']) {
+      writeFileSync(settings, original);
+      assert.throws(() =>
+        execFileSync("bash", [installer], {
+          cwd: root,
+          env: { ...process.env, PI_CODING_AGENT_DIR: agentDir },
+          stdio: "pipe",
+        }),
+      );
+      assert.equal(readFileSync(settings, "utf8"), original);
+    }
+  } finally {
+    rmSync(temporary, { recursive: true, force: true });
+  }
+});
+
 test("installer leaves an in-place repository's resources intact", () => {
   const temporary = mkdtempSync(join(tmpdir(), "pi-agent-in-place-"));
   const repository = join(temporary, "repo");

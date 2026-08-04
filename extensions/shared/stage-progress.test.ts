@@ -80,6 +80,19 @@ test("non-finite done, total, or at never produces a malformed percent reading",
   }
 });
 
+test("non-positive occupancy is indeterminate, never a measured zero", () => {
+  for (const done of [0, -1]) {
+    const reading = buildReading({
+      source: "context",
+      done,
+      total: 200_000,
+      at: 1_000,
+    });
+    assert.equal(reading.kind, "indeterminate");
+    assert.ok(!("percent" in reading));
+  }
+});
+
 test("a source outside context|questions|stage throws — tickets included", () => {
   for (const source of ["tickets", "tracker", "", "estimate"]) {
     assert.throws(() =>
@@ -124,20 +137,6 @@ test("measured readings clamp percent to 0..100 and preserve exact done/total", 
     total: 8,
     source: "stage",
     at: 5,
-  });
-  const under = buildReading({
-    source: "questions",
-    done: -3,
-    total: 10,
-    at: 7,
-  });
-  assert.deepEqual(under, {
-    kind: "measured",
-    percent: 0,
-    done: -3,
-    total: 10,
-    source: "questions",
-    at: 7,
   });
   const exact = buildReading({ source: "context", done: 1, total: 3, at: 9 });
   if (exact.kind !== "measured") assert.fail("expected measured");
