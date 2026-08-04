@@ -50,3 +50,7 @@ npm test
 ```
 
 The live provider/auth routes are intentionally not tested in CI. Run them only when the exact credentials and models are available.
+
+## Concise output
+
+The installer declares the Ponytail package and adds a local terse-output policy. Routine replies use concise, Caveman-style evidence; security warnings, irreversible confirmations, and multi-step instructions stay explicit.

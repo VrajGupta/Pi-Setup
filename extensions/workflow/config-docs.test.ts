@@ -20,6 +20,7 @@ const setup = join(root, "SETUP.md");
 const readme = join(root, "README.md");
 const system = join(root, "SYSTEM.md");
 const settingsExample = join(root, "settings.example.json");
+const terseOutput = join(root, "skills", "terse-output", "SKILL.md");
 const runtimeSettings = join(
   root,
   "node_modules/@earendil-works/pi-coding-agent/docs/settings.md",
@@ -33,6 +34,10 @@ test("settings document Pi's accepted steering values and keep stages on relay",
   const runtime = readFileSync(runtimeSettings, "utf8");
   assert.match(runtime, /`steeringMode`[\s\S]*`"all"` or `"one-at-a-time"`/);
   assert.equal(readSettings(settingsExample).steeringMode, "one-at-a-time");
+  assert.deepEqual(readSettings(settingsExample).packages, [
+    "git:github.com/DietrichGebert/ponytail",
+  ]);
+  assert.match(readFileSync(terseOutput, "utf8"), /safety exceptions/i);
   const text = readFileSync(setup, "utf8");
   assert.match(text, /"all".*"one-at-a-time"/);
   assert.match(text, /orchestrator.*workflow send/i);
@@ -49,10 +54,13 @@ test("settings document Pi's accepted steering values and keep stages on relay",
     /question_batch: the workflow UI relays/i,
   );
   for (const path of [readme, system]) {
+    const contents = readFileSync(path, "utf8");
     assert.match(
-      readFileSync(path, "utf8"),
+      contents,
       /Vraj messages only the coordinator[\s\S]*workflow send/,
     );
+    assert.match(contents, /Ponytail/i);
+    assert.match(contents, /Caveman/i);
   }
 });
 
@@ -63,7 +71,15 @@ test("installer replaces legacy all steering mode and is idempotent", () => {
   mkdirSync(agentDir);
   writeFileSync(
     settings,
-    JSON.stringify({ steeringMode: "all", preserved: true }),
+    JSON.stringify({
+      steeringMode: "all",
+      preserved: true,
+      packages: [
+        "npm:example",
+        "git:github.com/DietrichGebert/ponytail",
+        "git:github.com/DietrichGebert/ponytail",
+      ],
+    }),
   );
 
   try {
@@ -78,6 +94,18 @@ test("installer replaces legacy all steering mode and is idempotent", () => {
     const once = readSettings(settings);
     assert.equal(once.steeringMode, "one-at-a-time");
     assert.equal(once.preserved, true);
+    assert.deepEqual(once.packages, [
+      "npm:example",
+      "git:github.com/DietrichGebert/ponytail",
+    ]);
+    assert.equal(lstatSync(join(agentDir, "skills")).isSymbolicLink(), true);
+    assert.match(
+      readFileSync(
+        join(agentDir, "skills", "terse-output", "SKILL.md"),
+        "utf8",
+      ),
+      /safety exceptions/i,
+    );
 
     for (let run = 0; run < 3; run += 1) install();
     assert.deepEqual(readSettings(settings), once);

@@ -7,6 +7,7 @@
   "hideThinkingBlock": true,
   "collapseChangelog": true,
   "enableInstallTelemetry": false,
+  "packages": ["git:github.com/DietrichGebert/ponytail"],
   "steeringMode": "one-at-a-time",
   "followUpMode": "one-at-a-time",
   "compaction": {
