@@ -10,7 +10,7 @@ This is a documentation-only spike. No Pi provider route, configuration, credent
 
 The current local runtime configuration sends Anthropic-provider traffic to **agentrouter.org**. Therefore its operator already receives the request sent to that endpoint. This evaluation did not inspect or assume agentrouter.org's onward routing, retention, or cache behavior.
 
-A local proxy would change the path to `Pi → local proxy → agentrouter.org` (only if the existing upstream were retained). A remotely hosted proxy would add its operator as another network trust edge. In either case, the proxy receives the full request it accepts: model and parameters, system and conversation content, tool definitions and results, attachments represented in the request, cache metadata, and the authorization header intended for that proxy. It also receives the provider response, including tool calls and generated text. If it is configured to forward upstream, it additionally holds or forwards the upstream credential. Loopback binding makes the proxy a local-process trust edge, not a new remote operator; it does not remove the existing agentrouter.org edge.
+A local proxy would change the path to `Pi → local proxy → agentrouter.org` (only if the existing upstream were retained). A remotely hosted proxy would add its operator as another network trust edge. In either case, the proxy receives the full request it accepts: model and parameters, the system prompt, conversation content, file contents that Pi includes in context or tool results, tool definitions and results, attachments represented in the request, cache metadata, and the authorization header intended for that proxy. It also receives the provider response, including tool calls and generated text. If it is configured to forward upstream, it additionally holds or forwards the upstream credential. Files never included in a request are not visible to the proxy. Loopback binding makes the proxy a local-process trust edge, not a new remote operator; it does not remove the existing agentrouter.org edge.
 
 ## OmniRoute RTK + Caveman
 
@@ -26,6 +26,8 @@ A local proxy would change the path to `Pi → local proxy → agentrouter.org` 
 
 **What exists.** Headroom is assessable: its primary repository is an active Apache-2.0 project that documents a local proxy, library, and MCP server ([repository and README](https://github.com/headroomlabs-ai/headroom)). It claims 60–95% fewer tokens for JSON and 15–20% for coding agents ([vendor claim](https://github.com/headroomlabs-ai/headroom#proof)); those claims are **not reproduced for Pi**. Its README also describes CacheAligner as warning about cache-busting content without rewriting prompts; that is a vendor assertion, not a Pi measurement.
 
+In proxy mode, Headroom sits locally between the agent or application and the LLM provider: it receives the request, compresses eligible content, and sends the transformed prompt plus its retrieval mechanism upstream. That placement is described here for trust analysis only; no Headroom artifact or Pi route was installed or configured.
+
 Do not confuse that project with OmniRoute's engine named `headroom`. OmniRoute `3.8.48` contains a distinct Headroom SmartCrusher implementation that compacts eligible JSON arrays and sends the compact representation to the provider as-is ([source](https://github.com/diegosouzapw/OmniRoute/blob/v3.8.48/open-sse/services/compression/engines/headroom/index.ts#L1-L15)); its decoder has no production caller ([source](https://github.com/diegosouzapw/OmniRoute/blob/v3.8.48/open-sse/services/compression/engines/headroom/index.ts#L182-L187)). Thus it can also change cache-key input despite being described as lossless after local reconstruction.
 
 **Prompt-cache effect.** Any Headroom mode that changes content before a cache breakpoint can invalidate a provider cache prefix under Anthropic's documented rule. Whether its cache-aware exclusions preserve Pi's actual prefix, and whether agentrouter.org preserves the cache protocol, are **unknown**. No Headroom artifact is installed or wired into Pi.
@@ -40,5 +42,11 @@ Before considering adoption, run an isolated, loopback-only experiment with synt
 - OmniRoute primary source, installed artifact evaluated: `omniroute@3.8.48`; [README savings claim](https://github.com/diegosouzapw/OmniRoute/blob/v3.8.48/README.md#L654-L703), [stack default](https://github.com/diegosouzapw/OmniRoute/blob/v3.8.48/open-sse/services/compression/strategySelector.ts#L686-L710), and [RTK cache guard](https://github.com/diegosouzapw/OmniRoute/blob/v3.8.48/open-sse/services/compression/engines/rtk/index.ts#L33-L44).
 - Headroom primary source: [project README](https://github.com/headroomlabs-ai/headroom) (proxy capability and vendor benchmarks).
 - Provider cache behavior: [Anthropic prompt-caching documentation](https://platform.claude.com/docs/en/build-with-claude/prompt-caching#how-automatic-prefix-checking-works).
+
+## Verdict
+
+Next step: obtain explicit approval for the isolated loopback experiment described
+above, then record cache, bytes, latency, fidelity, and fail-open results before any
+adoption decision.
 
 Verdict: needs a further spike
