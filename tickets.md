@@ -10,7 +10,7 @@ Status legend: `Planned` · `Agent Ready` · `Coding` · `Debugger Ready` · `De
 
 ## PI-01 — Stage identity and start time on subagent summaries
 
-Status: **Grading Ready** · Blocked-by: none · Phase 1
+Status: **Done** · Blocked-by: none · Phase 1
 
 **What to build.** Extend `WorkflowSubagentSummary` in `extensions/shared/workflow-state.ts` with `stage?: StageName` and `startedAt: number` (epoch ms), extend `isWorkflowSubagentSummary` to validate them, tag agents spawned by `startStage` in `extensions/workflow/index.ts` with their stage, and pass both fields through `summarize` in `extensions/subagents/index.ts`.
 
@@ -22,6 +22,15 @@ Status: **Grading Ready** · Blocked-by: none · Phase 1
 - A helper agent spawned through `subagent_spawn` carries no `stage`.
 
 **Verification-command.** `node --test --experimental-strip-types extensions/shared/workflow-state.test.ts extensions/workflow/policy.test.ts && npm run check`
+
+**Grade (part4, 2026-08-04).**
+- Verdict: **PASS** (score: 94/100, diagnostic only)
+- Bounce: 0 of 3
+- Gate: `node --test --experimental-strip-types extensions/shared/workflow-state.test.ts extensions/workflow/policy.test.ts && npm run check` → exit 0 (13 tests pass; tsc clean)
+- Blocking findings: none
+- Advisory: Verification-command does not run `extensions/subagents/manager.test.ts`; stage/helper propagation is covered there and was re-run green (exit 0) during grade. Full workflow→event-bus→subagents extension round trip remains unharnessed.
+- Routing: → **Done** — all five acceptance criteria met in code; INV-6 boundary on non-finite `startedAt` held; no blocking rubric defects.
+
 
 **Part3 debugger audit (2026-08-04).**
 - Baseline four-net result: the exact gate was green before the audit; no failing tests or static errors. The original tests covered validator acceptance/rejection but did not cover non-finite timestamps, runtime manager propagation, or the helper summary shape.
