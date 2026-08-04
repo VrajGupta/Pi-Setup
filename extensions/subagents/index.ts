@@ -461,11 +461,11 @@ export default function (pi: ExtensionAPI) {
     name: "subagent_send",
     label: "Send to Subagent",
     description:
-      "Send a steering or continuation message to a running or settled subagent.",
+      "Send a continuation message to a running or settled non-workflow subagent.",
     promptSnippet:
       "Resume a paused subagent with a user answer or bounded helper result",
     promptGuidelines: [
-      "Use subagent_send when a workflow stage returned a question_batch or helper_request and you have the answer/result.",
+      "Use workflow send for a workflow stage; use subagent_send only for a non-workflow subagent.",
       "Keep the message self-contained and include the original stage envelope context.",
     ],
     parameters: Type.Object({
@@ -478,6 +478,10 @@ export default function (pi: ExtensionAPI) {
       if (!snap || !isModelVisible(snap)) {
         throw new Error(`Unknown subagent id: ${params.id}`);
       }
+      if (snap.stage)
+        throw new Error(
+          "Workflow stages accept messages only through workflow send.",
+        );
       manager.view.requestSend(params.id, params.text);
       return {
         content: [

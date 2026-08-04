@@ -34,3 +34,7 @@ Add the included theme to `~/.pi/agent/settings.json` while keeping your existin
 ```
 
 Pi will load the extensions, skills, and theme from their directories the next time it starts.
+
+## Message delivery
+
+The installed Pi runtime accepts `"all"` and `"one-at-a-time"` for `steeringMode`; `"one-at-a-time"` is its default. This setup uses `"one-at-a-time"` so queued messages stay serial with the coordinator. That setting controls Pi's coordinator queue only: Vraj messages the orchestrator, and stages receive text only through its explicit `workflow send` relay.

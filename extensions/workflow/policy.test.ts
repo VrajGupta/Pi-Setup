@@ -13,9 +13,15 @@ test("routes high-risk work into planner", () => {
   assert.deepEqual(route.skills, ["provider-integration-tdd"]);
 });
 
-test("normal user input always stays with the orchestrator", () => {
+test("only the orchestrator relays text to a stage through workflow send", () => {
   const source = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
   assert.doesNotMatch(source, /pi\.on\(["']input["']/);
+  assert.doesNotMatch(source, /ctx\.ui\.(input|select)\(/);
+  assert.equal((source.match(/await sendToStage\(/g) ?? []).length, 1);
+  assert.match(
+    source,
+    /if \(input\.action === "send"\)[\s\S]*await sendToStage\(input\.id, input\.text\)/,
+  );
   assert.match(source, /Human messages always go to the orchestrator/);
 });
 

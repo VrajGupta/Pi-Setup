@@ -8,6 +8,7 @@ import {
 } from "../shared/stage-progress.ts";
 import {
   SUBAGENT_STATE_CHANNEL,
+  WORKFLOW_STATE_CHANNEL,
   type WorkflowSubagentSummary,
 } from "../shared/workflow-state.ts";
 import { renderFooter, type FooterState } from "./footer.ts";
@@ -365,6 +366,12 @@ test("live subagent state reaches the footer as measured context progress and om
   type EventHandler = (value: unknown) => void;
   const listeners = new Map<string, Set<EventHandler>>();
   const hooks = new Map<string, (...args: unknown[]) => void>();
+  let headerFactory:
+    | ((
+        tui: { requestRender(): void },
+        theme: typeof plainTheme,
+      ) => { render(width: number): string[] })
+    | undefined;
   let footerFactory:
     | ((
         tui: { requestRender(): void },
@@ -398,7 +405,9 @@ test("live subagent state reaches the footer as measured context progress and om
     cwd: "/repo",
     ui: {
       theme,
-      setHeader() {},
+      setHeader(factory: typeof headerFactory) {
+        headerFactory = factory;
+      },
       setFooter(factory: typeof footerFactory) {
         footerFactory = factory;
       },
@@ -408,9 +417,17 @@ test("live subagent state reaches the footer as measured context progress and om
 
   uiCustomization(pi as never);
   hooks.get("session_start")?.({}, context);
+  assert.ok(headerFactory);
   assert.ok(footerFactory);
+  const header = headerFactory({ requestRender() {} }, theme);
   const footer = footerFactory({ requestRender() {} }, theme, {
     getExtensionStatuses: () => new Map(),
+  });
+  pi.events.emit(WORKFLOW_STATE_CHANNEL, {
+    status: "running",
+    activeStage: "coder",
+    route: { mode: "fleet", stage: "coder" },
+    updatedAt: Date.now(),
   });
   pi.events.emit(SUBAGENT_STATE_CHANNEL, [
     agent({
@@ -427,6 +444,7 @@ test("live subagent state reaches the footer as measured context progress and om
   assert.ok(lines[3].includes("coder"));
   assert.ok(lines[3].includes("25%"));
   assert.ok(!lines.some((line) => line.includes("helper-agent")));
+  assert.doesNotMatch([...header.render(80), ...lines].join("\n"), /steer/i);
 
   const statusFailureFooter = footerFactory({ requestRender() {} }, theme, {
     getExtensionStatuses() {

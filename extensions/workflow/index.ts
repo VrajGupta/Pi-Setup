@@ -49,7 +49,6 @@ const REASONING_LEVELS = [
 ] as const;
 const CAPABILITY_CHANNEL = "vraj:capability-used";
 const CONTROL_MESSAGE_TYPE = "subagent-result";
-const MAX_STAGE_QUESTIONS = 3;
 
 interface FlowInput {
   action: "route" | "start" | "send" | "status" | "recover";
@@ -774,65 +773,22 @@ export default function workflow(pi: ExtensionAPI) {
     }
   };
 
-  const showQuestionBatch = async (
-    ctx: ExtensionContext,
-    envelope: Extract<ControlEnvelope, { kind: "question_batch" }>,
-  ) => {
-    if (ctx.mode !== "tui" || !ctx.hasUI || !state.stageAgentId) {
-      setState({
-        status: "blocked",
-        lastEvent: "question requires interactive TUI",
-      });
-      return;
-    }
-    const questions = envelope.questions.slice(0, MAX_STAGE_QUESTIONS);
-    const answers: Array<{ id: string; answer: string }> = [];
-    setState({
-      status: "needs-input",
-      lastEvent: `${questions.length} decision${questions.length === 1 ? "" : "s"} from ${envelope.stage}`,
-    });
-    void notifyNative(
-      `${envelope.stage} needs you`,
-      "A workflow decision is waiting in Pi.",
-    );
-    for (let index = 0; index < questions.length; index += 1) {
-      const question = questions[index];
-      const labels = question.options.map((option) => option.label);
-      const customLabel = "Write my own answer…";
-      const choice = await ctx.ui.select(
-        `${envelope.stage} · decision ${index + 1}/${questions.length}: ${question.question}${question.recommendation ? ` · recommended: ${question.recommendation}` : ""}`,
-        [...labels, customLabel],
-      );
-      if (!choice) {
-        setState({ status: "blocked", lastEvent: "decision batch cancelled" });
-        return;
-      }
-      const answer =
-        choice === customLabel
-          ? await ctx.ui.input("Your answer", "Type a decision…")
-          : choice;
-      if (!answer?.trim()) {
-        setState({ status: "blocked", lastEvent: "decision batch cancelled" });
-        return;
-      }
-      answers.push({ id: question.id, answer: answer.trim() });
-    }
-    await sendToStage(
-      state.stageAgentId,
-      JSON.stringify({
-        kind: "question_answers",
-        stage: envelope.stage,
-        answers,
-      }),
-    );
-  };
-
   const handleEnvelope = async (envelope: ControlEnvelope) => {
     const key = JSON.stringify(envelope);
     if (key === lastEnvelope) return;
     lastEnvelope = key;
     if (envelope.kind === "question_batch") {
-      await showQuestionBatch(context!, envelope);
+      const count = envelope.questions.length;
+      setState({
+        status: "needs-input",
+        activeStage: envelope.stage,
+        lastEvent: `${count} decision${count === 1 ? "" : "s"} awaiting orchestrator relay`,
+      });
+      context?.ui.notify(`${envelope.stage} awaits orchestrator relay`, "info");
+      void notifyNative(
+        `${envelope.stage} awaiting relay`,
+        "A workflow decision is waiting for the orchestrator.",
+      );
       return;
     }
     if (envelope.kind === "helper_request") {

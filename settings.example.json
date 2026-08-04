@@ -7,7 +7,7 @@
   "hideThinkingBlock": true,
   "collapseChangelog": true,
   "enableInstallTelemetry": false,
-  "steeringMode": "all",
+  "steeringMode": "one-at-a-time",
   "followUpMode": "one-at-a-time",
   "compaction": {
     "enabled": true,

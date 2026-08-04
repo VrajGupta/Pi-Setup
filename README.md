@@ -23,7 +23,7 @@ The installer backs up current runtime resources before linking this repo into `
 
 ## Workflow
 
-Normal requests are classified automatically. Small reversible work stays direct. Risky or broad work is routed to the fleet. Your messages always go to the coordinator; it interprets and relays them to active stage agents when needed. Use `/flow` or **F6** for the command center.
+Normal requests are classified automatically. Small reversible work stays direct. Risky or broad work is routed to the fleet. Vraj messages only the coordinator; stages receive text solely through its explicit `workflow send` relay. Use `/flow` or **F6** for the command center.
 
 Stage rows show elapsed time, completed assistant turns (`1t` = one turn), and measured context-window use (`<1% ctx`, for example). Context use is not task-completion progress; unavailable usage shows no percentage.
 

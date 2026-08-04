@@ -166,7 +166,7 @@ export default function uiCustomization(pi: ExtensionAPI) {
             ? `${workflow.status} · ${workflow.activeStage}`
             : workflow.status;
           const headerFlow =
-            theme.fg("accent", workflow.activeStage ? "STEER" : "FLOW") +
+            theme.fg("accent", "FLOW") +
             theme.fg("muted", ` ${route} · ${flowStatus}`);
           const headerAgents =
             theme.fg("mdHeading", "AGENTS") +

@@ -1,9 +1,31 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   reconcileDashboardSelection,
   type DashboardSelection,
 } from "./src/ui/takeover.ts";
+
+test("workflow stage takeovers never accept typed text", () => {
+  const source = readFileSync(
+    new URL("./src/ui/takeover.ts", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    source,
+    /this\.input\.onSubmit = \(value: string\) => \{[\s\S]*if \(this\.snap\(\)\?\.stage\) return;[\s\S]*requestSend/,
+  );
+  assert.match(
+    source,
+    /if \(this\.snap\(\)\?\.stage\) return;\s*this\.input\.handleInput\(data\)/,
+  );
+  assert.match(source, /Vraj messages only the coordinator/);
+  const tools = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
+  assert.match(
+    tools,
+    /if \(snap\.stage\)[\s\S]*throw new Error\([\s\S]*"Workflow stages accept messages only through workflow send\."/,
+  );
+});
 
 test("dashboard selection follows its subagent id and falls back by row", () => {
   const selection: DashboardSelection = { id: "sa-7", index: 6 };

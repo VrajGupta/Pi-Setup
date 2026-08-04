@@ -45,7 +45,7 @@ settings.update({
     "hideThinkingBlock": True,
     "collapseChangelog": True,
     "enableInstallTelemetry": False,
-    "steeringMode": "all",
+    "steeringMode": "one-at-a-time",
     "followUpMode": "one-at-a-time",
 })
 

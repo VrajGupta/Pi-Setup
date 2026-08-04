@@ -158,11 +158,12 @@ export function buildTranscriptLines(
     out.push(truncateToWidth(line, width));
   }
 
-  // Queued steering/follow-up messages: show them immediately so Enter
-  // visibly acknowledges the user's input instead of appearing to do nothing.
+  // Queued relay/follow-up messages: show them immediately so their delivery
+  // remains visible without implying the user is typing to a stage.
   for (const message of snap.queued) {
     if (out.length > 0) out.push("");
-    const prefix = theme.fg("warning", `> [queued ${message.kind}] `);
+    const kind = message.kind === "steer" ? "relay" : message.kind;
+    const prefix = theme.fg("warning", `> [queued ${kind}] `);
     const wrapped = wrapTextWithAnsi(
       sanitizeText(message.text),
       Math.max(10, width - visibleWidth(prefix)),

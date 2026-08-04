@@ -2,8 +2,7 @@
  * Takeover UI for subagents (ported from v1, rendering from the synchronous
  * SubagentReadModel instead of live pi sessions):
  * - SubagentDashboard: full popup (overlay) listing all subagents.
- * - TakeoverView: full interactive view of one subagent with an input line
- *   to steer/continue it.
+ * - TakeoverView: a read-only workflow-stage view and an interactive helper view.
  */
 
 import type {
@@ -409,6 +408,7 @@ class TakeoverView implements Component, Focusable {
     this.input.onSubmit = (value: string) => {
       const text = value.trim();
       if (!text) return;
+      if (this.snap()?.stage) return;
       this.input.setValue("");
       this.view.requestSend(this.id, text);
       this.scrollOffset = 0;
@@ -487,6 +487,7 @@ class TakeoverView implements Component, Focusable {
       this.tui.requestRender();
       return;
     }
+    if (this.snap()?.stage) return;
     this.input.handleInput(data);
     this.tui.requestRender();
   }
@@ -563,16 +564,28 @@ class TakeoverView implements Component, Focusable {
     lines.push(...body.slice(0, viewport));
 
     lines.push(border);
-    lines.push(...this.input.render(width));
-    lines.push(
-      truncateToWidth(
-        theme.fg(
-          "dim",
-          `${configuredKeys(this.keybindings, "tui.input.submit")} send · ${configuredKeys(this.keybindings, "app.interrupt")} back · ${configuredKeys(this.keybindings, "app.clear")} abort run · ${configuredKeys(this.keybindings, "tui.editor.cursorUp")}/${configuredKeys(this.keybindings, "tui.editor.cursorDown")} scroll · ${configuredKeys(this.keybindings, "tui.editor.pageUp")}/${configuredKeys(this.keybindings, "tui.editor.pageDown")} page`,
+    if (snap.stage) {
+      lines.push(
+        truncateToWidth(
+          theme.fg(
+            "dim",
+            "Vraj messages only the coordinator; stages use workflow send.",
+          ),
+          width,
         ),
-        width,
-      ),
-    );
+      );
+    } else {
+      lines.push(...this.input.render(width));
+      lines.push(
+        truncateToWidth(
+          theme.fg(
+            "dim",
+            `${configuredKeys(this.keybindings, "tui.input.submit")} send · ${configuredKeys(this.keybindings, "app.interrupt")} back · ${configuredKeys(this.keybindings, "app.clear")} abort run · ${configuredKeys(this.keybindings, "tui.editor.cursorUp")}/${configuredKeys(this.keybindings, "tui.editor.cursorDown")} scroll · ${configuredKeys(this.keybindings, "tui.editor.pageUp")}/${configuredKeys(this.keybindings, "tui.editor.pageDown")} page`,
+          ),
+          width,
+        ),
+      );
+    }
     lines.push(border);
     return lines;
   }

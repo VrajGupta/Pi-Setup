@@ -293,7 +293,7 @@ read happens off the render path.
 
 ## PI-11 — Retro-gate the orchestrator-only + honest-telemetry continuation (`bb5d79e`)
 
-Status: **Planned** · Blocked-by: none · Phase 3 · Priority 1
+Status: **Debugger Ready** · Blocked-by: none · Phase 3 · Priority 1
 
 **Why this exists.** Commit `bb5d79e` ("fix: keep user messages with orchestrator") is the current HEAD and the current `origin/main`. It removed the workflow `input` steering hook and `canSteerStage`, changed stage-row progress to `<1% ctx`, and made zero Claude usage report unknown — but it has no ticket, no debugger audit, and no reviewer verdict. **The commit is preserved. No reset, rebase, revert, or force-push is authorized.** This ticket retro-gates it forward-only and closes the remaining gaps the user re-reported on 2026-08-04: the Pi `steeringMode` setting and the header `STEER` affordance still imply direct stage steering.
 
