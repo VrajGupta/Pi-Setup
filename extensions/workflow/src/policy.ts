@@ -15,8 +15,8 @@ export const STAGE_PROFILES = {
   },
   part2: {
     harness: "pi",
-    model: "openrouter/moonshotai/kimi-k3",
-    defaultReasoning: "high",
+    model: "openai-codex/gpt-5.6-terra",
+    defaultReasoning: "xhigh",
     color: "cyan",
     label: "build",
   },
