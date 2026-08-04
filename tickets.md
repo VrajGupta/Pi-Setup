@@ -115,7 +115,7 @@ Status: **Done** · Blocked-by: PI-02 · Phase 1
 
 ## PI-05 — `/flow` parity, why-this-route, and plain-language status
 
-Status: **Review Ready** · Blocked-by: PI-04 · Phase 1
+Status: **Debugger Ready** · Blocked-by: PI-04 · Phase 1
 
 **What to build.** Bring `FlowPanel` in `extensions/workflow/index.ts` in line with the footer: the Agents tab lists stage rows first (using the same progress readings), the Overview tab states the route reason in one plain sentence, and the panel shows what it is waiting on when status is `needs-input`, `needs-helper`, or `blocked`.
 
@@ -143,6 +143,15 @@ Status: **Review Ready** · Blocked-by: PI-04 · Phase 1
 - Blocking correctness finding: `extensions/workflow/index.ts:118-132` redacts only the first whitespace/comma/semicolon-delimited value after `Authorization` or `Cookie`. A blocked route/event containing `Authorization: Digest username="vraj", response="auth-secret"; Cookie: session=event-secret; csrf=event-csrf` renders `auth-secret` and `event-csrf` in `/flow`, violating INV-2.
 - Test gap: `extensions/workflow/flow-panel.test.ts:220-245` covers one `api_key` and one URL but does not exercise complete authorization/cookie header redaction; the independent probe observed all three supplied trailing values in rendered output.
 - Route: **Debugger Ready** for a test-first redaction correction. Full `npm test` also exited 1 only because two live Claude backend tests hit the account spend limit; this is outside PI-05 and did not affect the exact gate.
+
+**Reviewer re-review (2026-08-04): FAIL (68/100, diagnostic only) · Bounce 2 of 3.**
+- Tested HEAD: `004517f0f8b9238dc819a4c40bef94a93081bd00`.
+- Exact gate passed: 22/22 targeted tests and `tsc --noEmit`, exit 0. `npm run format:check` and `git diff --check` each exited 0.
+- Blocking correctness finding (INV-2/INV-6): `extensions/workflow/index.ts:109-134` fails closed only for balanced quoted composite headers. Trigger: `Authorization: Digest response="malformed-auth-secret Cookie: session=malformed-cookie-secret`. Result: `/flow` renders `malformed-auth-secret` in both `waiting on` and `event` rows; the independent production-path assertion exited 1.
+- Test honesty finding: `extensions/workflow/flow-panel.test.ts:247-267` proves the reported balanced Digest/Cookie regression and quoted Cookie case, but has no malformed-header case that would catch this leak.
+- Other PI-05 criteria passed: stage-first ordering with current planner/coder/debugger/reviewer labels, literal ` none tracked`, bounded rows, measured-only percent, waiting-state transitions, terminal-control stripping, and render-path I/O purity.
+- Full `npm test` exited 1: 163/165 Node tests passed; two live Claude backend tests failed because the account spend limit was reached. This is external to PI-05 but recorded exactly.
+- Route: **Debugger Ready** for fail-closed malformed authorization/cookie redaction plus a production-path regression test.
 
 ---
 
