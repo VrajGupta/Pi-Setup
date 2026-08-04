@@ -86,7 +86,7 @@ Dropped by the user's final answer to decision 2 (measured-only percentages, tra
 
 ## PI-04 — Adaptive persistent footer with live stage rows (INV-3, INV-4, INV-5)
 
-Status: **Grading Ready** · Blocked-by: PI-02 · Phase 1
+Status: **Done** · Blocked-by: PI-02 · Phase 1
 
 **What to build.** Extract the footer body of `extensions/ui-customization/index.ts` into a pure `renderFooter(state) => string[]` function and add adaptive stage rows: the existing 3 base lines, plus one row per tracked part1–part4 agent — `<glyph> <stage> <backend>/<model> · <elapsed> · <turns>t · <progress>` — where `<progress>` is a percent only for a measured reading and is omitted otherwise.
 
@@ -102,6 +102,14 @@ Status: **Grading Ready** · Blocked-by: PI-02 · Phase 1
 - `renderFooter`'s module performs no `node:fs`, `node:child_process`, or network calls.
 
 **Verification-command.** `node --test --experimental-strip-types extensions/ui-customization/footer.test.ts && npm run check && npm test`
+
+**Grade (part4, 2026-08-04).**
+- Verdict: **PASS** (score: 95/100, diagnostic only)
+- Bounce: 0 of 3
+- Gate: `node --test --experimental-strip-types extensions/ui-customization/footer.test.ts && npm run check && npm test` → exit 0 (21 footer tests; tsc clean; 149 node:test + 22 vitest)
+- Blocking findings: none
+- Advisory: INV-2 secret scrubbing of free-text titles is not exercised on this path (footer shows stage/backend/modelLabel, not task titles). Full production multi-extension TUI still unharnessed beyond the live bus probe in `footer.test.ts`.
+- Routing: → **Done** — all nine acceptance criteria held in `footer.ts`/`index.ts`; INV-1/3/4/5/6 demonstrated; independent probe confirmed bounds, helper omission, measured-only `%`, stale `~`, ANSI width, throw fallback, purity, and ≤2 ms/render.
 
 ---
 
