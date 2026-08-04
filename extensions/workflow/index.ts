@@ -29,6 +29,7 @@ import {
   type WorkflowSubagentSummary,
 } from "../shared/workflow-state.ts";
 import { buildReading, isStale } from "../shared/stage-progress.ts";
+import { notifyNative } from "../shared/notify-native.ts";
 import {
   STAGE_PROFILES,
   buildStagePrompt,
@@ -753,29 +754,6 @@ export default function workflow(pi: ExtensionAPI) {
     return response;
   };
 
-  const notifyNative = async (title: string, body: string) => {
-    try {
-      if (process.platform === "darwin") {
-        const escape = (value: string) =>
-          value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-        await pi.exec("osascript", [
-          "-e",
-          `display notification "${escape(body)}" with title "${escape(title)}"`,
-        ]);
-      } else if (process.platform === "linux") {
-        await pi.exec("notify-send", [title, body]);
-      } else if (process.platform === "win32") {
-        await pi.exec("powershell", [
-          "-NoProfile",
-          "-Command",
-          `New-BurntToastNotification -Text '${title.replace(/'/g, "''")}', '${body.replace(/'/g, "''")}'`,
-        ]);
-      }
-    } catch {
-      // Notifications are optional; the TUI and title remain authoritative.
-    }
-  };
-
   const handleEnvelope = async (envelope: ControlEnvelope) => {
     const key = JSON.stringify(envelope);
     if (key === lastEnvelope) return;
@@ -791,6 +769,8 @@ export default function workflow(pi: ExtensionAPI) {
       void notifyNative(
         `${envelope.stage} awaiting relay`,
         "A workflow decision is waiting for the orchestrator.",
+        process.platform,
+        pi.exec,
       );
       return;
     }
@@ -816,7 +796,12 @@ export default function workflow(pi: ExtensionAPI) {
         `${envelope.stage} blocked: ${envelope.reason}`,
         "warning",
       );
-      void notifyNative(`${envelope.stage} blocked`, envelope.reason);
+      void notifyNative(
+        `${envelope.stage} blocked`,
+        envelope.reason,
+        process.platform,
+        pi.exec,
+      );
       return;
     }
     setState({
@@ -828,7 +813,12 @@ export default function workflow(pi: ExtensionAPI) {
       `${envelope.stage} complete${envelope.next ? ` · next ${envelope.next}` : ""}`,
       "info",
     );
-    void notifyNative(`${envelope.stage} complete`, envelope.summary);
+    void notifyNative(
+      `${envelope.stage} complete`,
+      envelope.summary,
+      process.platform,
+      pi.exec,
+    );
   };
 
   const capabilitySnapshot = (ctx: ExtensionContext) => {

@@ -1,11 +1,18 @@
 # Setup
 
-Clone or copy this repository to `~/.pi/agent`, then install its dependencies:
+Clone the repository anywhere, then install it into Pi:
 
 ```sh
-cd ~/.pi/agent
-npm install
+./install.sh
 ```
+
+On Windows PowerShell:
+
+```powershell
+.\install.ps1
+```
+
+Both entry points run the same Node installer. It links resources when possible and copies them when Windows or filesystem policy rejects symlinks.
 
 ## Firecrawl
 
@@ -21,7 +28,7 @@ NOTE: if you are an agent, at this step ask the user if they want to use firecra
 
 ## fd and rg tools
 
-The `file-search` extension registers `fd` and `rg` as model tools. No setup is normally needed: at startup it silently uses a system-installed `fd` (or `fdfind` on Debian/Ubuntu) and `rg` when available, or an existing fallback binary in `~/.pi/agent/bin/`. Only when neither exists does it download an official release binary (macOS/Linux, arm64/x64, over HTTPS) into `~/.pi/agent/bin/` and show a one-time notification. If your platform is unsupported, install `fd` and `rg` with your package manager and restart pi.
+The `file-search` extension registers `fd` and `rg` as model tools. No setup is normally needed: at startup it silently uses a system-installed `fd` (or `fdfind` on Debian/Ubuntu) and `rg` when available, or an existing fallback binary in `~/.pi/agent/bin/`. The `bin/fd` fallback is a platform-specific runtime download, never a committed binary; downloads currently cover macOS/Linux arm64/x64 over HTTPS. On Windows, install `fd` and `rg` with your package manager, then restart Pi.
 
 ## Theme
 

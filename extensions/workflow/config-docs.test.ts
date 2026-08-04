@@ -18,6 +18,7 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const installer = join(root, "install.sh");
+const installerScript = join(root, "scripts", "install.mjs");
 const setup = join(root, "SETUP.md");
 const readme = join(root, "README.md");
 const system = join(root, "SYSTEM.md");
@@ -241,7 +242,9 @@ test("installer leaves an in-place repository's resources intact", () => {
   mkdirSync(join(repository, "extensions"));
   mkdirSync(join(repository, "skills"));
   mkdirSync(join(repository, "themes"));
+  mkdirSync(join(repository, "scripts"));
   cpSync(installer, join(repository, "install.sh"));
+  cpSync(installerScript, join(repository, "scripts", "install.mjs"));
   cpSync(join(root, "SYSTEM.md"), join(repository, "SYSTEM.md"));
   cpSync(join(root, "keybindings.json"), join(repository, "keybindings.json"));
   writeFileSync(settings, JSON.stringify({ steeringMode: "all" }));
@@ -281,7 +284,9 @@ test("installer refuses an incomplete checkout before changing settings", () => 
   mkdirSync(join(repository, "extensions"));
   mkdirSync(join(repository, "themes"));
   mkdirSync(agentDir);
+  mkdirSync(join(repository, "scripts"));
   cpSync(installer, join(repository, "install.sh"));
+  cpSync(installerScript, join(repository, "scripts", "install.mjs"));
   writeFileSync(join(repository, "SYSTEM.md"), "system");
   writeFileSync(join(repository, "keybindings.json"), "{}");
   const original = JSON.stringify({ packages: ["npm:example"] });
