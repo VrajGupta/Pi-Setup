@@ -57,6 +57,38 @@ test("changes only the suffix when the active stage changes", () => {
   assert.match(reviewer.volatileSuffix, /fleet via reviewer/);
 });
 
+test("changes begin exactly at the stable-prefix boundary", () => {
+  const first = assembleWorkflowSystemPrompt({
+    baseSystemPrompt,
+    route: route({ reason: "first route reason" }),
+  });
+  const second = assembleWorkflowSystemPrompt({
+    baseSystemPrompt,
+    route: route({ reason: "second route reason" }),
+  });
+
+  assert.equal(
+    first.systemPrompt.slice(0, first.stablePrefix.length),
+    first.stablePrefix,
+  );
+  assert.equal(
+    second.systemPrompt.slice(0, second.stablePrefix.length),
+    second.stablePrefix,
+  );
+  assert.equal(
+    first.systemPrompt.slice(first.stablePrefix.length),
+    first.volatileSuffix,
+  );
+  assert.equal(
+    second.systemPrompt.slice(second.stablePrefix.length),
+    second.volatileSuffix,
+  );
+  assert.equal(
+    first.systemPrompt.slice(0, first.stablePrefix.length),
+    second.systemPrompt.slice(0, second.stablePrefix.length),
+  );
+});
+
 test("redacts synthetic credentials and provider URLs from both prompt regions", () => {
   const assembly = assembleWorkflowSystemPrompt({
     baseSystemPrompt:
@@ -86,6 +118,49 @@ test("redacts synthetic token formats and URL query credentials", () => {
   });
 
   assert.doesNotMatch(assembly.systemPrompt, /SYNTHETIC_|https:\/\//);
+});
+
+test("redacts complete quoted credential values containing whitespace", () => {
+  const assembly = assembleWorkflowSystemPrompt({
+    baseSystemPrompt:
+      "CORE password=\"SYNTHETIC_FIRST SECRET_TAIL\" api_key='SYNTHETIC_SECOND SECRET_TAIL'",
+    route: route({
+      reason: 'credential="SYNTHETIC_THIRD SECRET_TAIL"',
+    }),
+  });
+
+  assert.doesNotMatch(assembly.systemPrompt, /SYNTHETIC_|SECRET_TAIL/);
+});
+
+test("redacts quoted credentials containing escaped quotes", () => {
+  const assembly = assembleWorkflowSystemPrompt({
+    baseSystemPrompt: 'CORE password="SYNTHETIC_ESCAPED\\"SECRET_TAIL"',
+    route: route(),
+  });
+
+  assert.doesNotMatch(assembly.systemPrompt, /SYNTHETIC_|SECRET_TAIL/);
+});
+
+test("fails closed for malformed and whitespace-delimited credentials", () => {
+  const assembly = assembleWorkflowSystemPrompt({
+    baseSystemPrompt:
+      'CORE password="SYNTHETIC_UNTERMINATED SECRET_TAIL\napi_key=SYNTHETIC_UNQUOTED SECRET_TAIL',
+    route: route(),
+  });
+
+  assert.doesNotMatch(assembly.systemPrompt, /SYNTHETIC_|SECRET_TAIL/);
+});
+
+test("redacts folded sensitive headers without consuming neighboring lines", () => {
+  const assembly = assembleWorkflowSystemPrompt({
+    baseSystemPrompt:
+      'CORE\nAuthorization: Digest username="ordinary",\r\n\tresponse="SYNTHETIC_AUTH_HEADER"\r\nordinary: keep this\nCookie: session=ordinary;\n csrf=SYNTHETIC_COOKIE_HEADER\nordinary-two: keep this too',
+    route: route(),
+  });
+
+  assert.doesNotMatch(assembly.systemPrompt, /SYNTHETIC_/);
+  assert.match(assembly.stablePrefix, /ordinary: keep this/);
+  assert.match(assembly.stablePrefix, /ordinary-two: keep this too/);
 });
 
 test("uses the tested assembly seam on the production before_agent_start path", () => {
