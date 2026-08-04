@@ -264,9 +264,9 @@ Status: **Planned** · Blocked-by: PI-06 · Phase 2 · May run in parallel with 
 - The diff for this ticket touches no file outside `docs/`: `models.json`, `settings.json`, `settings.example.json`, and all provider routing are unchanged (INV-8).
 - No credential, key, token, or real user prompt appears in the document or in any command it records; any measurement uses synthetic prompts and no credentials.
 
-**Verification-command.** `test -f docs/2026-08-04-proxy-evaluation.md && grep -Eq '^Verdict: (adopt|reject|needs a further spike)$' docs/2026-08-04-proxy-evaluation.md && git diff --quiet HEAD -- settings.example.json install.sh SYSTEM.md package.json && npm run check`
+**Verification-command.** `test -f docs/2026-08-04-proxy-evaluation.md && grep -Eq '^Verdict: (adopt|reject|needs a further spike)$' docs/2026-08-04-proxy-evaluation.md && git diff --quiet "$(git merge-base HEAD origin/main)" HEAD -- settings.example.json install.sh SYSTEM.md package.json && npm run check`
 
-The `git diff --quiet` clause is the INV-8 guard: this ticket must leave every routing/config file byte-identical, so the gate fails if the spike edited one.
+The `git diff --quiet` clause is the INV-8 guard: it compares the ticket branch with its `origin/main` merge-base, catching committed routing/config edits.
 
 ---
 
