@@ -33,6 +33,21 @@ test("rejects a summary whose startedAt is missing or not a number", () => {
   assert.equal(isWorkflowSubagentSummary({ ...base, startedAt: null }), false);
 });
 
+test("rejects non-finite summary timestamps", () => {
+  assert.equal(
+    isWorkflowSubagentSummary({ ...base, startedAt: Number.NaN }),
+    false,
+  );
+  assert.equal(
+    isWorkflowSubagentSummary({ ...base, startedAt: Number.POSITIVE_INFINITY }),
+    false,
+  );
+  assert.equal(
+    isWorkflowSubagentSummary({ ...base, startedAt: Number.NEGATIVE_INFINITY }),
+    false,
+  );
+});
+
 test("rejects a stage outside part1|part2|part3|part4", () => {
   assert.equal(isWorkflowSubagentSummary({ ...base, stage: "part5" }), false);
   assert.equal(isWorkflowSubagentSummary({ ...base, stage: "helper" }), false);

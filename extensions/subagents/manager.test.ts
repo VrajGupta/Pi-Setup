@@ -19,6 +19,7 @@ import {
   type SubagentManagerShape,
 } from "./src/manager.ts";
 import { runTool } from "./src/runtime.ts";
+import { summarizeSubagent } from "./index.ts";
 
 const TestRegistryLive = Layer.sync(BackendRegistry, () => {
   const backends: SubagentBackend[] = [
@@ -167,6 +168,31 @@ test("spawn origin propagates to ids, snapshots, and settlement", async () => {
         { id: model.id, origin: "model" },
       ].sort((a, b) => a.id.localeCompare(b.id)),
     );
+  });
+});
+
+test("stage identity stays absent on helper snapshots and summaries", async () => {
+  await withManager(async (manager, runtime) => {
+    const stage = await runTool(
+      runtime,
+      manager.spawn("claude", { ...task("stage task"), stage: "part3" }),
+    );
+    const helper = await runTool(
+      runtime,
+      manager.spawn("codex", task("helper task")),
+    );
+
+    assert.equal(stage.stage, "part3");
+    assert.equal(Object.hasOwn(stage, "stage"), true);
+    assert.equal(Object.hasOwn(helper, "stage"), false);
+
+    const stageSummary = summarizeSubagent(stage);
+    const helperSummary = summarizeSubagent(helper);
+    assert.equal(stageSummary.stage, "part3");
+    assert.equal(Object.hasOwn(stageSummary, "stage"), true);
+    assert.equal(Object.hasOwn(helperSummary, "stage"), false);
+
+    await runTool(runtime, manager.cancel([stage.id, helper.id]));
   });
 });
 

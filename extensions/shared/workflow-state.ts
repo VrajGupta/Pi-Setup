@@ -157,6 +157,7 @@ export function isWorkflowSubagentSummary(
       value.backend === "claude" ||
       value.backend === "codex") &&
     typeof value.startedAt === "number" &&
+    Number.isFinite(value.startedAt) &&
     (value.stage === undefined ||
       (STAGE_NAMES as readonly string[]).includes(value.stage as string)) &&
     typeof value.turns === "number"

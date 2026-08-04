@@ -107,6 +107,23 @@ function describeSubagent(snap: SubagentSnapshot) {
   return `${snap.id} [${snap.status}] "${snap.title}" (${details.join(", ")})`;
 }
 
+export function summarizeSubagent(
+  snap: SubagentSnapshot,
+): WorkflowSubagentSummary {
+  return {
+    id: snap.id,
+    title: snap.title,
+    status: snap.status,
+    backend: snap.backend,
+    ...(snap.stage === undefined ? {} : { stage: snap.stage }),
+    startedAt: snap.createdAt,
+    modelLabel: snap.meta.modelLabel,
+    contextTokens: snap.usage.tokens,
+    contextWindow: snap.usage.contextWindow,
+    turns: snap.turns,
+  };
+}
+
 function truncatedOutput(
   snap: SubagentSnapshot,
   maxBytes = SUBAGENT_OUTPUT_MAX_BYTES,
@@ -168,18 +185,7 @@ export default function (pi: ExtensionAPI) {
     return managerPromise;
   };
 
-  const summarize = (snap: SubagentSnapshot): WorkflowSubagentSummary => ({
-    id: snap.id,
-    title: snap.title,
-    status: snap.status,
-    backend: snap.backend,
-    stage: snap.stage,
-    startedAt: snap.createdAt,
-    modelLabel: snap.meta.modelLabel,
-    contextTokens: snap.usage.tokens,
-    contextWindow: snap.usage.contextWindow,
-    turns: snap.turns,
-  });
+  const summarize = summarizeSubagent;
 
   const publishSubagents = (manager: SubagentManagerShape) => {
     pi.events.emit(

@@ -480,7 +480,7 @@ const makeManager = Effect.gen(function* () {
             prompt: task.prompt,
             cwd: task.cwd,
             status: "running",
-            stage: task.stage,
+            ...(task.stage === undefined ? {} : { stage: task.stage }),
             createdAt: Date.now(),
             meta,
             usage: { contextWindow: meta.contextWindow },
