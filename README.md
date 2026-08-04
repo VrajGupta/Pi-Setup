@@ -51,6 +51,8 @@ npm test
 
 The live provider/auth routes are intentionally not tested in CI. Run them only when the exact credentials and models are available.
 
+Tests are proportional: prefer one focused production-seam check that proves related behavior. Add separate cases only for distinct high-risk boundaries; do not create a test per criterion by default.
+
 ## Concise output
 
 The installer declares the Ponytail package and adds a local terse-output policy. Routine replies use concise, Caveman-style evidence; security warnings, irreversible action confirmations, and multi-step sequences are never compressed.

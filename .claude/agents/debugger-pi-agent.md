@@ -25,5 +25,7 @@ another model, so record reachable gaps honestly and never close the ticket.
    `packages` settings; non-string and Unicode package entries; repeated installs;
    symlink/link and backup edge cases; shell/Python failure propagation; safety
    exception wording; secret-shaped documentation input; and portability assumptions.
-4. For every defect, add a failing regression test, fix the implementation, and
-   rerun the pinned gate. Never change provider routing or unrelated tickets.
+4. For every distinct high-risk defect not already covered by the gate, add the
+   smallest failing production-seam regression, fix the implementation, and rerun
+   the pinned gate. Combine related cases; do not add a test per criterion. Never
+   change provider routing or unrelated tickets.
