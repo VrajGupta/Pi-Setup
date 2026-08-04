@@ -115,7 +115,7 @@ Status: **Done** · Blocked-by: PI-02 · Phase 1
 
 ## PI-05 — `/flow` parity, why-this-route, and plain-language status
 
-Status: **Reviewing** · Blocked-by: PI-04 · Phase 1
+Status: **Review Ready** · Blocked-by: PI-04 · Phase 1
 
 **What to build.** Bring `FlowPanel` in `extensions/workflow/index.ts` in line with the footer: the Agents tab lists stage rows first (using the same progress readings), the Overview tab states the route reason in one plain sentence, and the panel shows what it is waiting on when status is `needs-input`, `needs-helper`, or `blocked`.
 
@@ -166,6 +166,13 @@ Status: **Reviewing** · Blocked-by: PI-04 · Phase 1
 - Test honesty finding: `extensions/workflow/flow-panel.test.ts:269-293` verifies unbalanced same-line values and ordinary neighboring lines, but no continuation-line case catches this boundary leak.
 - Other PI-05 criteria passed: planner→coder→debugger→reviewer stage-first ordering, literal ` none tracked`, waiting-state labels, width bounds, measured-only percentages, ordinary/URL/ANSI handling, and render-path I/O purity.
 - Routing: → **Human escalation** — third failed review found a new substantive INV-2 failure. PI-05 remains **Reviewing** pending a human decision; it is not bounced into another automatic loop.
+
+**Debugger recovery (2026-08-04, human-authorized after bounce 3/3).**
+- Added production-path regressions for folded Authorization and Cookie values whose continuation lines begin with a space, preserving ordinary neighboring lines and headers.
+- Extended the opaque sensitive-header matcher across only indented continuation lines, stopping at the next non-indented line or another sensitive header; no quote or delimiter parsing was added.
+- Red test reproduced the two synthetic continuation leaks; the fixed targeted gate passed with 24 tests and clean TypeScript. The direct `FlowPanel.render` probe also passed folded, balanced, malformed, neighboring, terminal-control, URL, width, and indeterminate-progress checks.
+- `npm run format:check` and `git diff --check` passed. No real secrets, provider calls, helpers, or push were used. No unfixed PI-05 follow-up identified.
+- Handoff: `docs/handoffs/2026-08-04-debugger-pi05-bounce-3-recovery.md`. Routing: → **Review Ready** for independent review.
 
 ---
 

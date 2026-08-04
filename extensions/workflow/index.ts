@@ -107,9 +107,10 @@ const CSI_PATTERN = /(?:\u001b\[|\u009b)[0-?]*[ -/]*[@-~]/g;
 // eslint-disable-next-line no-control-regex
 const ESCAPE_PATTERN = /\u001b(?:[()][0-2A-Z]|[ -/]*[@-~])/g;
 // Header values are opaque display data: do not inspect quote or delimiter
-// structure, and stop only at a line boundary or another sensitive header.
+// structure. Folded continuation lines belong to the preceding header; stop at
+// the next non-indented line or another sensitive header.
 const SENSITIVE_HEADER_PATTERN =
-  /\b(Authorization|Cookie)[ \t]*:[ \t]*[\s\S]*?(?=\r?\n|[ \t]+\b(?:Authorization|Cookie)[ \t]*:|$)/gi;
+  /\b(Authorization|Cookie)[ \t]*:[ \t]*[^\r\n]*?(?:\r?\n[ \t]+[^\r\n]*?)*(?=\r?\n(?![ \t])|[ \t]+\b(?:Authorization|Cookie)[ \t]*:|$)/gi;
 
 function stringify(value: unknown, fallback = "") {
   try {

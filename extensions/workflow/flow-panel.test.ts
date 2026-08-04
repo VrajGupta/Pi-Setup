@@ -293,6 +293,34 @@ test("malformed auth headers fail closed without losing neighbors", () => {
   }
 });
 
+test("folded auth headers redact continuations without losing neighbors", () => {
+  const cases = [
+    {
+      header: "Authorization",
+      value:
+        'ordinary before\nAuthorization: Digest username="ordinary",\n response="SYNTHETIC_FOLDED_AUTH_VALUE"\nX-Request-ID: ordinary-header\nordinary after',
+      secret: "SYNTHETIC_FOLDED_AUTH_VALUE",
+    },
+    {
+      header: "Cookie",
+      value:
+        "ordinary before\nCookie: session=ordinary;\n csrf=SYNTHETIC_FOLDED_COOKIE_VALUE\nX-Request-ID: ordinary-header\nordinary after",
+      secret: "SYNTHETIC_FOLDED_COOKIE_VALUE",
+    },
+  ] as const;
+
+  for (const { header, value, secret } of cases) {
+    const output = panel(state({ status: "blocked", lastEvent: value }))
+      .render(240)
+      .join("\n");
+    assert.match(output, /ordinary before/);
+    assert.match(output, new RegExp(`${header}: \\[REDACTED\\]`));
+    assert.match(output, /X-Request-ID: ordinary-header/);
+    assert.match(output, /ordinary after/);
+    assert.doesNotMatch(output, new RegExp(secret));
+  }
+});
+
 test("waiting statuses use explicit fallbacks and disappear after transition", () => {
   let current = state({ status: "running", lastEvent: "not waiting" });
   const flow = new FlowPanel(
