@@ -44,7 +44,7 @@ Status: **Done** · Blocked-by: none · Phase 1
 
 ## PI-02 — Honest progress reading module (INV-1)
 
-Status: **Debugger Ready** · Blocked-by: PI-01 · Phase 1
+Status: **Grading Ready** · Blocked-by: PI-01 · Phase 1
 
 **What to build.** A pure module `extensions/shared/stage-progress.ts` exporting a `ProgressReading` discriminated union — `{kind:"measured", percent, done, total, source, at}` or `{kind:"indeterminate", elapsedMs, turns, at}` — plus a builder that accepts only explicit numerator/denominator pairs from the three allowed in-process sources: `context`, `questions`, `stage`. No rendering, no I/O, no tracker.
 
@@ -56,6 +56,15 @@ Status: **Debugger Ready** · Blocked-by: PI-01 · Phase 1
 - The module imports nothing from `node:fs`, `node:child_process`, or any network API (asserted by reading its own source text).
 
 **Verification-command.** `node --test --experimental-strip-types extensions/shared/stage-progress.test.ts && npm run check`
+
+**Part3 debugger audit (2026-08-04).**
+- Claim path: `Debugger Ready` → `Debugging` → `Grading Ready`; local-file tracker mode, no GitHub Project, no remote, no push claim.
+- Baseline four-net result: the exact gate was green before the audit; no failing tests or static errors. The original tests did not directly cover non-finite `done`, malformed runtime containers, malformed timestamps/counters, future clocks, invalid stale inputs, or immutability.
+- Red-team defects found: finite numerators/denominators paired with non-finite `at` produced measured readings; malformed inputs could throw or pass NaN/negative counters through; `isStale` could treat malformed readings or a NaN clock as fresh; readings were mutable.
+- Fixed test-first: malformed runtime containers now degrade to frozen indeterminate readings; invalid sources on object inputs still throw; non-finite `done`/`total`/`at` never yield a percent; invalid counters normalize safely; malformed stale inputs are conservatively stale; future timestamps remain non-stale; all returned readings are frozen and inputs are not mutated.
+- Added 5 regression tests covering the requested boundaries while preserving the exact source allowlist and no-I/O assertion. The module still has zero imports and no rendering, tracker, filesystem, subprocess, or network path.
+- Honest follow-up: none identified within PI-02's pure builder/staleness scope. UI consumption remains PI-04's scope and was not touched.
+- Routing: → **Grading Ready** for independent part4 review.
 
 ---
 

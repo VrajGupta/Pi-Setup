@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { buildReading, isStale, STALE_AFTER_MS } from "./stage-progress.ts";
+import {
+  buildReading,
+  isStale,
+  type ProgressReading,
+  STALE_AFTER_MS,
+  type ReadingInput,
+} from "./stage-progress.ts";
 
 test("total of 0, null, undefined, or NaN yields indeterminate, never a percent", () => {
   for (const total of [0, null, undefined, Number.NaN]) {
@@ -20,11 +26,57 @@ test("total of 0, null, undefined, or NaN yields indeterminate, never a percent"
 });
 
 test("a negative or non-finite total also degrades to indeterminate", () => {
-  for (const total of [-1, Number.POSITIVE_INFINITY]) {
+  for (const total of [-1, -0, Number.POSITIVE_INFINITY]) {
     assert.equal(
       buildReading({ source: "stage", done: 1, total, at: 0 }).kind,
       "indeterminate",
     );
+  }
+});
+
+test("non-finite done, total, or at never produces a malformed percent reading", () => {
+  for (const done of [
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+  ]) {
+    const reading = buildReading({
+      source: "context",
+      done,
+      total: 2,
+      at: 1_000,
+    });
+    assert.equal(reading.kind, "indeterminate");
+    assert.ok(!("percent" in reading));
+  }
+  for (const total of [
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+  ]) {
+    const reading = buildReading({
+      source: "context",
+      done: 1,
+      total,
+      at: 1_000,
+    });
+    assert.equal(reading.kind, "indeterminate");
+    assert.ok(!("percent" in reading));
+  }
+  for (const at of [
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+  ]) {
+    const reading = buildReading({
+      source: "context",
+      done: 1,
+      total: 2,
+      at,
+    });
+    assert.equal(reading.kind, "indeterminate");
+    assert.ok(!("percent" in reading));
+    assert.equal(reading.at, 0);
   }
 });
 
@@ -33,6 +85,25 @@ test("a source outside context|questions|stage throws — tickets included", () 
     assert.throws(() =>
       buildReading({ source: source as "context", done: 1, total: 2, at: 0 }),
     );
+  }
+});
+
+test("invalid runtime containers degrade without throwing", () => {
+  for (const input of [null, undefined, 42, "not an input", true]) {
+    const reading = buildReading(input as unknown as ReadingInput);
+    assert.deepEqual(reading, {
+      kind: "indeterminate",
+      elapsedMs: 0,
+      turns: 0,
+      at: 0,
+    });
+  }
+  for (const input of [
+    {},
+    { source: null },
+    { source: "tickets", done: 1, total: 2, at: 0 },
+  ]) {
+    assert.throws(() => buildReading(input as unknown as ReadingInput));
   }
 });
 
@@ -90,6 +161,23 @@ test("indeterminate readings carry elapsedMs and turns, no percent", () => {
   });
 });
 
+test("malformed elapsedMs and turns degrade to safe counters", () => {
+  const reading = buildReading({
+    source: "stage",
+    done: 0,
+    total: 0,
+    at: 42,
+    elapsedMs: Number.NaN,
+    turns: -1,
+  });
+  assert.deepEqual(reading, {
+    kind: "indeterminate",
+    elapsedMs: 0,
+    turns: 0,
+    at: 42,
+  });
+});
+
 test("isStale is exactly false at 30000ms and true at 30001ms", () => {
   assert.equal(STALE_AFTER_MS, 30_000);
   const now = 100_000;
@@ -114,6 +202,56 @@ test("isStale is exactly false at 30000ms and true at 30001ms", () => {
     at: now - 30_001,
   });
   assert.equal(isStale(indeterminate, now), true);
+});
+
+test("future timestamps are not stale, but malformed clocks and readings are stale", () => {
+  const now = 100_000;
+  const future = buildReading({
+    source: "stage",
+    done: 1,
+    total: 2,
+    at: now + 1,
+  });
+  assert.equal(isStale(future, now), false);
+
+  for (const invalidNow of [
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+  ]) {
+    assert.equal(isStale(future, invalidNow), true);
+  }
+  for (const invalidReading of [
+    null,
+    undefined,
+    {},
+    { kind: "measured", percent: 50, at: Number.NaN },
+    { kind: "unknown", at: now },
+  ]) {
+    assert.equal(
+      isStale(invalidReading as unknown as ProgressReading, now),
+      true,
+    );
+  }
+});
+
+test("buildReading is non-mutating and returns an immutable reading", () => {
+  const input = Object.freeze({
+    source: "stage" as const,
+    done: 1,
+    total: 2,
+    at: 42,
+  });
+  const reading = buildReading(input);
+  assert.deepEqual(input, {
+    source: "stage",
+    done: 1,
+    total: 2,
+    at: 42,
+  });
+  assert.equal(Object.isFrozen(reading), true);
+  assert.equal(Reflect.set(reading, "percent", 99), false);
+  if (reading.kind === "measured") assert.equal(reading.percent, 50);
 });
 
 test("the module imports no fs, subprocess, or network APIs", () => {
