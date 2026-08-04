@@ -293,7 +293,7 @@ read happens off the render path.
 
 ## PI-11 — Retro-gate the orchestrator-only + honest-telemetry continuation (`bb5d79e`)
 
-Status: **Review Ready** · Blocked-by: none · Phase 3 · Priority 1
+Status: **Reviewing** · Blocked-by: none · Phase 3 · Priority 1
 
 **Why this exists.** Commit `bb5d79e` ("fix: keep user messages with orchestrator") is the current HEAD and the current `origin/main`. It removed the workflow `input` steering hook and `canSteerStage`, changed stage-row progress to `<1% ctx`, and made zero Claude usage report unknown — but it has no ticket, no debugger audit, and no reviewer verdict. **The commit is preserved. No reset, rebase, revert, or force-push is authorized.** This ticket retro-gates it forward-only and closes the remaining gaps the user re-reported on 2026-08-04: the Pi `steeringMode` setting and the header `STEER` affordance still imply direct stage steering.
 
@@ -353,6 +353,14 @@ Status: **Review Ready** · Blocked-by: none · Phase 3 · Priority 1
 - Exact PI-11 gate passed: 60 targeted tests, `npm run check`, 182 full Node tests, and 22 Vitest tests. `npm run format:check` and `git diff --check` also passed.
 - Handoff: `docs/handoffs/2026-08-04-debugger-pi11-bounce-2.md`. No push performed; local commit and clean-tree evidence recorded at handoff.
 - Routing: **Review Ready**.
+
+**Reviewer final review (2026-08-04): FAIL (70/100, diagnostic only) · Bounce 3 of 3 — HUMAN ESCALATION.**
+
+- Tested commit: `d1893a18d7851352c78ec299f58c2a5adcad4006`.
+- Exact gate passed: 60 targeted tests, `npm run check`, 182 full Node tests, and 22 Vitest tests. `npm run format:check`, `git diff --check`, and a 66-test `NO_COLOR=1` run also passed.
+- Prior blockers are fixed: orchestrator-only relay, settings migration/idempotence, removal of `STEER`, stage takeover read-only behavior with helper controls preserved, invalid Claude/Codex telemetry as unknown without `%`, and tiny positive telemetry in the subagent formatter/dashboard/takeover.
+- New blocking invariant integrity: `extensions/shared/context-utilization.ts:22-26,42-46` renders `{tokens:1, contextWindow:200000}` as `0%/200k`, not `<1%/200k`; the direct probe exited 1 while normal and unknown readings remained accurate.
+- Routing: → **Human escalation** — third failed review found a new substantive honest-telemetry failure. PI-11 remains **Reviewing** pending a human decision; it is not bounced into another automatic loop. Grade: `docs/handoffs/2026-08-04-reviewer-pi11-bounce-3.md`.
 
 ---
 
