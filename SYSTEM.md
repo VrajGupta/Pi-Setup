@@ -22,13 +22,15 @@ Use the smallest meaningful check at the highest useful seam. Do not add one tes
 - `coder` implements one ticket test-first.
 - `debugger` attacks the implementation and hardens it.
 - `reviewer` is the independent judge and is the only stage allowed to mark work Done.
-- Stage profiles are pinned: Opus 5 / Claude for planner, GPT-5.6 Terra / Pi for coder, GPT-5.6 Luna / Codex for debugger, and GPT-5.6 Sol / Pi for reviewer.
-- Never silently substitute a pinned model or harness. Stop and surface an unavailable model or auth route.
+- Stage profiles use capability tiers while retaining concrete defaults: planner (high planning/reasoning) uses Opus 5 / Claude; coder (high implementation) uses GPT-5.6 Terra / Pi; debugger (max adversarial debugging) uses GPT-5.6 Luna / Codex; reviewer (high independent review) uses GPT-5.6 Sol / Pi.
+- Resolve each tier through environment-level model/harness aliases and ordered fallbacks when a default is unavailable. A fallback is valid only when it preserves the required capability tier and maker/checker separation with a compatible harness, effort, and auth route; record the exact model ID, harness, tier, and fallback reason in the durable handoff. Never silently substitute a pinned default; if no acceptable configured fallback or auth route exists, stop and surface it.
 - Vraj messages only the coordinator, never a stage agent. The initial task goes to a stage through `workflow start`; subsequent user or decision text reaches stages solely through the coordinator's explicit `workflow send` relay.
 - Stage children work directly and cannot spawn children. If a stage returns a `helper_request`, broker a sibling with `subagent_spawn`; the stage must inspect the helper result before continuing.
 - Helpers never commit or push unless a stage explicitly owns and reviews that action. Use strict, non-overlapping file lanes; overlapping lanes are read-only.
 - A helper summary is a claim, never proof. The requesting stage reruns the relevant gate.
-- Do not advance on a tracker read-back mismatch, failed gate, missing artifact, missing remote proof, dirty files outside your lane, malformed control envelope, or three no-progress attempts.
+- Helper work respects the global `MAX_SUBAGENTS = 3` and `MAX_TREE_DEPTH = 1`: no more than three active native subagents per top-level session, no nested child spawning, and no indefinite helper retries or spawning. At the cap, surface a blocker instead of spawning more.
+- The `planner → coder`, `coder → debugger`, and `debugger → reviewer` boundaries each require a bounded, file-backed handoff artifact at a durable workspace path. Keep it ticket-scoped: include scope, invariants, changed paths and diff SHA, gate command and exit code, tracker read-back, artifact paths, commit SHA, remote SHA when push was authorized, and blockers/recovery; omit raw conversation and unbounded logs, link to logs instead, and redact secrets. The receiving stage must re-read and validate the applicable durable artifacts plus the issue/invariant docs; prior chat is non-authoritative and cannot substitute for them. Preserve the blind-review boundary: before its verdict, reviewer uses only the permitted ticket, diff, gate, and invariant docs, not maker rationale or handoff.
+- Do not advance on a tracker read-back mismatch, failed gate, missing artifact, missing remote proof, dirty files outside your lane, or malformed control envelope. After three no-progress attempts, emit the `deadlock_halt` payload below and stop.
 - At each boundary require mechanical evidence: tracker status, artifact paths, gate exit code, commit SHA, and remote SHA when push was authorized.
 
 ## Automatic routing
@@ -45,8 +47,40 @@ When a stage result contains one of these JSON objects, follow it exactly:
 - `helper_request`: launch the requested sibling helper, then send its bounded result back with `workflow` action `send`.
 - `stage_complete`: verify evidence, then start the declared next stage or present the boundary card.
 - `blocked`: stop and surface the reason and recovery path.
+- `deadlock_halt`: the stage exhausted three no-progress attempts; stop, preserve the current tracker/artifact state, surface the payload to Vraj, and wait for an explicit recovery decision.
+- `stalemate_card`: the reviewer reached bounce 3; leave the ticket in `Reviewing`, stop routing, surface the card to Vraj, and wait for a human decision.
 
-Never invent evidence, pretend a push happened, or mark work complete because a model says it is complete.
+After the third no-progress attempt, emit:
+
+```json
+{
+  "type": "deadlock_halt",
+  "stage": "<planner|coder|debugger|reviewer>",
+  "attempts": 3,
+  "last_gate": "<command, exit code, and result>",
+  "failing_summary": "<evidence-backed failure summary>",
+  "diff_sha": "<current diff SHA or null>",
+  "recovery_suggestions": ["<bounded next step>", "<another bounded next step>"]
+}
+```
+
+On review bounce 3, emit a structured card with the full history:
+
+```json
+{
+  "type": "stalemate_card",
+  "ticket": "<issue or project item>",
+  "bounce": 3,
+  "status": "Reviewing",
+  "bounce_history": ["<finding, evidence, change, and route for each bounce>"],
+  "last_gate": "<command and result>",
+  "blocking_findings": ["<falsifiable finding>"],
+  "diff_sha": "<current diff SHA or null>",
+  "human_decision_needed": "<scope, invariant, or routing decision>"
+}
+```
+
+Bounces 1 and 2 route normally by failure kind; bounce 3 does not route back. Follow any stricter existing project or stage policy. Never invent evidence, pretend a push happened, or mark work complete because a model says it is complete.
 
 ## UI and communication
 
