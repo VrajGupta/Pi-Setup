@@ -115,7 +115,7 @@ Status: **Done** · Blocked-by: PI-02 · Phase 1
 
 ## PI-05 — `/flow` parity, why-this-route, and plain-language status
 
-Status: **Review Ready** · Blocked-by: PI-04 · Phase 1
+Status: **Done** · Blocked-by: PI-04 · Phase 1
 
 **What to build.** Bring `FlowPanel` in `extensions/workflow/index.ts` in line with the footer: the Agents tab lists stage rows first (using the same progress readings), the Overview tab states the route reason in one plain sentence, and the panel shows what it is waiting on when status is `needs-input`, `needs-helper`, or `blocked`.
 
@@ -173,6 +173,14 @@ Status: **Review Ready** · Blocked-by: PI-04 · Phase 1
 - Red test reproduced the two synthetic continuation leaks; the fixed targeted gate passed with 24 tests and clean TypeScript. The direct `FlowPanel.render` probe also passed folded, balanced, malformed, neighboring, terminal-control, URL, width, and indeterminate-progress checks.
 - `npm run format:check` and `git diff --check` passed. No real secrets, provider calls, helpers, or push were used. No unfixed PI-05 follow-up identified.
 - Handoff: `docs/handoffs/2026-08-04-debugger-pi05-bounce-3-recovery.md`. Routing: → **Review Ready** for independent review.
+
+**Reviewer recovery review (2026-08-04): PASS (96/100, diagnostic only) · after human-authorized bounce-3 recovery.**
+- Tested HEAD: `40e6a2b5747f547b1c0e0b286a7cc3463044837f`.
+- Exact gate passed: 24/24 targeted tests and `tsc --noEmit`, exit 0. `npm run format:check` and `git diff --check` each exited 0.
+- Independent production `FlowPanel.render` probe passed balanced, malformed/unbalanced, semicolon-separated, quoted, folded space/tab continuation, adjacent sensitive-header, URL, ANSI/control-text, ordinary-neighbor, and width checks without exposing synthetic markers.
+- PI-05 criteria passed: planner→coder→debugger→reviewer rows precede helpers and use shared progress readings; Overview gives one plain route-reason sentence; all three waiting states render and non-waiting states omit the line; indeterminate readings show no percent; frame lines are width-safe; footer base plus four stage rows stays at seven lines; render code performs no filesystem, network, or subprocess I/O.
+- `npm test` exited 1 with 165/167 Node tests passing; the only failures were the known live Claude monthly-spend-limit tests. The downstream Vitest command did not run because the Node command failed.
+- Blocking findings: none. Routing: → **Done** — the human-authorized targeted recovery closes the folded-header INV-2 gap without reopening an automatic bounce loop.
 
 ---
 
