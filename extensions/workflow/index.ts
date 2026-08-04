@@ -28,6 +28,7 @@ import {
   type WorkflowReasoningEffort,
   type WorkflowSubagentSummary,
 } from "../shared/workflow-state.ts";
+import { buildReading } from "../shared/stage-progress.ts";
 import {
   STAGE_PROFILES,
   buildStagePrompt,
@@ -78,12 +79,24 @@ function isControlResponse(prompt: string) {
   return /\b(question_answers|helper_result)\b/.test(prompt);
 }
 
-function modelLabel(ctx: ExtensionContext) {
+function modelLabel(ctx: Pick<ExtensionContext, "model">) {
   if (!ctx.model) return "no model";
   return `${ctx.model.provider}/${ctx.model.id}`;
 }
 
-class FlowPanel {
+export type FlowPanelContext = Pick<
+  ExtensionContext,
+  "cwd" | "model" | "thinkingLevel" | "getContextUsage"
+> & {
+  sessionManager: Pick<ExtensionContext["sessionManager"], "getSessionFile">;
+};
+
+type FlowPanelTheme = Pick<
+  ExtensionContext["ui"]["theme"],
+  "bg" | "fg" | "bold"
+>;
+
+export class FlowPanel {
   private tab = 0;
   private readonly tabs = [
     "Overview",
@@ -92,20 +105,37 @@ class FlowPanel {
     "Capabilities",
     "Session",
   ];
+  private readonly ctx: FlowPanelContext;
+  private readonly theme: FlowPanelTheme;
+  private readonly getState: () => WorkflowState;
+  private readonly getAgents: () => WorkflowSubagentSummary[];
+  private readonly getUsed: () => string[];
+  private readonly getCapabilities: () => {
+    loaded: string[];
+    selected: string[];
+  };
+  private readonly done: () => void;
+  private readonly rerender: () => void;
 
   constructor(
-    private readonly ctx: ExtensionContext,
-    private readonly theme: ExtensionContext["ui"]["theme"],
-    private readonly getState: () => WorkflowState,
-    private readonly getAgents: () => WorkflowSubagentSummary[],
-    private readonly getUsed: () => string[],
-    private readonly getCapabilities: () => {
-      loaded: string[];
-      selected: string[];
-    },
-    private readonly done: () => void,
-    private readonly rerender: () => void,
-  ) {}
+    ctx: FlowPanelContext,
+    theme: FlowPanelTheme,
+    getState: () => WorkflowState,
+    getAgents: () => WorkflowSubagentSummary[],
+    getUsed: () => string[],
+    getCapabilities: () => { loaded: string[]; selected: string[] },
+    done: () => void,
+    rerender: () => void,
+  ) {
+    this.ctx = ctx;
+    this.theme = theme;
+    this.getState = getState;
+    this.getAgents = getAgents;
+    this.getUsed = getUsed;
+    this.getCapabilities = getCapabilities;
+    this.done = done;
+    this.rerender = rerender;
+  }
 
   handleInput(data: string) {
     if (matchesKey(data, Key.escape)) {
@@ -125,9 +155,9 @@ class FlowPanel {
 
   render(width: number) {
     const state = this.getState();
-    const running = this.getAgents().filter(
-      (agent) => agent.status === "running",
-    ).length;
+    const agents = this.getAgents();
+    const now = Date.now();
+    const running = agents.filter((agent) => agent.status === "running").length;
     const tabs = this.tabs
       .map((tab, index) =>
         index === this.tab
@@ -148,7 +178,7 @@ class FlowPanel {
       title,
       tabs,
       this.theme.fg("borderMuted", "─".repeat(Math.max(1, width - 4))),
-      ...this.content(state),
+      ...this.content(state, agents, now),
       "",
       this.theme.fg("dim", " ←/→ or tab switch · esc close"),
     ];
@@ -191,22 +221,26 @@ class FlowPanel {
     ];
   }
 
-  private content(state: WorkflowState) {
+  private content(
+    state: WorkflowState,
+    agents: WorkflowSubagentSummary[],
+    now: number,
+  ) {
     switch (this.tab) {
       case 1:
         return this.workflow(state);
       case 2:
-        return this.agents();
+        return this.agents(agents, now);
       case 3:
         return this.capabilities();
       case 4:
         return this.session(state);
       default:
-        return this.overview(state);
+        return this.overview(state, agents);
     }
   }
 
-  private overview(state: WorkflowState) {
+  private overview(state: WorkflowState, agents: WorkflowSubagentSummary[]) {
     const usage = this.ctx.getContextUsage();
     const percent =
       typeof usage?.percent === "number"
@@ -216,14 +250,17 @@ class FlowPanel {
       typeof usage?.contextWindow === "number"
         ? formatTokens(usage.contextWindow)
         : "?";
+    const waiting = waitingOn(state);
     return [
       this.theme.fg("mdHeading", " snapshot"),
       ` ${this.ctx.cwd}`,
       ` route   ${routeText(state.route)}`,
+      ` why this route  ${routeReason(state.route)}`,
       ` status  ${state.status}${state.activeStage ? ` · ${state.activeStage}` : ""}`,
+      ...(waiting ? [waiting] : []),
       ` model   ${modelLabel(this.ctx)}`,
       ` think   ${this.ctx.thinkingLevel} · context ${percent}/${window}`,
-      ` agents  ${this.getAgents().filter((agent) => agent.status === "running").length} running · ${this.getAgents().length} tracked`,
+      ` agents  ${agents.filter((agent) => agent.status === "running").length} running · ${agents.length} tracked`,
       state.lastEvent ? ` event   ${state.lastEvent}` : "",
     ];
   }
@@ -244,15 +281,18 @@ class FlowPanel {
     ];
   }
 
-  private agents() {
-    const agents = this.getAgents();
+  private agents(agents: WorkflowSubagentSummary[], now: number) {
     if (agents.length === 0) return [" agents", " none tracked"];
     return [
       " agents",
-      ...agents.map(
-        (agent) =>
-          ` ${statusGlyph(agent.status)} ${agent.id} · ${agent.title} · ${agent.backend}/${agent.modelLabel ?? "?"} · ${agent.turns} turns`,
-      ),
+      ...agents
+        .map((agent, index) => ({ agent, index }))
+        .sort(
+          (a, b) =>
+            stageIndex(a.agent.stage) - stageIndex(b.agent.stage) ||
+            a.index - b.index,
+        )
+        .map(({ agent }) => agentText(agent, now)),
     ];
   }
 
@@ -293,6 +333,35 @@ function statusGlyph(status: WorkflowSubagentSummary["status"]) {
   return status === "running" ? "·" : status === "done" ? "✓" : "×";
 }
 
+function stageIndex(stage: StageName | undefined) {
+  const index = stage ? STAGE_NAMES.indexOf(stage) : -1;
+  return index < 0 ? STAGE_NAMES.length : index;
+}
+
+function formatElapsed(elapsedMs: number) {
+  const seconds = Math.max(0, Math.floor(elapsedMs / 1_000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  return `${Math.floor(minutes / 60)}h${minutes % 60}m`;
+}
+
+function agentText(agent: WorkflowSubagentSummary, now: number) {
+  const reading = buildReading({
+    source: "context",
+    done: agent.contextTokens,
+    total: agent.contextWindow,
+    at: now,
+    elapsedMs: now - agent.startedAt,
+    turns: agent.turns,
+  });
+  const progress =
+    agent.stage && reading.kind === "measured"
+      ? ` · ${Math.round(reading.percent)}%`
+      : "";
+  return ` ${statusGlyph(agent.status)} ${agent.stage ?? "helper"} · ${agent.id} · ${agent.title} · ${agent.backend}/${agent.modelLabel ?? "?"} · ${formatElapsed(now - agent.startedAt)} · ${agent.turns}t${progress}`;
+}
+
 function rail(activeStage: StageName | null, status: WorkflowState["status"]) {
   return STAGE_NAMES.map((stage) => {
     if (stage === activeStage) return `◉ ${stage}`;
@@ -309,7 +378,25 @@ function rail(activeStage: StageName | null, status: WorkflowState["status"]) {
 
 function routeText(route: RouteDecision | WorkflowState["route"]) {
   if (!route) return "not classified";
-  return `${route.mode}${route.stage ? ` · ${route.stage}` : ""} · ${route.reason}`;
+  return `${route.mode}${route.stage ? ` · ${route.stage}` : ""}`;
+}
+
+function routeReason(route: RouteDecision | WorkflowState["route"]) {
+  if (!route) return "No route has been chosen yet.";
+  const routeName = route.stage ? `${route.mode}/${route.stage}` : route.mode;
+  const reason =
+    route.reason.trim().replace(/[.!?]+$/, "") || "no reason was recorded";
+  return `The ${routeName} route was chosen because ${reason}.`;
+}
+
+function waitingOn(state: WorkflowState) {
+  if (state.status === "needs-input")
+    return ` waiting on  ${state.lastEvent || "your input"}`;
+  if (state.status === "needs-helper")
+    return ` waiting on  ${state.lastEvent || "a helper result"}`;
+  if (state.status === "blocked")
+    return ` waiting on  ${state.lastEvent || "a recovery path"}`;
+  return undefined;
 }
 
 function isFlowInput(value: unknown): value is FlowInput {
