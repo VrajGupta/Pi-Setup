@@ -244,6 +244,28 @@ test("route reasons and waiting events are one-line, terminal-safe, and redacted
   assert.match(output, /waiting on/);
 });
 
+test("composite authorization and cookie headers redact every parameter", () => {
+  const cases = [
+    {
+      value:
+        'Authorization: Digest username="vraj", response="auth-secret"; Cookie: session=event-secret; csrf=event-csrf',
+      secrets: ["auth-secret", "event-secret", "event-csrf"],
+    },
+    {
+      value: `Cookie: session="quoted-cookie-secret"; csrf='quoted-csrf-secret'`,
+      secrets: ["quoted-cookie-secret", "quoted-csrf-secret"],
+    },
+  ] as const;
+
+  for (const { value, secrets } of cases) {
+    const output = panel(state({ status: "blocked", lastEvent: value }))
+      .render(240)
+      .join("\n");
+    for (const secret of secrets)
+      assert.doesNotMatch(output, new RegExp(secret));
+  }
+});
+
 test("waiting statuses use explicit fallbacks and disappear after transition", () => {
   let current = state({ status: "running", lastEvent: "not waiting" });
   const flow = new FlowPanel(
