@@ -1,4 +1,4 @@
-# PI-11 reviewer grade — bounce 2
+# PI-11 reviewer review — bounce 2
 
 - Verdict: **FAIL** (72/100, diagnostic only)
 - Bounce: **2 of 3**

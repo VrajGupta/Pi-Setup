@@ -1,4 +1,4 @@
-# PI-05 reviewer grade — human-authorized bounce-3 recovery
+# PI-05 reviewer review — human-authorized bounce-3 recovery
 
 - Verdict: **PASS** (96/100, diagnostic only)
 - Ticket status: **Done**

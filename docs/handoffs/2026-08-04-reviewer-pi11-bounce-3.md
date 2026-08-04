@@ -1,4 +1,4 @@
-# PI-11 reviewer grade — bounce 3
+# PI-11 reviewer review — bounce 3
 
 - Tested commit: `d1893a18d7851352c78ec299f58c2a5adcad4006`
 - Verdict: **FAIL (70/100, diagnostic only)**

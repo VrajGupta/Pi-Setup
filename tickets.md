@@ -330,7 +330,7 @@ Status: **Reviewing** · Blocked-by: none · Phase 3 · Priority 1
 - Gate: exact PI-11 verification command → exit 0; format and diff checks → exit 0.
 - Blocking correctness: Codex `totalTokens` values of `0` and `-1` pass through `parseThreadTokenUsage` and `buildReading` as measured zero, so stage rows render `0% ctx` instead of unknown with no `%` (`extensions/subagents/src/backends/codex.ts:215`, `extensions/shared/stage-progress.ts:72`, `extensions/ui-customization/footer.ts:165`).
 - Blocking correctness: the workflow-stage takeover handles `app.clear` before its stage guard and calls `requestAbort`, so the purported read-only stage view can terminate the stage (`extensions/subagents/src/ui/takeover.ts:451`).
-- Routing: **Debugger Ready**. Grade: `docs/handoffs/2026-08-04-reviewer-pi11.md`.
+- Routing: **Debugger Ready**. Review: `docs/handoffs/2026-08-04-reviewer-pi11.md`.
 
 **Debugger audit after reviewer bounce 1 (2026-08-04).**
 
@@ -347,7 +347,7 @@ Status: **Reviewing** · Blocked-by: none · Phase 3 · Priority 1
 - Gate: exact PI-11 verification command → exit 0 (59 targeted tests; 179 Node tests; 22 Vitest tests).
 - Prior blockers fixed: Codex invalid/non-positive/non-finite/missing usage and windows become unknown while positive pairs remain measured; stage takeover cannot send or abort while helper send/abort/close and navigation remain available.
 - Blocking invariant integrity: `extensions/subagents/src/format.ts:27-30,45-49` still rounds tiny positive context occupancy to `0%`; `{tokens:1, contextWindow:200000}` renders `0%/200k` in stage takeover/dashboard instead of `<1%`, violating PI-11's no-`0%` requirement.
-- Routing: **Debugger Ready**. Grade: `docs/handoffs/2026-08-04-reviewer-pi11-bounce-2.md`.
+- Routing: **Debugger Ready**. Review: `docs/handoffs/2026-08-04-reviewer-pi11-bounce-2.md`.
 
 **Debugger audit after reviewer bounce 2 (2026-08-04).**
 
@@ -364,7 +364,7 @@ Status: **Reviewing** · Blocked-by: none · Phase 3 · Priority 1
 - Exact gate passed: 60 targeted tests, `npm run check`, 182 full Node tests, and 22 Vitest tests. `npm run format:check`, `git diff --check`, and a 66-test `NO_COLOR=1` run also passed.
 - Prior blockers are fixed: orchestrator-only relay, settings migration/idempotence, removal of `STEER`, stage takeover read-only behavior with helper controls preserved, invalid Claude/Codex telemetry as unknown without `%`, and tiny positive telemetry in the subagent formatter/dashboard/takeover.
 - New blocking invariant integrity: `extensions/shared/context-utilization.ts:22-26,42-46` renders `{tokens:1, contextWindow:200000}` as `0%/200k`, not `<1%/200k`; the direct probe exited 1 while normal and unknown readings remained accurate.
-- Routing: → **Human escalation** — third failed review found a new substantive honest-telemetry failure. PI-11 remains **Reviewing** pending a human decision; it is not bounced into another automatic loop. Grade: `docs/handoffs/2026-08-04-reviewer-pi11-bounce-3.md`.
+- Routing: → **Human escalation** — third failed review found a new substantive honest-telemetry failure. PI-11 remains **Reviewing** pending a human decision; it is not bounced into another automatic loop. Review: `docs/handoffs/2026-08-04-reviewer-pi11-bounce-3.md`.
 
 ---
 
