@@ -44,7 +44,7 @@ Status: **Done** · Blocked-by: none · Phase 1
 
 ## PI-02 — Honest progress reading module (INV-1)
 
-Status: **Grading Ready** · Blocked-by: PI-01 · Phase 1
+Status: **Done** · Blocked-by: PI-01 · Phase 1
 
 **What to build.** A pure module `extensions/shared/stage-progress.ts` exporting a `ProgressReading` discriminated union — `{kind:"measured", percent, done, total, source, at}` or `{kind:"indeterminate", elapsedMs, turns, at}` — plus a builder that accepts only explicit numerator/denominator pairs from the three allowed in-process sources: `context`, `questions`, `stage`. No rendering, no I/O, no tracker.
 
@@ -56,6 +56,14 @@ Status: **Grading Ready** · Blocked-by: PI-01 · Phase 1
 - The module imports nothing from `node:fs`, `node:child_process`, or any network API (asserted by reading its own source text).
 
 **Verification-command.** `node --test --experimental-strip-types extensions/shared/stage-progress.test.ts && npm run check`
+
+**Grade (part4, 2026-08-04).**
+- Verdict: **PASS** (score: 96/100, diagnostic only)
+- Bounce: 0 of 3
+- Gate: `node --test --experimental-strip-types extensions/shared/stage-progress.test.ts && npm run check` → exit 0 (13 tests pass; tsc clean)
+- Blocking findings: none
+- Advisory: no-I/O source assertion is regex-on-source (honest for static imports; module also has zero import statements). UI `~`/dim rendering of stale readings remains PI-04.
+- Routing: → **Done** — all five acceptance criteria met; INV-1/INV-5/INV-6 held on this pure module; pure/no-I/O and no-false-progress confirmed from diff + independent probes.
 
 **Part3 debugger audit (2026-08-04).**
 - Claim path: `Debugger Ready` → `Debugging` → `Grading Ready`; local-file tracker mode, no GitHub Project, no remote, no push claim.
