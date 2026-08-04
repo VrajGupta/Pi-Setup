@@ -210,3 +210,26 @@ Status: **Planned** · Blocked-by: PI-06 · Phase 2 · May run in parallel with 
 **Verification-command.** `test -f docs/2026-08-04-proxy-evaluation.md && grep -Eq '^Verdict: (adopt|reject|needs a further spike)$' docs/2026-08-04-proxy-evaluation.md && git diff --quiet HEAD -- settings.example.json install.sh SYSTEM.md package.json && npm run check`
 
 The `git diff --quiet` clause is the INV-8 guard: this ticket must leave every routing/config file byte-identical, so the gate fails if the spike edited one.
+
+---
+
+## PI-10 — `/flow` issue todo list with live ticket statuses
+
+Status: **Planned** · Blocked-by: PI-05 · Phase 3
+
+**What to build.** Add an Issues/Todos view to `/flow` that lists every tracked
+ticket with its ID, title, current status, and blocking tickets, so the complete
+work queue is visible in one place. The view is read-only: status changes remain
+explicit workflow actions, and tracker reads happen before rendering rather than
+inside the render path.
+
+**Acceptance criteria.**
+- Every ticket in the local tracker appears exactly once with its current status.
+- The list includes the ticket ID, title, status, and `Blocked-by` value when present.
+- Planned, ready, active, grading, done, dropped, and blocked work are visibly distinguishable.
+- Missing or malformed tracker data degrades to a bounded `issue list unavailable` message without throwing.
+- Every rendered line fits the panel width and user-controlled ticket text is terminal-safe and secret-redacted.
+- Rendering the view performs no filesystem, network, or subprocess call; tracker reads are performed off the render path.
+- The view never changes ticket status or starts work merely by opening it.
+
+**Verification-command.** `node --test --experimental-strip-types extensions/workflow/issue-list.test.ts && npm run check`
