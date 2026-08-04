@@ -28,7 +28,10 @@ export function contextPercent(usage: ContextUtilization) {
   const tokens = usableTokens(usage.tokens);
   const capacity = usableCapacity(usage.contextWindow);
   if (tokens === undefined || capacity === undefined) return undefined;
-  return Math.round(Math.min(100, Math.max(0, (tokens / capacity) * 100)));
+  const percent = Math.min(100, (tokens / capacity) * 100);
+  return percent < 1
+    ? Math.max(percent, Number.MIN_VALUE)
+    : Math.round(percent);
 }
 
 export function formatCompactTokens(count: number) {
@@ -46,7 +49,13 @@ export function formatContextUtilization(usage: ContextUtilization) {
   const capacity = usableCapacity(usage.contextWindow);
   if (capacity === undefined) return "";
   const percent = contextPercent(usage);
-  return `${percent === undefined ? "?" : `${percent}%`}/${formatCompactTokens(capacity)}`;
+  const label =
+    percent === undefined
+      ? "?"
+      : percent > 0 && percent < 1
+        ? "<1%"
+        : `${percent}%`;
+  return `${label}/${formatCompactTokens(capacity)}`;
 }
 
 interface ActivityCounts {

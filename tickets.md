@@ -293,7 +293,7 @@ read happens off the render path.
 
 ## PI-11 — Retro-gate the orchestrator-only + honest-telemetry continuation (`bb5d79e`)
 
-Status: **Debugger Ready** · Blocked-by: none · Phase 3 · Priority 1
+Status: **Review Ready** · Blocked-by: none · Phase 3 · Priority 1
 
 **Why this exists.** Commit `bb5d79e` ("fix: keep user messages with orchestrator") is the current HEAD and the current `origin/main`. It removed the workflow `input` steering hook and `canSteerStage`, changed stage-row progress to `<1% ctx`, and made zero Claude usage report unknown — but it has no ticket, no debugger audit, and no reviewer verdict. **The commit is preserved. No reset, rebase, revert, or force-push is authorized.** This ticket retro-gates it forward-only and closes the remaining gaps the user re-reported on 2026-08-04: the Pi `steeringMode` setting and the header `STEER` affordance still imply direct stage steering.
 
@@ -344,6 +344,15 @@ Status: **Debugger Ready** · Blocked-by: none · Phase 3 · Priority 1
 - Prior blockers fixed: Codex invalid/non-positive/non-finite/missing usage and windows become unknown while positive pairs remain measured; stage takeover cannot send or abort while helper send/abort/close and navigation remain available.
 - Blocking invariant integrity: `extensions/subagents/src/format.ts:27-30,45-49` still rounds tiny positive context occupancy to `0%`; `{tokens:1, contextWindow:200000}` renders `0%/200k` in stage takeover/dashboard instead of `<1%`, violating PI-11's no-`0%` requirement.
 - Routing: **Debugger Ready**. Grade: `docs/handoffs/2026-08-04-reviewer-pi11-bounce-2.md`.
+
+**Debugger audit after reviewer bounce 2 (2026-08-04).**
+
+- Reproduced the reported `formatContextUtilization({ tokens: 1, contextWindow: 200_000 })` defect in the direct formatter, dashboard row, and stage takeover header.
+- Fixed the shared subagent formatter to preserve positive sub-1% readings and render `<1%/capacity`; valid readings at or above 1% retain integer formatting, while zero/negative/non-finite/missing readings remain `?/capacity` or omitted when capacity is invalid.
+- Added direct formatter tests plus dashboard and takeover consumer regressions covering Unicode titles, truncation, visible width, and no `0%`. The existing stage takeover read-only fix remains intact.
+- Exact PI-11 gate passed: 60 targeted tests, `npm run check`, 182 full Node tests, and 22 Vitest tests. `npm run format:check` and `git diff --check` also passed.
+- Handoff: `docs/handoffs/2026-08-04-debugger-pi11-bounce-2.md`. No push performed; local commit and clean-tree evidence recorded at handoff.
+- Routing: **Review Ready**.
 
 ---
 

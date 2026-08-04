@@ -4,7 +4,7 @@ import { buildReading } from "../shared/stage-progress.ts";
 import { renderFooter } from "../ui-customization/footer.ts";
 import { contextOccupancyTokens } from "./src/backends/claude.ts";
 import { parseThreadTokenUsage } from "./src/backends/codex.ts";
-import { formatContextUtilization } from "./src/format.ts";
+import { contextPercent, formatContextUtilization } from "./src/format.ts";
 
 // --- Claude: per-request occupancy, never the run aggregate ------------------
 
@@ -70,11 +70,34 @@ test("Claude occupancy rejects negative and non-finite token readings", () => {
 });
 
 test("unknown context utilization omits the percent sign", () => {
-  assert.equal(
-    formatContextUtilization({ tokens: undefined, contextWindow: 200_000 }),
-    "?/200k",
-  );
+  for (const tokens of [
+    undefined,
+    null,
+    0,
+    -1,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    Number.NEGATIVE_INFINITY,
+  ]) {
+    assert.equal(
+      formatContextUtilization({ tokens, contextWindow: 200_000 }),
+      "?/200k",
+    );
+  }
   assert.equal(formatContextUtilization({ tokens: 0, contextWindow: 0 }), "");
+});
+
+test("tiny positive context utilization is measured without rendering zero", () => {
+  const percent = contextPercent({ tokens: 1, contextWindow: 200_000 });
+  assert.ok(percent !== undefined && percent > 0 && percent < 1);
+  assert.equal(
+    formatContextUtilization({ tokens: 1, contextWindow: 200_000 }),
+    "<1%/200k",
+  );
+  assert.equal(
+    formatContextUtilization({ tokens: 2_000, contextWindow: 200_000 }),
+    "1%/200k",
+  );
 });
 
 test("Claude occupancy from the last request stays below the window where the run aggregate would not", () => {

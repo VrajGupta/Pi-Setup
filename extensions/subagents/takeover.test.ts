@@ -6,10 +6,12 @@ import type {
   KeybindingsManager,
   Theme,
 } from "@earendil-works/pi-coding-agent";
+import { visibleWidth } from "@earendil-works/pi-tui";
 import type { Component, TUI } from "@earendil-works/pi-tui";
 import type { SubagentSnapshot } from "./src/domain.ts";
 import type { SubagentReadModel } from "./src/manager.ts";
 import {
+  openSubagentPicker,
   openSubagentTakeover,
   reconcileDashboardSelection,
   type DashboardSelection,
@@ -27,6 +29,13 @@ type TakeoverFactory = (
 type TakeoverInternals = {
   input: { onSubmit?: (value: string) => void };
 };
+
+type DashboardFactory = (
+  tui: TUI,
+  theme: Theme,
+  keybindings: KeybindingsManager,
+  done: (result: string | null) => void,
+) => TakeoverComponent;
 
 const snapshot = (stage?: SubagentSnapshot["stage"]): SubagentSnapshot => ({
   id: "sa-1",
@@ -142,6 +151,76 @@ test("helper takeover retains abort and send behavior", async () => {
     const internals = harness.component as unknown as TakeoverInternals;
     internals.input.onSubmit?.(" follow up ");
     assert.deepEqual(harness.sends, ["follow up"]);
+  } finally {
+    harness.component.dispose?.();
+  }
+});
+
+test("dashboard preserves tiny measured context and terminal width with Unicode titles", async () => {
+  const snap = {
+    ...snapshot(),
+    title: "日本語🙂 dashboard title that needs truncation",
+    usage: { tokens: 1, contextWindow: 200_000 },
+  };
+  let component: TakeoverComponent | undefined;
+  const tui = {
+    requestRender: () => {},
+    terminal: { rows: 30 },
+  } as unknown as TUI;
+  const theme = {
+    fg: (_color: string, text: string) => text,
+    bold: (text: string) => text,
+  } as unknown as Theme;
+  const keybindings = {
+    getKeys: () => [],
+    matches: () => false,
+  } as unknown as KeybindingsManager;
+  const view = {
+    size: () => 1,
+    list: () => [snap],
+    get: (id: string) => (id === snap.id ? snap : undefined),
+    subscribe: () => () => {},
+  } as unknown as SubagentReadModel;
+  const context = {
+    ui: {
+      custom: async (factory: unknown) => {
+        if (typeof factory !== "function") throw new Error("missing factory");
+        component = (factory as DashboardFactory)(
+          tui,
+          theme,
+          keybindings,
+          () => {},
+        );
+        return null;
+      },
+    },
+  } as unknown as ExtensionCommandContext;
+
+  await openSubagentPicker(context, view);
+  try {
+    if (!component) throw new Error("dashboard was not created");
+    const lines = component.render(80);
+    const output = lines.join("\n");
+    assert.match(output, /<1%\/200k/);
+    assert.doesNotMatch(output, /0%/);
+    assert.ok(lines.every((line) => visibleWidth(line) <= 80));
+  } finally {
+    component?.dispose?.();
+  }
+});
+
+test("stage takeover preserves tiny measured context in its width-bounded header", async () => {
+  const harness = await openForTest({
+    ...snapshot("debugger"),
+    title: "日本語🙂 takeover title",
+    usage: { tokens: 1, contextWindow: 200_000 },
+  });
+  try {
+    const lines = harness.component.render(80);
+    const output = lines.join("\n");
+    assert.match(output, /<1%\/200k/);
+    assert.doesNotMatch(output, /0%/);
+    assert.ok(lines.every((line) => visibleWidth(line) <= 80));
   } finally {
     harness.component.dispose?.();
   }
