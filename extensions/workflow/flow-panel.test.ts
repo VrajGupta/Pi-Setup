@@ -57,9 +57,10 @@ function agent(overrides: Partial<WorkflowSubagentSummary> = {}) {
 function panel(
   workflowState = state(),
   agents: WorkflowSubagentSummary[] = [],
+  overrides: Partial<FlowPanelContext> = {},
 ) {
   return new FlowPanel(
-    context,
+    { ...context, ...overrides },
     theme,
     () => workflowState,
     () => agents,
@@ -180,4 +181,275 @@ test("FlowPanel rendering contains no filesystem, network, or subprocess call", 
   );
   assert.doesNotMatch(panelSource, /node:(fs|child_process|http|https|net)/);
   assert.doesNotMatch(panelSource, /\b(fetch|exec|spawn|WebSocket)\s*\(/);
+});
+
+test("unknown stages behave as helpers while duplicate known stages stay stable", () => {
+  const flow = panel(state(), [
+    agent({ id: "helper", title: "helper" }),
+    agent({
+      id: "unknown",
+      title: "unknown-stage",
+      stage: "part9" as unknown as WorkflowSubagentSummary["stage"],
+      contextTokens: 1,
+      contextWindow: 2,
+    }),
+    agent({ id: "part2-b", stage: "part2" }),
+    agent({ id: "part2-a", stage: "part2" }),
+    agent({ id: "part1", stage: "part1" }),
+  ]);
+  agentsTab(flow);
+
+  const output = flow.render(120).join("\n");
+  assert.ok(
+    output.indexOf("part1 · part1") < output.indexOf("part2 · part2-b"),
+  );
+  assert.ok(
+    output.indexOf("part2 · part2-b") < output.indexOf("part2 · part2-a"),
+  );
+  assert.ok(
+    output.indexOf("part2 · part2-a") < output.indexOf("helper · helper"),
+  );
+  assert.ok(
+    output.indexOf("helper · helper · helper") <
+      output.indexOf("helper · unknown · unknown-stage"),
+  );
+  assert.doesNotMatch(output, /part9/);
+  assert.doesNotMatch(output, /unknown-stage.*50%/);
+});
+
+test("route reasons and waiting events are one-line, terminal-safe, and redacted", () => {
+  const flow = panel(
+    state({
+      status: "blocked",
+      lastEvent: "event\n\u001b[2Japi_key=event-secret-value",
+      route: {
+        mode: "direct",
+        stage: null,
+        confidence: "high",
+        reason:
+          "reason\n\u001b]52;c;clipboard\u0007 with api_key=route-secret-value, https://agentrouter.org/v1, and unicode 日本語😀",
+        skills: [],
+      },
+    }),
+  );
+
+  const lines = flow.render(120);
+  assert.ok(lines.every((line) => !line.includes("\n")));
+  assert.ok(lines.every((line) => !line.includes("\u001b")));
+  const output = lines.join("\n");
+  assert.doesNotMatch(
+    output,
+    /route-secret-value|event-secret-value|agentrouter\.org/,
+  );
+  assert.match(output, /waiting on/);
+});
+
+test("waiting statuses use explicit fallbacks and disappear after transition", () => {
+  let current = state({ status: "running", lastEvent: "not waiting" });
+  const flow = new FlowPanel(
+    context,
+    theme,
+    () => current,
+    () => [],
+    () => [],
+    () => ({ loaded: [], selected: [] }),
+    () => {},
+    () => {},
+  );
+
+  assert.doesNotMatch(flow.render(120).join("\n"), /waiting on/);
+  for (const [status, fallback] of [
+    ["needs-input", "your input"],
+    ["needs-helper", "a helper result"],
+    ["blocked", "a recovery path"],
+  ] as const) {
+    current = state({ status, lastEvent: "" });
+    assert.match(
+      flow.render(120).join("\n"),
+      new RegExp(`waiting on  ${fallback}`),
+    );
+  }
+  current = state({ status: "complete", lastEvent: "finished" });
+  assert.doesNotMatch(flow.render(120).join("\n"), /waiting on/);
+});
+
+test("malformed and stale readings degrade without fabricated values", () => {
+  const flow = panel(
+    state(),
+    [
+      agent({
+        id: "bad",
+        stage: "part2",
+        startedAt: Number.NaN,
+        turns: Number.POSITIVE_INFINITY,
+        contextTokens: Number.POSITIVE_INFINITY,
+        contextWindow: 100,
+      }),
+    ],
+    {
+      getAgentsUpdatedAt: () => Date.now() - 60_000,
+      getContextUsage: () => ({
+        tokens: null,
+        contextWindow: 100,
+        percent: Number.POSITIVE_INFINITY,
+      }),
+    },
+  );
+  agentsTab(flow);
+
+  const output = flow.render(120).join("\n");
+  assert.match(output, /~/);
+  assert.doesNotMatch(output, /NaN|Infinity/);
+  assert.doesNotMatch(output, /%/);
+  assert.match(
+    panel(state(), [], {
+      getContextUsage: () => {
+        throw new Error("down");
+      },
+    })
+      .render(120)
+      .join("\n"),
+    /context \?\/?/,
+  );
+});
+
+test("render survives failed data getters and keeps the no-agent fallback", () => {
+  const flow = new FlowPanel(
+    context,
+    theme,
+    () => state(),
+    () => {
+      throw new Error("agent state unavailable");
+    },
+    () => [],
+    () => ({ loaded: [], selected: [] }),
+    () => {},
+    () => {},
+  );
+
+  assert.doesNotThrow(() => flow.render(120));
+  flow.handleInput("\t");
+  flow.handleInput("\t");
+  assert.match(flow.render(120).join("\n"), / none tracked/);
+});
+
+test("tab, arrow, unknown, and escape input have bounded effects", () => {
+  let rerenders = 0;
+  let closed = 0;
+  const flow = new FlowPanel(
+    context,
+    theme,
+    () => state(),
+    () => [],
+    () => [],
+    () => ({ loaded: [], selected: [] }),
+    () => {
+      closed += 1;
+    },
+    () => {
+      rerenders += 1;
+    },
+  );
+
+  flow.handleInput("not a key");
+  assert.equal(rerenders, 0);
+  flow.handleInput("\t");
+  flow.handleInput("\u001b[C");
+  flow.handleInput("\u001b[D");
+  assert.equal(rerenders, 3);
+  flow.handleInput("\u001b");
+  assert.equal(closed, 1);
+});
+
+test("the frame never overflows narrow, zero, negative, or non-finite widths", () => {
+  const flow = panel(state({ lastEvent: "日本語😀" }), [
+    agent({ stage: "part1", title: "模型😀" }),
+  ]);
+  for (const width of [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    7,
+    8,
+    19,
+    40,
+    120,
+    -1,
+    NaN,
+    Infinity,
+  ]) {
+    assert.doesNotThrow(() => flow.render(width));
+    const bound = Number.isFinite(width) ? Math.max(0, Math.floor(width)) : 0;
+    for (const line of flow.render(width)) {
+      assert.ok(
+        visibleWidth(line) <= bound,
+        `width ${width}: ${JSON.stringify(line)} is ${visibleWidth(line)}`,
+      );
+    }
+  }
+});
+
+test("ANSI-themed panel rows stay within visible width at 40 and 120", () => {
+  const ansiTheme = {
+    bg: (_color: string, text: string) => `\u001b[48;5;1m${text}\u001b[0m`,
+    fg: (_color: string, text: string) => `\u001b[38;5;2m${text}\u001b[0m`,
+    bold: (text: string) => `\u001b[1m${text}\u001b[0m`,
+  };
+  const flow = new FlowPanel(
+    {
+      ...context,
+      getContextUsage: () => ({ tokens: 1, contextWindow: 2, percent: 50 }),
+    },
+    ansiTheme,
+    () =>
+      state({
+        status: "blocked",
+        lastEvent: "a long waiting event 日本語😀".repeat(10),
+        route: {
+          mode: "fleet",
+          stage: "part2",
+          confidence: "high",
+          reason: "a long route reason 日本語😀".repeat(10),
+          skills: [],
+        },
+      }),
+    () => [
+      agent({
+        stage: "part2",
+        title: "a long agent title 日本語😀".repeat(10),
+        modelLabel: "a-long-model-label/with-ansi-safe-width",
+        contextTokens: 1,
+        contextWindow: 2,
+      }),
+    ],
+    () => [],
+    () => ({ loaded: [], selected: [] }),
+    () => {},
+    () => {},
+  );
+  flow.handleInput("\t");
+  flow.handleInput("\t");
+  for (const width of [40, 120]) {
+    for (const line of flow.render(width)) {
+      assert.ok(visibleWidth(line) <= width);
+    }
+  }
+});
+
+test("1 000 panel renders at width 120 stay within a practical budget", () => {
+  const flow = panel(state(), [
+    agent({ stage: "part1" }),
+    agent({ stage: "part2" }),
+    agent({ stage: "part3" }),
+    agent({ stage: "part4" }),
+    agent({ title: "helper" }),
+  ]);
+  agentsTab(flow);
+  const start = performance.now();
+  for (let index = 0; index < 1_000; index += 1) flow.render(120);
+  const elapsed = performance.now() - start;
+  assert.ok(elapsed < 3_000, `1000 panel renders took ${elapsed}ms`);
 });

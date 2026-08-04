@@ -28,7 +28,7 @@ import {
   type WorkflowReasoningEffort,
   type WorkflowSubagentSummary,
 } from "../shared/workflow-state.ts";
-import { buildReading } from "../shared/stage-progress.ts";
+import { buildReading, isStale } from "../shared/stage-progress.ts";
 import {
   STAGE_PROFILES,
   buildStagePrompt,
@@ -81,7 +81,7 @@ function isControlResponse(prompt: string) {
 
 function modelLabel(ctx: Pick<ExtensionContext, "model">) {
   if (!ctx.model) return "no model";
-  return `${ctx.model.provider}/${ctx.model.id}`;
+  return `${displayText(ctx.model.provider, "?")}/${displayText(ctx.model.id, "?")}`;
 }
 
 export type FlowPanelContext = Pick<
@@ -89,12 +89,126 @@ export type FlowPanelContext = Pick<
   "cwd" | "model" | "thinkingLevel" | "getContextUsage"
 > & {
   sessionManager: Pick<ExtensionContext["sessionManager"], "getSessionFile">;
+  getAgentsUpdatedAt?: () => number | undefined;
 };
 
 type FlowPanelTheme = Pick<
   ExtensionContext["ui"]["theme"],
   "bg" | "fg" | "bold"
 >;
+
+// Model- and agent-provided text is untrusted display data. Strip terminal
+// controls before trusted theme styling, then keep it on one physical row.
+// eslint-disable-next-line no-control-regex
+const OSC_PATTERN =
+  /(?:\u001b\]|\u009d)(?:[^\u0007\u001b\u009c]|\u001b(?!\\))*(?:\u0007|\u001b\\|\u009c)/g;
+// eslint-disable-next-line no-control-regex
+const CSI_PATTERN = /(?:\u001b\[|\u009b)[0-?]*[ -/]*[@-~]/g;
+// eslint-disable-next-line no-control-regex
+const ESCAPE_PATTERN = /\u001b(?:[()][0-2A-Z]|[ -/]*[@-~])/g;
+
+function stringify(value: unknown, fallback = "") {
+  try {
+    return value === undefined || value === null ? fallback : String(value);
+  } catch {
+    return fallback;
+  }
+}
+
+function redactSecrets(text: string) {
+  return text
+    .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [REDACTED]")
+    .replace(
+      /\b(sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9_]{12,}|eyJ[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,})\b/g,
+      "[REDACTED]",
+    )
+    .replace(
+      /(["']?(?:api[_-]?key|access[_-]?key|authorization|cookie|credential|password|passwd|private[_-]?key|secret|token)["']?\s*[:=]\s*)(["']?)[^\s,;}]+\2/gi,
+      "$1[REDACTED]",
+    )
+    .replace(
+      /([?&](?:api[_-]?key|access[_-]?token|key|secret|token)=)[^&#\s]+/gi,
+      "$1[REDACTED]",
+    );
+}
+
+function displayText(value: unknown, fallback = "") {
+  return redactSecrets(
+    stringify(value, fallback)
+      .replace(/\r\n?|\n|\t/g, " ")
+      .replace(OSC_PATTERN, "")
+      .replace(CSI_PATTERN, "")
+      .replace(ESCAPE_PATTERN, "")
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, ""),
+  )
+    .replace(/\s+/g, " ")
+    .replace(/\bhttps?:\/\/[^\s]+/gi, "[URL]");
+}
+
+function finiteNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
+}
+
+function safeElapsed(now: unknown, startedAt: unknown) {
+  const safeNow = finiteNumber(now);
+  const safeStartedAt = finiteNumber(startedAt);
+  return safeNow === undefined || safeStartedAt === undefined
+    ? 0
+    : Math.max(0, safeNow - safeStartedAt);
+}
+
+function safeTurns(value: unknown) {
+  const turns = finiteNumber(value);
+  return turns === undefined || turns < 0 ? 0 : Math.floor(turns);
+}
+
+function normalizeWidth(width: unknown) {
+  if (typeof width !== "number" || !Number.isFinite(width)) return 0;
+  return Math.max(0, Math.floor(width));
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isKnownStage(value: unknown): value is StageName {
+  return typeof value === "string" && STAGE_NAMES.includes(value as StageName);
+}
+
+function readState(getState: () => WorkflowState) {
+  try {
+    const value: unknown = getState();
+    return isRecord(value)
+      ? (value as unknown as WorkflowState)
+      : emptyWorkflowState();
+  } catch {
+    return emptyWorkflowState();
+  }
+}
+
+function readAgents(getAgents: () => WorkflowSubagentSummary[]) {
+  try {
+    const value: unknown = getAgents();
+    return Array.isArray(value) ? value.filter(isRecord) : [];
+  } catch {
+    return [];
+  }
+}
+
+function readTimestamp(
+  getter: (() => number | undefined) | undefined,
+  fallback: number,
+) {
+  try {
+    const value = getter?.();
+    return finiteNumber(value) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 export class FlowPanel {
   private tab = 0;
@@ -138,6 +252,7 @@ export class FlowPanel {
   }
 
   handleInput(data: string) {
+    if (typeof data !== "string") return;
     if (matchesKey(data, Key.escape)) {
       this.done();
       return;
@@ -154,9 +269,11 @@ export class FlowPanel {
   }
 
   render(width: number) {
-    const state = this.getState();
-    const agents = this.getAgents();
-    const now = Date.now();
+    const state = readState(this.getState);
+    const agents = readAgents(this.getAgents);
+    const now = finiteNumber(Date.now()) ?? 0;
+    const safeWidth = normalizeWidth(width);
+    const agentsUpdatedAt = readTimestamp(this.ctx.getAgentsUpdatedAt, now);
     const running = agents.filter((agent) => agent.status === "running").length;
     const tabs = this.tabs
       .map((tab, index) =>
@@ -168,17 +285,21 @@ export class FlowPanel {
           : this.theme.fg("dim", ` ${tab} `),
       )
       .join(this.theme.fg("borderMuted", " · "));
+    const status = displayText(state.status, "unknown");
+    const activeStage = isKnownStage(state.activeStage)
+      ? ` · ${state.activeStage}`
+      : "";
     const title =
       this.theme.fg("accent", this.theme.bold(" π  FLOW CONTROL CENTER ")) +
       this.theme.fg(
         "muted",
-        ` · ${state.status} · ${running} agent${running === 1 ? "" : "s"}`,
+        ` · ${status}${activeStage} · ${running} agent${running === 1 ? "" : "s"}`,
       );
     const lines = [
       title,
       tabs,
-      this.theme.fg("borderMuted", "─".repeat(Math.max(1, width - 4))),
-      ...this.content(state, agents, now),
+      this.theme.fg("borderMuted", "─".repeat(Math.max(1, safeWidth - 4))),
+      ...this.content(state, agents, now, agentsUpdatedAt),
       "",
       this.theme.fg("dim", " ←/→ or tab switch · esc close"),
     ];
@@ -188,8 +309,8 @@ export class FlowPanel {
   invalidate() {}
 
   private frame(lines: string[], width: number) {
-    const frameWidth = Math.max(8, width);
-    const contentWidth = frameWidth - 2;
+    const frameWidth = normalizeWidth(width);
+    if (frameWidth === 0) return lines.map(() => "");
     const border = this.theme.fg("borderAccent", "│");
     const fill = (line: string) => {
       const clipped = truncateToWidth(line, frameWidth);
@@ -199,23 +320,28 @@ export class FlowPanel {
       );
     };
     const body = (line: string) => {
-      const clipped = truncateToWidth(line, contentWidth - 2);
+      if (frameWidth === 1) return fill(border);
+      if (frameWidth === 2) return fill(`${border}${border}`);
+      if (frameWidth === 3) return fill(`${border} ${border}`);
+      const textWidth = frameWidth - 4;
+      const clipped = truncateToWidth(line, textWidth);
       return fill(
-        `${border} ${clipped}${" ".repeat(Math.max(0, contentWidth - 2 - visibleWidth(clipped)))} ${border}`,
+        `${border} ${clipped}${" ".repeat(Math.max(0, textWidth - visibleWidth(clipped)))} ${border}`,
       );
     };
+    const horizontal = "─".repeat(Math.max(0, frameWidth - 2));
     return [
       fill(
         this.theme.fg(
           "borderAccent",
-          `╭${"─".repeat(Math.max(1, frameWidth - 2))}╮`,
+          frameWidth === 1 ? border : `╭${horizontal}╮`,
         ),
       ),
       ...lines.map(body),
       fill(
         this.theme.fg(
           "borderAccent",
-          `╰${"─".repeat(Math.max(1, frameWidth - 2))}╯`,
+          frameWidth === 1 ? border : `╰${horizontal}╯`,
         ),
       ),
     ];
@@ -223,45 +349,50 @@ export class FlowPanel {
 
   private content(
     state: WorkflowState,
-    agents: WorkflowSubagentSummary[],
+    agents: Record<string, unknown>[],
     now: number,
+    agentsUpdatedAt: number,
   ) {
     switch (this.tab) {
       case 1:
         return this.workflow(state);
       case 2:
-        return this.agents(agents, now);
+        return this.agents(agents, now, agentsUpdatedAt);
       case 3:
         return this.capabilities();
       case 4:
         return this.session(state);
       default:
-        return this.overview(state, agents);
+        return this.overview(state, agents, now);
     }
   }
 
-  private overview(state: WorkflowState, agents: WorkflowSubagentSummary[]) {
-    const usage = this.ctx.getContextUsage();
-    const percent =
-      typeof usage?.percent === "number"
-        ? `${Math.round(usage.percent)}%`
-        : "?";
-    const window =
-      typeof usage?.contextWindow === "number"
-        ? formatTokens(usage.contextWindow)
-        : "?";
+  private overview(
+    state: WorkflowState,
+    agents: Record<string, unknown>[],
+    now: number,
+  ) {
+    let usage: unknown;
+    try {
+      usage = this.ctx.getContextUsage();
+    } catch {
+      usage = undefined;
+    }
+    const context = contextDisplay(usage, now);
     const waiting = waitingOn(state);
     return [
       this.theme.fg("mdHeading", " snapshot"),
-      ` ${this.ctx.cwd}`,
+      ` ${displayText(this.ctx.cwd, "?")}`,
       ` route   ${routeText(state.route)}`,
       ` why this route  ${routeReason(state.route)}`,
-      ` status  ${state.status}${state.activeStage ? ` · ${state.activeStage}` : ""}`,
+      ` status  ${displayText(state.status, "unknown")}${isKnownStage(state.activeStage) ? ` · ${state.activeStage}` : ""}`,
       ...(waiting ? [waiting] : []),
       ` model   ${modelLabel(this.ctx)}`,
-      ` think   ${this.ctx.thinkingLevel} · context ${percent}/${window}`,
+      ` think   ${displayText(this.ctx.thinkingLevel, "?")} · context ${context.percent}/${context.window}`,
       ` agents  ${agents.filter((agent) => agent.status === "running").length} running · ${agents.length} tracked`,
-      state.lastEvent ? ` event   ${state.lastEvent}` : "",
+      displayText(state.lastEvent)
+        ? ` event   ${displayText(state.lastEvent)}`
+        : "",
     ];
   }
 
@@ -269,9 +400,9 @@ export class FlowPanel {
     return [
       " workflow rail",
       ` ${rail(state.activeStage, state.status)}`,
-      ` task    ${state.taskPreview || "none"}`,
-      ` stage   ${state.activeStage ?? "none"}`,
-      ` agent   ${state.stageAgentId ?? "none"}`,
+      ` task    ${displayText(state.taskPreview, "none") || "none"}`,
+      ` stage   ${displayText(state.activeStage, "none") || "none"}`,
+      ` agent   ${displayText(state.stageAgentId, "none") || "none"}`,
       "",
       " Stage models",
       ...STAGE_NAMES.map((stage) => {
@@ -281,7 +412,11 @@ export class FlowPanel {
     ];
   }
 
-  private agents(agents: WorkflowSubagentSummary[], now: number) {
+  private agents(
+    agents: Record<string, unknown>[],
+    now: number,
+    agentsUpdatedAt: number,
+  ) {
     if (agents.length === 0) return [" agents", " none tracked"];
     return [
       " agents",
@@ -292,31 +427,55 @@ export class FlowPanel {
             stageIndex(a.agent.stage) - stageIndex(b.agent.stage) ||
             a.index - b.index,
         )
-        .map(({ agent }) => agentText(agent, now)),
+        .map(({ agent }) => agentText(agent, now, agentsUpdatedAt)),
     ];
   }
 
   private capabilities() {
-    const capabilities = this.getCapabilities();
-    const used = this.getUsed();
-    const loaded = capabilities.loaded;
-    const selected = capabilities.selected;
+    let capabilities: { loaded: string[]; selected: string[] } = {
+      loaded: [],
+      selected: [],
+    };
+    let used: string[] = [];
+    try {
+      const candidate = this.getCapabilities();
+      if (candidate && typeof candidate === "object") capabilities = candidate;
+    } catch {
+      // A capability provider is auxiliary to the control center.
+    }
+    try {
+      const candidate = this.getUsed();
+      if (Array.isArray(candidate)) used = candidate;
+    } catch {
+      // A capability provider is auxiliary to the control center.
+    }
+    const loaded = Array.isArray(capabilities.loaded)
+      ? capabilities.loaded.map((value) => displayText(value))
+      : [];
+    const selected = Array.isArray(capabilities.selected)
+      ? capabilities.selected.map((value) => displayText(value))
+      : [];
     return [
       " capabilities",
       ` loaded skills    ${loaded.join(", ") || "none"}`,
       ` selected tools   ${selected.join(", ") || "none"}`,
-      ` invoked this run ${used.join(", ") || "none"}`,
+      ` invoked this run ${Array.isArray(used) ? used.map((value) => displayText(value)).join(", ") || "none" : "none"}`,
     ];
   }
 
   private session(state: WorkflowState) {
-    const file = this.ctx.sessionManager.getSessionFile();
+    let file: string | undefined;
+    try {
+      file = this.ctx.sessionManager.getSessionFile();
+    } catch {
+      file = undefined;
+    }
     return [
       " session",
-      ` file    ${file ? relative(homedir(), file) : "ephemeral"}`,
-      ` project ${this.ctx.cwd}`,
-      ` state   ${state.status}`,
-      ` updated ${new Date(state.updatedAt).toLocaleString()}`,
+      ` file    ${typeof file === "string" ? displayText(relative(homedir(), file)) : "ephemeral"}`,
+      ` project ${displayText(this.ctx.cwd, "?")}`,
+      ` state   ${displayText(state.status, "unknown")}`,
+      ` updated ${formatUpdatedAt(state.updatedAt)}`,
       "",
       " Recovery is evidence-based. Re-check the tracker, git, gate, and agent transcript before resuming.",
     ];
@@ -324,42 +483,79 @@ export class FlowPanel {
 }
 
 function formatTokens(tokens: number) {
-  if (tokens < 1_000) return `${tokens}`;
-  if (tokens < 1_000_000) return `${Math.round(tokens / 1_000)}k`;
-  return `${(tokens / 1_000_000).toFixed(1)}m`;
+  const safeTokens = finiteNumber(tokens);
+  if (safeTokens === undefined) return "?";
+  if (safeTokens < 1_000) return `${safeTokens}`;
+  if (safeTokens < 1_000_000) return `${Math.round(safeTokens / 1_000)}k`;
+  return `${(safeTokens / 1_000_000).toFixed(1)}m`;
 }
 
-function statusGlyph(status: WorkflowSubagentSummary["status"]) {
+function contextDisplay(usage: unknown, now: number) {
+  const value = isRecord(usage) ? usage : {};
+  const contextWindow = finiteNumber(value.contextWindow);
+  const reading = buildReading({
+    source: "context",
+    done: finiteNumber(value.tokens),
+    total: contextWindow,
+    at: now,
+  });
+  return {
+    percent:
+      reading.kind === "measured" ? `${Math.round(reading.percent)}%` : "?",
+    window:
+      contextWindow !== undefined && contextWindow > 0
+        ? formatTokens(contextWindow)
+        : "?",
+  };
+}
+
+function formatUpdatedAt(value: unknown) {
+  const timestamp = finiteNumber(value);
+  return timestamp === undefined
+    ? "unknown"
+    : new Date(timestamp).toLocaleString();
+}
+
+function statusGlyph(status: unknown) {
   return status === "running" ? "·" : status === "done" ? "✓" : "×";
 }
 
-function stageIndex(stage: StageName | undefined) {
-  const index = stage ? STAGE_NAMES.indexOf(stage) : -1;
+function stageIndex(stage: unknown) {
+  const index = isKnownStage(stage) ? STAGE_NAMES.indexOf(stage) : -1;
   return index < 0 ? STAGE_NAMES.length : index;
 }
 
-function formatElapsed(elapsedMs: number) {
-  const seconds = Math.max(0, Math.floor(elapsedMs / 1_000));
+function formatElapsed(elapsedMs: unknown) {
+  const seconds = Math.max(
+    0,
+    Math.floor((finiteNumber(elapsedMs) ?? 0) / 1_000),
+  );
   if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m`;
   return `${Math.floor(minutes / 60)}h${minutes % 60}m`;
 }
 
-function agentText(agent: WorkflowSubagentSummary, now: number) {
+function agentText(
+  agent: Record<string, unknown>,
+  now: number,
+  agentsUpdatedAt: number,
+) {
+  const stageAgent = isKnownStage(agent.stage);
   const reading = buildReading({
     source: "context",
-    done: agent.contextTokens,
-    total: agent.contextWindow,
-    at: now,
-    elapsedMs: now - agent.startedAt,
-    turns: agent.turns,
+    done: finiteNumber(agent.contextTokens),
+    total: finiteNumber(agent.contextWindow),
+    at: agentsUpdatedAt,
+    elapsedMs: safeElapsed(now, agent.startedAt),
+    turns: safeTurns(agent.turns),
   });
   const progress =
-    agent.stage && reading.kind === "measured"
+    stageAgent && reading.kind === "measured"
       ? ` · ${Math.round(reading.percent)}%`
       : "";
-  return ` ${statusGlyph(agent.status)} ${agent.stage ?? "helper"} · ${agent.id} · ${agent.title} · ${agent.backend}/${agent.modelLabel ?? "?"} · ${formatElapsed(now - agent.startedAt)} · ${agent.turns}t${progress}`;
+  const stale = reading.kind === "indeterminate" || isStale(reading, now);
+  return `${stale ? " ~" : " "} ${statusGlyph(agent.status)} ${stageAgent ? agent.stage : "helper"} · ${displayText(agent.id, "?")} · ${displayText(agent.title, "?")} · ${displayText(agent.backend, "?")}/${displayText(agent.modelLabel, "?") || "?"} · ${formatElapsed(safeElapsed(now, agent.startedAt))} · ${safeTurns(agent.turns)}t${progress}`;
 }
 
 function rail(activeStage: StageName | null, status: WorkflowState["status"]) {
@@ -377,25 +573,31 @@ function rail(activeStage: StageName | null, status: WorkflowState["status"]) {
 }
 
 function routeText(route: RouteDecision | WorkflowState["route"]) {
-  if (!route) return "not classified";
-  return `${route.mode}${route.stage ? ` · ${route.stage}` : ""}`;
+  if (!isRecord(route)) return "not classified";
+  const mode = displayText(route.mode, "unknown");
+  const stage = isKnownStage(route.stage) ? ` · ${route.stage}` : "";
+  return `${mode}${stage}`;
 }
 
 function routeReason(route: RouteDecision | WorkflowState["route"]) {
-  if (!route) return "No route has been chosen yet.";
-  const routeName = route.stage ? `${route.mode}/${route.stage}` : route.mode;
+  if (!isRecord(route)) return "No route has been chosen yet.";
+  const mode = displayText(route.mode, "unknown");
+  const routeName = isKnownStage(route.stage) ? `${mode}/${route.stage}` : mode;
   const reason =
-    route.reason.trim().replace(/[.!?]+$/, "") || "no reason was recorded";
+    displayText(route.reason)
+      .trim()
+      .replace(/[.!?]+$/, "") || "no reason was recorded";
   return `The ${routeName} route was chosen because ${reason}.`;
 }
 
 function waitingOn(state: WorkflowState) {
+  const event = displayText(state.lastEvent);
   if (state.status === "needs-input")
-    return ` waiting on  ${state.lastEvent || "your input"}`;
+    return ` waiting on  ${event || "your input"}`;
   if (state.status === "needs-helper")
-    return ` waiting on  ${state.lastEvent || "a helper result"}`;
+    return ` waiting on  ${event || "a helper result"}`;
   if (state.status === "blocked")
-    return ` waiting on  ${state.lastEvent || "a recovery path"}`;
+    return ` waiting on  ${event || "a recovery path"}`;
   return undefined;
 }
 
@@ -421,6 +623,7 @@ export default function workflow(pi: ExtensionAPI) {
   let state = emptyWorkflowState();
   let context: ExtensionContext | undefined;
   let agents: WorkflowSubagentSummary[] = [];
+  let agentsUpdatedAt = Date.now();
   const usedCapabilities = new Set<string>();
   let requestRender: (() => void) | undefined;
   let lastEnvelope = "";
@@ -687,7 +890,7 @@ export default function workflow(pi: ExtensionAPI) {
     await ctx.ui.custom<void>(
       (tui, _theme, _keybindings, done) => {
         const panel = new FlowPanel(
-          ctx,
+          { ...ctx, getAgentsUpdatedAt: () => agentsUpdatedAt },
           _theme,
           () => state,
           () => agents,
@@ -911,6 +1114,7 @@ export default function workflow(pi: ExtensionAPI) {
   const stopSubagentState = pi.events.on(SUBAGENT_STATE_CHANNEL, (value) => {
     if (!Array.isArray(value)) return;
     agents = value.filter(isWorkflowSubagentSummary);
+    agentsUpdatedAt = Date.now();
     state = {
       ...state,
       agentIds: agents.map((agent) => agent.id),

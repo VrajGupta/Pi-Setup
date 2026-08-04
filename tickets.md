@@ -115,7 +115,7 @@ Status: **Done** · Blocked-by: PI-02 · Phase 1
 
 ## PI-05 — `/flow` parity, why-this-route, and plain-language status
 
-Status: **Debugger Ready** · Blocked-by: PI-04 · Phase 1
+Status: **Grading Ready** · Blocked-by: PI-04 · Phase 1
 
 **What to build.** Bring `FlowPanel` in `extensions/workflow/index.ts` in line with the footer: the Agents tab lists stage rows first (using the same progress readings), the Overview tab states the route reason in one plain sentence, and the panel shows what it is waiting on when status is `needs-input`, `needs-helper`, or `blocked`.
 
@@ -128,6 +128,15 @@ Status: **Debugger Ready** · Blocked-by: PI-04 · Phase 1
 - Rendering the panel performs no filesystem, network, or subprocess call.
 
 **Verification-command.** `node --test --experimental-strip-types extensions/workflow/flow-panel.test.ts extensions/workflow/policy.test.ts && npm run check`
+
+**Part3 debugger audit (2026-08-04).**
+- Claim path: local-file tracker `Debugger Ready` → `Debugging` → `Grading Ready`; only PI-05 moved. No GitHub Project and no git remote. Phase 2 and PI-06 were not started.
+- Actual profiles: PI-05 maker handoff records Pi · `openai-codex/gpt-5.6-terra` · xhigh; this debugger ran in the Codex part3 session. The repository pin is GPT-5.6 Luna/max, while this runtime exposes the model as GPT-5/Codex rather than a versioned Luna identifier; no helper was spawned or silently substituted.
+- Baseline four-net result: the locked gate was green before the audit (12 targeted tests; `tsc` clean), with weak coverage for malformed agent data, unknown stages, terminal/control injection, narrow/non-finite widths, getter failures, stale timestamps, input transitions, and panel performance.
+- Fixed test-first: unknown or missing stages now render as stable helper rows while duplicate known stages preserve input order; stage percentages are measured-only. Route reasons, waiting events, task/title/model/session/capability text are one-line, terminal-safe, URL/secret-redacted, and visibly truncated. Malformed counters/timestamps/readings degrade without `NaN`/`Infinity`; stale agent snapshots show `~`; failed data getters fall back safely; frame widths from zero through 120 and non-finite inputs never overflow or throw; runtime agent-update timestamps feed stale detection; tab/arrow/escape behavior and a 1,000-render budget are covered.
+- Purity: the FlowPanel render class has no filesystem, network, or subprocess calls; the source-scope assertion remains green.
+- Verification: targeted gate passed with 21 tests and `tsc --noEmit`; full `npm test` passed with 164 Node tests and 22 Vitest tests; `npm run format:check` and `git diff --check` passed.
+- Honest follow-up: none identified within PI-05. Full production workflow → subagents event-bus round trip remains outside this ticket's harness, as noted by prior stages.
 
 ---
 
