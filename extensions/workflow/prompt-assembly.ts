@@ -20,7 +20,7 @@ function redactPromptText(text: string) {
       "[REDACTED]",
     )
     .replace(
-      /(["']?(?:api[_-]?key|access[_-]?key|access[_-]?token|authorization|cookie|credential|password|passwd|private[_-]?key|secret|token)["']?\s*[:=]\s*)(?:"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|["'][^\r\n]*|[^\r\n]+)/gi,
+      /(["']?(?:api[_-]?key|access[_-]?key|access[_-]?token|aws[_-]?access[_-]?key[_-]?id|authorization|cookie|credential|password|passwd|private[_-]?key|secret|token)["']?\s*[:=]\s*)(?:"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|["'][^\r\n]*|[^\r\n]+)/gi,
       "$1[REDACTED]",
     )
     .replace(

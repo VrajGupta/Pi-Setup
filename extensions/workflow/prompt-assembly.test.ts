@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import workflowExtension from "./index.ts";
 import { assembleWorkflowSystemPrompt } from "./prompt-assembly.ts";
 import { classifyRequest, type RouteDecision } from "./src/policy.ts";
 
@@ -161,6 +163,42 @@ test("redacts folded sensitive headers without consuming neighboring lines", () 
   assert.doesNotMatch(assembly.systemPrompt, /SYNTHETIC_/);
   assert.match(assembly.stablePrefix, /ordinary: keep this/);
   assert.match(assembly.stablePrefix, /ordinary-two: keep this too/);
+});
+
+test("redacts AWS credentials through the production before_agent_start seam", async () => {
+  let beforeAgentStart: unknown;
+  const workflowPi = {
+    on(event: string, handler: unknown) {
+      if (event === "before_agent_start") beforeAgentStart = handler;
+    },
+    events: {
+      emit() {},
+      on() {
+        return () => {};
+      },
+    },
+    registerCommand() {},
+    registerShortcut() {},
+    registerTool() {},
+  } as unknown as ExtensionAPI;
+
+  workflowExtension(workflowPi);
+  assert.ok(beforeAgentStart);
+  const result = await (
+    beforeAgentStart as (
+      event: { prompt: string; systemPrompt: string },
+      ctx: { mode: "tui" },
+    ) => Promise<{ systemPrompt?: string } | undefined>
+  )(
+    {
+      prompt: "Explain the session tree",
+      systemPrompt: "CORE AWS_ACCESS_KEY_ID=SYNTHETIC_ACCESS_VALUE",
+    },
+    { mode: "tui" },
+  );
+
+  assert.ok(result?.systemPrompt);
+  assert.doesNotMatch(result.systemPrompt, /SYNTHETIC_/);
 });
 
 test("uses the tested assembly seam on the production before_agent_start path", () => {
