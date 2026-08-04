@@ -293,7 +293,7 @@ read happens off the render path.
 
 ## PI-11 — Retro-gate the orchestrator-only + honest-telemetry continuation (`bb5d79e`)
 
-Status: **Review Ready** · Blocked-by: none · Phase 3 · Priority 1
+Status: **Debugger Ready** · Blocked-by: none · Phase 3 · Priority 1
 
 **Why this exists.** Commit `bb5d79e` ("fix: keep user messages with orchestrator") is the current HEAD and the current `origin/main`. It removed the workflow `input` steering hook and `canSteerStage`, changed stage-row progress to `<1% ctx`, and made zero Claude usage report unknown — but it has no ticket, no debugger audit, and no reviewer verdict. **The commit is preserved. No reset, rebase, revert, or force-push is authorized.** This ticket retro-gates it forward-only and closes the remaining gaps the user re-reported on 2026-08-04: the Pi `steeringMode` setting and the header `STEER` affordance still imply direct stage steering.
 
@@ -336,6 +336,14 @@ Status: **Review Ready** · Blocked-by: none · Phase 3 · Priority 1
 - Red-team coverage: Codex zero/negative/non-finite/null/string/object/missing payloads; malformed settings JSON plus `null`, array, number, and string settings preservation; and production takeover clear/scroll/close/helper send-abort paths.
 - Evidence: focused red→green suite 27 tests; red-team/settings/UI suite 63 tests; exact PI-11 gate 59 targeted tests + `npm run check` + full `npm test`; final full suite 179 Node tests and 22 Vitest tests, exit 0; `npm run format:check` and `git diff --check` pass. One contention-sensitive full-suite benchmark attempt exceeded its 2 s threshold, then the isolated benchmark and exact full suite passed.
 - Routing: **Review Ready**. Handoff: `docs/handoffs/2026-08-04-debugger-pi11-bounce-1.md`.
+
+**Review: FAIL (72/100, diagnostic only) — 2026-08-04.**
+
+- Bounce: **2 of 3**.
+- Gate: exact PI-11 verification command → exit 0 (59 targeted tests; 179 Node tests; 22 Vitest tests).
+- Prior blockers fixed: Codex invalid/non-positive/non-finite/missing usage and windows become unknown while positive pairs remain measured; stage takeover cannot send or abort while helper send/abort/close and navigation remain available.
+- Blocking invariant integrity: `extensions/subagents/src/format.ts:27-30,45-49` still rounds tiny positive context occupancy to `0%`; `{tokens:1, contextWindow:200000}` renders `0%/200k` in stage takeover/dashboard instead of `<1%`, violating PI-11's no-`0%` requirement.
+- Routing: **Debugger Ready**. Grade: `docs/handoffs/2026-08-04-reviewer-pi11-bounce-2.md`.
 
 ---
 
