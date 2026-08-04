@@ -91,6 +91,16 @@ test("changes begin exactly at the stable-prefix boundary", () => {
   );
 });
 
+test("documents opaque/rootless colon-delimited userinfo as excluded from PI-07 scope", () => {
+  const source = readFileSync(
+    new URL("./prompt-assembly.ts", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(source, /sip:user:password@example\.test/);
+  assert.match(source, /accepted residual risk under unchanged global INV-2/);
+});
+
 test("redacts synthetic credentials and provider URLs from both prompt regions", () => {
   const assembly = assembleWorkflowSystemPrompt({
     baseSystemPrompt:
