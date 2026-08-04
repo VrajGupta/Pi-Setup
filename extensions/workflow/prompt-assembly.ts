@@ -11,8 +11,20 @@ const STABLE_WORKFLOW_INSTRUCTIONS = `
 const SENSITIVE_HEADER_PATTERN =
   /\b(Authorization|Cookie)[ \t]*:[ \t]*[^\r\n]*?(?:\r?\n[ \t]+[^\r\n]*?)*(?=\r?\n(?![ \t])|[ \t]+\b(?:Authorization|Cookie)[ \t]*:|$)/gi;
 
+const URI_TOKEN_PATTERN = /\b[a-z][a-z0-9+.-]*:[^\s]+/gi;
+const CREDENTIAL_URI_PATTERN =
+  /\/\/[^/\s:@]+:[^@\s]+@|(?:^|[:/])[^/\s:@]+\/[^@\s/]+@/i;
+
+function redactCredentialUris(text: string) {
+  return text.replace(URI_TOKEN_PATTERN, (candidate) => {
+    const schemeEnd = candidate.indexOf(":");
+    const opaquePart = candidate.slice(schemeEnd + 1);
+    return CREDENTIAL_URI_PATTERN.test(opaquePart) ? "[URL]" : candidate;
+  });
+}
+
 function redactPromptText(text: string) {
-  return text
+  const redacted = text
     .replace(SENSITIVE_HEADER_PATTERN, "$1: [REDACTED]")
     .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [REDACTED]")
     .replace(
@@ -26,8 +38,12 @@ function redactPromptText(text: string) {
     .replace(
       /([?&](?:api[_-]?key|access[_-]?token|key|secret|token)=)[^&#\s]+/gi,
       "$1[REDACTED]",
-    )
-    .replace(/\b[a-z][a-z0-9+.-]*:\/{1,2}[^\s]+/gi, "[URL]");
+    );
+
+  return redactCredentialUris(redacted).replace(
+    /\b[a-z][a-z0-9+.-]*:\/{1,2}[^\s]+/gi,
+    "[URL]",
+  );
 }
 
 export function assembleWorkflowSystemPrompt({

@@ -236,6 +236,7 @@ MONGO_URI=mongodb+srv://mongo-user:SYNTHETIC_MONGO_PASSWORD@cluster.example/app
 BROKEN_DATABASE_URL=postgres:/synthetic-user:SYNTHETIC_MALFORMED_DATABASE_PASSWORD@db.example/test
 QUOTED_DATABASE_URL='postgres://synthetic-user:SYNTHETIC_QUOTED_DATABASE_PASSWORD@db.example/test'
 connect postgres:/synthetic-user:SYNTHETIC_UNLABELED_MALFORMED_PASSWORD@db.example/test
+connect jdbc:oracle:thin:synthetic-user/SYNTHETIC_OPAQUE_PASSWORD@db.example:1521:app
 ordinary-after=keep`,
     },
     { mode: "tui" },
