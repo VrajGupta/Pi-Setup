@@ -23,6 +23,18 @@ function redactCredentialUris(text: string) {
   });
 }
 
+/**
+ * PI-07 supports named assignments (`api_key`, `access_key`, `access_token`,
+ * `aws_access_key_id`, `authorization`, `cookie`, `credential`, `password`,
+ * `passwd`, `private_key`, `secret`, `token`, `*_url`, `*_uri`),
+ * Authorization/Cookie headers (including folded continuations), Bearer/Basic
+ * and recognized token formats, hierarchical or slash-prefixed credential URIs,
+ * and query-string credentials.
+ *
+ * Excluded: opaque/rootless colon-delimited userinfo with no `//` root or `/`
+ * separator (for example, `sip:user:password@example.test`). This is a known,
+ * accepted residual risk under unchanged global INV-2, not a PI-07 guarantee.
+ */
 function redactPromptText(text: string) {
   const redacted = text
     .replace(SENSITIVE_HEADER_PATTERN, "$1: [REDACTED]")
