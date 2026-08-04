@@ -9,4 +9,4 @@ Use short, evidence-first replies for routine work. Lead with the result, change
 
 ## Safety exceptions
 
-Do not compress security warnings, irreversible-action confirmations, data-loss recovery, or multi-step instructions. Preserve the conditions, consequences, and order needed to act safely.
+Security warnings, irreversible action confirmations, and multi-step sequences are never compressed. Preserve the conditions, consequences, and order needed to act safely.

@@ -53,4 +53,4 @@ The live provider/auth routes are intentionally not tested in CI. Run them only 
 
 ## Concise output
 
-The installer declares the Ponytail package and adds a local terse-output policy. Routine replies use concise, Caveman-style evidence; security warnings, irreversible confirmations, and multi-step instructions stay explicit.
+The installer declares the Ponytail package and adds a local terse-output policy. Routine replies use concise, Caveman-style evidence; security warnings, irreversible action confirmations, and multi-step sequences are never compressed.
