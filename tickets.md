@@ -1,6 +1,7 @@
 # Tickets — Vraj Pi
 
-Local-file tracker (no GitHub Project for this repo; see `docs/2026-08-04-flow-ui-and-token-savings.md`).
+Local-file tracker (no GitHub Project for this repo; see `docs/2026-08-04-flow-ui-and-token-savings.md`
+and the addendum `docs/2026-08-04-flow-todo-crossrepo-and-docs.md`).
 Work top to bottom. A ticket is claimable only when every **Blocked-by** ticket is Done.
 Every `Verification-command` is run from the repo root and must exit 0 exactly when the ticket is complete.
 
@@ -8,10 +9,11 @@ Status legend: `Planned` · `Agent Ready` · `Coding` · `Debugger Ready` · `De
 
 ## Immediate priority override
 
-1. **Orchestrator-only conversation** — normal user input must never be captured as direct stage steering; the coordinator interprets and relays when needed.
-2. **Honest stage telemetry** — explain elapsed/turn/context labels, suppress unavailable zero-token readings, and render tiny measured use as `<1% ctx`, never misleading `0%` task progress.
-3. **Todo list** — PI-10.
-4. **Footer/token-saving scope** — PI-06 through PI-09.
+1. **Orchestrator-only conversation (user-restated, 2026-08-04)** — Vraj talks only to the orchestrator. No keystroke, setting, or extension hook may deliver his input to a stage agent. Includes the Pi `steeringMode` setting and the header `STEER` label. → PI-11.
+2. **Honest stage telemetry** — explain elapsed/turn/context labels, suppress unavailable zero-token readings, render tiny measured use as `<1% ctx`, never a misleading `0%` that reads as task progress, and never leave a stage row silent for minutes with no reason. → PI-11, PI-16.
+3. **Todo list** — PI-13 → PI-10 → PI-14 (repository, ticket, assignee, pipeline status, blockers, honest ETA; then cross-repository).
+4. **Footer consolidation** — PI-12 (retire the header status block; the footer is the single persistent status surface).
+5. **Token saving / portability / evaluation** — PI-06 → PI-07 → PI-08 (+ PI-09 in parallel), then PI-15 for setup/rollback docs.
 
 ---
 
@@ -266,21 +268,146 @@ The `git diff --quiet` clause is the INV-8 guard: this ticket must leave every r
 
 ## PI-10 — `/flow` issue todo list with live ticket statuses
 
-Status: **Planned** · Blocked-by: PI-05 · Phase 3
+Status: **Planned** · Blocked-by: PI-12, PI-13 · Phase 3 · *Amended 2026-08-04 (addendum plan): adds repository, assignee, and honest ETA columns.*
 
-**What to build.** Add an Issues/Todos view to `/flow` that lists every tracked
-ticket with its ID, title, current status, and blocking tickets, so the complete
-work queue is visible in one place. The view is read-only: status changes remain
-explicit workflow actions, and tracker reads happen before rendering rather than
-inside the render path.
+**What to build.** Add an Issues/Todos view to `/flow` that renders the snapshot
+produced by PI-13 as one row per ticket: repository · ticket ID · title ·
+assignee (owning pipeline role) · pipeline status · blockers · ETA. The view is
+read-only: status changes remain explicit workflow actions, and every tracker
+read happens off the render path.
 
 **Acceptance criteria.**
-- Every ticket in the local tracker appears exactly once with its current status.
-- The list includes the ticket ID, title, status, and `Blocked-by` value when present.
-- Planned, ready, active, reviewing, done, dropped, and blocked work are visibly distinguishable.
-- Missing or malformed tracker data degrades to a bounded `issue list unavailable` message without throwing.
-- Every rendered line fits the panel width and user-controlled ticket text is terminal-safe and secret-redacted.
-- Rendering the view performs no filesystem, network, or subprocess call; tracker reads are performed off the render path.
-- The view never changes ticket status or starts work merely by opening it.
+- Every ticket in the snapshot appears exactly once, with repository, ID, title, assignee, status, blockers, and ETA fields present (a field with no value renders an explicit placeholder such as `—` or `eta unknown`, never blank-by-omission).
+- The assignee is the owning pipeline role (`planner|coder|debugger|reviewer`) derived from status, or the ticket's explicit `Assignee:` field when present; no other role vocabulary appears.
+- Blockers render as the blocking ticket IDs plus whether each is satisfied; a ticket whose chain is satisfied is visibly distinguishable from one that is still blocked.
+- ETA renders exactly `eta unknown` when PI-13 supplies no estimate, and otherwise renders the range and sample size PI-13 supplied, unchanged (INV-9). The view performs no estimation of its own.
+- Planned, ready, active, reviewing, done, dropped, and blocked work are distinguishable without colour (INV-11), verified by rendering with colour disabled.
+- A missing, unreadable, or malformed snapshot degrades to a bounded `issue list unavailable — <reason>` line without throwing.
+- Every rendered line fits the panel width at widths 40, 80, and 120; user-controlled ticket text is terminal-safe and secret-redacted (INV-2).
+- Rendering performs no filesystem, network, or subprocess call, and 1 000 renders at width 120 complete in under 2 000 ms.
+- Opening the view never changes a ticket status, never writes the tracker, and never starts work.
 
-**Verification-command.** `node --test --experimental-strip-types extensions/workflow/issue-list.test.ts && npm run check`
+**Verification-command.** `node --test --experimental-strip-types extensions/workflow/issue-list.test.ts extensions/workflow/flow-panel.test.ts && npm run check`
+
+---
+
+## PI-11 — Retro-gate the orchestrator-only + honest-telemetry continuation (`bb5d79e`)
+
+Status: **Planned** · Blocked-by: none · Phase 3 · Priority 1
+
+**Why this exists.** Commit `bb5d79e` ("fix: keep user messages with orchestrator") is the current HEAD and the current `origin/main`. It removed the workflow `input` steering hook and `canSteerStage`, changed stage-row progress to `<1% ctx`, and made zero Claude usage report unknown — but it has no ticket, no debugger audit, and no reviewer verdict. **The commit is preserved. No reset, rebase, revert, or force-push is authorized.** This ticket retro-gates it forward-only and closes the remaining gaps the user re-reported on 2026-08-04: the Pi `steeringMode` setting and the header `STEER` affordance still imply direct stage steering.
+
+**What to build.** On top of `bb5d79e`: set `steeringMode` in `settings.example.json` to the value that keeps interactive input with the orchestrator (verify the accepted values against the installed Pi runtime before choosing; if no such value exists, document that and keep the extension-level guarantee as the enforcement point); remove the remaining `STEER` label semantics from `extensions/ui-customization/index.ts:169`; add the regression tests that `bb5d79e` did not ship; and state the orchestrator-only rule in `SYSTEM.md`/`README.md` as a hard rule rather than a preference.
+
+**Acceptance criteria.**
+- No code path delivers interactive user input to a stage agent: a test asserts the workflow extension registers no `input` handler that returns `{action:"handled"}`, and that the only route to a stage is an explicit `workflow send` tool call made by the orchestrator.
+- `settings.example.json` no longer ships `"steeringMode": "all"`; the shipped value keeps user input with the orchestrator, and the chosen value is justified in a comment or in `SETUP.md` against the runtime's accepted values.
+- The installed-settings merge in the installer updates an existing `"steeringMode": "all"` to the new value instead of leaving the old one (idempotent on a second run).
+- No UI surface shows `STEER` or any other affordance implying the user is typing to a stage; a test asserts the string is absent from rendered header/footer output.
+- Claude context occupancy of zero total tokens reports unknown, and a stage row with an unknown reading renders no `%` at all (regression for the user-reported `0%`).
+- A measured reading strictly between 0 % and 1 % renders `<1% ctx` and never `0%`.
+- `SYSTEM.md` and `README.md` state that Vraj messages only the orchestrator and that stages are addressed solely by relay.
+- Full suite stays green: `npm test` exits 0.
+
+**Verification-command.** `node --test --experimental-strip-types extensions/workflow/policy.test.ts extensions/workflow/flow-panel.test.ts extensions/ui-customization/footer.test.ts extensions/subagents/context-usage.test.ts extensions/workflow/config-docs.test.ts && npm run check && npm test`
+
+---
+
+## PI-16 — Stage rows explain silence instead of showing a bare number (INV-1, INV-5, INV-6)
+
+Status: **Planned** · Blocked-by: PI-11 · Phase 3 · Priority 2
+
+**Why this exists.** The user observed a planner row reading roughly `15m · 1t · 0%` — fifteen minutes of wall clock, one turn, and a number that reads as "no progress". Elapsed time alone is not a status. A row that cannot say anything useful must say *why*.
+
+**What to build.** Add a bounded `reason` field to the stage row in both the footer and `/flow`, derived only from data already tracked in-process (last status change, last turn timestamp, tool in flight, waiting on question/helper, provider error, spend/quota limit, stale bridge). No new I/O on the render path.
+
+**Acceptance criteria.**
+- A stage row whose last update is older than the 30 s staleness window renders the `~` prefix **and** a reason token (for example `~ waiting on provider`), never a bare elapsed/turn pair.
+- The reason vocabulary is a closed, tested set; an unrecognised internal state renders exactly `reason unknown`, never a fabricated cause.
+- A row with no measured reading renders no `%` character at all (INV-1) and still renders its reason.
+- Reason text is truncated to fit, terminal-safe, and secret-redacted (INV-2); a provider error message containing an `Authorization` header renders redacted.
+- The reason is legible without colour (INV-11).
+- Adding the reason keeps the footer at ≤7 lines and ≤4 stage rows at widths 20, 60, 80, 200 (INV-4), and keeps render under 2 ms at width 200 over 1 000 renders (INV-3).
+- A getter that throws while producing a reason still yields the base 3 footer lines (INV-6).
+
+**Verification-command.** `node --test --experimental-strip-types extensions/ui-customization/footer.test.ts extensions/workflow/flow-panel.test.ts && npm run check && npm test`
+
+---
+
+## PI-12 — Retire the header status block; the footer is the single status surface (INV-3, INV-4, INV-11)
+
+Status: **Planned** · Blocked-by: PI-16 · Phase 3
+
+**What to build.** `extensions/ui-customization/index.ts:151-186` renders route, workflow status, active stage, and `N running · N tracked` in the header while the footer renders the same rail. Move every piece of still-wanted status into the persistent footer and remove the header status block, keeping the identity line (π + cwd) wherever the user still needs it.
+
+**Acceptance criteria.**
+- The header no longer renders route, workflow status, active stage, or agent counts; a test asserts those tokens are absent from header output.
+- Every status token removed from the header is present in footer output for the same state, or is explicitly listed in the ticket's notes as intentionally dropped with a reason — nothing disappears silently.
+- The footer still renders exactly 3 base lines with no tracked agents, 5 with 2 stage agents, and 7 with 4 or more (INV-4); the added header content does not push it past 7 lines.
+- Every footer line's visible width is ≤ the requested width at widths 20, 60, 80, and 200, with ANSI sequences excluded from the width measurement.
+- Percentages remain measured-only (INV-1), stale readings keep the `~` prefix (INV-5), and stage rows keep their PI-16 reason.
+- All status meaning survives with colour disabled (INV-11).
+- The footer render path performs no filesystem, network, or subprocess call and stays under 2 ms at width 200 over 1 000 renders (INV-3).
+- A throw inside any status getter still yields the 3 base lines (INV-6).
+
+**Verification-command.** `node --test --experimental-strip-types extensions/ui-customization/footer.test.ts extensions/ui-customization/header.test.ts && npm run check && npm test`
+
+---
+
+## PI-13 — Tracker snapshot source and honest ETA estimator (pure module, INV-9)
+
+Status: **Planned** · Blocked-by: PI-11 · Phase 3
+
+**What to build.** A pure module `extensions/shared/ticket-snapshot.ts` that parses tracker markdown text (passed in as a string — the module does no I/O) into frozen `TicketRecord`s — `{repo, id, title, status, blockedBy[], assignee, verificationCommand?, updatedAt?}` — resolves blocker satisfaction, and computes an ETA per ticket under INV-9. A separate thin caller performs the file read off the render path and stamps the snapshot with a capture time.
+
+**Acceptance criteria.**
+- Parsing the repo's own `tickets.md` yields one record per `## PI-NN` heading, with status, title, and `Blocked-by` list extracted, and `Dropped` tickets marked dropped rather than pending.
+- Unknown, missing, or malformed status text yields `status:"unknown"` rather than a guess or a throw; a truncated or empty document yields an empty snapshot plus a reason string.
+- `assignee` resolves to the owning role (`planner|coder|debugger|reviewer`) from status, or the explicit `Assignee:` field when present; no other vocabulary can be produced.
+- Blocker resolution reports, per ticket, which blockers are satisfied; a cycle in the `Blocked-by` graph is reported as `blocked (cycle)` and never loops or overflows the stack.
+- ETA returns `unknown` with fewer than 3 comparable completed samples; with ≥3 it returns a range plus the sample size `n`, derived only from measured completed-stage durations in the snapshot (INV-9). A test asserts no ETA is ever derived from a percentage, a token count, or wall-clock elapsed alone.
+- Every returned record and snapshot is frozen, and the input string is not mutated.
+- The module imports nothing from `node:fs`, `node:child_process`, or any network API, asserted by reading its own source text.
+- Parsing a 10 000-line tracker completes in under 100 ms.
+
+**Verification-command.** `node --test --experimental-strip-types extensions/shared/ticket-snapshot.test.ts && npm run check`
+
+---
+
+## PI-14 — Repository registry and cross-repository task/status view (INV-10)
+
+Status: **Planned** · Blocked-by: PI-10 · Phase 3
+
+**What to build.** A declared repository registry (`workflow.repositories` in settings, defaulting to this repo only — **no filesystem discovery**) plus a cross-repository mode of the Issues/Todos view that merges PI-13 snapshots from each registered repository, grouped by repository, with per-repository health.
+
+**Acceptance criteria.**
+- The registry comes only from explicit settings; a test asserts no directory scan or glob of the user's home or work directories occurs.
+- With no registry configured, the view shows this repository only and says so, rather than appearing empty.
+- Tickets are grouped by repository, and no ticket can render under a repository it did not come from (asserted with two fixtures that share ticket IDs).
+- A repository that is missing, unreadable, times out, or has no tracker renders `unavailable — <reason>` for that repository only; the other repositories still render (INV-10).
+- Every repository read happens off the render path and carries a capture timestamp; a snapshot older than the staleness window renders with `~` and its age, never as current (INV-5, INV-10).
+- The view is read-only across repositories: a test asserts no write, commit, push, or tracker mutation targets any path outside this repository.
+- Repository names and ticket text are terminal-safe, secret-redacted, and width-bounded at widths 40, 80, and 120 (INV-2, INV-4).
+- Cross-repository rendering performs no filesystem, network, or subprocess call and stays under 2 ms per render at width 120 over 1 000 renders.
+
+**Verification-command.** `node --test --experimental-strip-types extensions/workflow/repo-registry.test.ts extensions/workflow/issue-list.test.ts && npm run check && npm test`
+
+---
+
+## PI-15 — Setup, rollback, and push-proof documentation
+
+Status: **Planned** · Blocked-by: PI-08 · Phase 2
+
+**Why this exists.** `README.md` claims the installer "backs up current runtime resources", but `SETUP.md` (36 lines) documents no way to restore them, and no Windows path. Push proof itself already exists — `origin/main` and local `HEAD` are both `bb5d79e` — so this ticket documents how to reproduce that proof, and claims no new push.
+
+**What to build.** Extend `SETUP.md` with an install → verify → rollback lifecycle, and a short "proving a push landed" section.
+
+**Acceptance criteria.**
+- `SETUP.md` documents the install command for macOS/Linux and for Windows (PowerShell), consistent with the PI-08 installer.
+- `SETUP.md` documents exactly where backups are written, how to list them, and a copy-pasteable rollback procedure that restores the previous `~/.pi/agent` state; the procedure is verified by running install → rollback against a temp agent dir and asserting the directory content matches the pre-install state byte-for-byte.
+- The rollback section states what rollback does **not** restore (for example `auth.json`, `models.json`, and session data) rather than implying a total restore.
+- A "push proof" section shows the exact commands that establish a push landed (`git rev-parse HEAD` and `git ls-remote origin <branch>` compared), and states that a handoff may not claim a push without that comparison.
+- No credential, token, or key appears in any added text; the remote is referenced by URL only.
+- The ticket changes only documentation and installer test fixtures: `git diff --stat` shows no change under `extensions/`.
+
+**Verification-command.** `node --test --experimental-strip-types extensions/workflow/config-docs.test.ts scripts/install-rollback.test.mjs && npm run check`
