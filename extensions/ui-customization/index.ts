@@ -148,17 +148,7 @@ export default function uiCustomization(pi: ExtensionAPI) {
           const identity =
             theme.fg("accent", "π") +
             theme.fg("text", ` ${formatDirectory(ctx.cwd)}`);
-          const route = workflow.route
-            ? `${workflow.route.mode}${workflow.route.stage ? `/${workflow.route.stage}` : ""}`
-            : "direct";
-          const right = theme.fg("muted", `${route} · ${workflow.status}`);
-          const rail = STAGES.map((stage) =>
-            stageLabel(stage, workflow.activeStage, workflow.status, theme),
-          ).join(theme.fg("dim", "  →  "));
-          return [
-            columns(identity, right, width),
-            truncateToWidth(` ${rail}`, width),
-          ];
+          return [truncateToWidth(identity, width)];
         },
         invalidate() {},
       };
@@ -173,6 +163,12 @@ export default function uiCustomization(pi: ExtensionAPI) {
             ? `${modelInfo.provider}/${modelInfo.modelId}`
             : modelInfo.modelId;
           const runtime = `${model} · ${modelInfo.thinking} · ${activityGlyph(activity)} ${workflow.activeStage ?? "direct"}`;
+          const route = workflow.route
+            ? `${workflow.route.mode}${workflow.route.stage ? `/${workflow.route.stage}` : ""}`
+            : "direct";
+          const flow = STAGES.map((stage) =>
+            stageLabel(stage, workflow.activeStage, workflow.status, theme),
+          ).join(theme.fg("dim", "  →  "));
           const context =
             modelInfo.contextPercent === null
               ? "?"
@@ -201,6 +197,11 @@ export default function uiCustomization(pi: ExtensionAPI) {
             columns(
               theme.fg("text", formatDirectory(ctx.cwd)),
               theme.fg("muted", runtime),
+              width,
+            ),
+            columns(
+              `${theme.fg("accent", "flow")} ${flow}`,
+              theme.fg("muted", `${route} · ${workflow.status}`),
               width,
             ),
             columns(theme.fg("muted", usage), theme.fg("muted", pr), width),
