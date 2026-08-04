@@ -4,12 +4,7 @@ import type {
   ExtensionAPI,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import {
-  getCapabilities,
-  hyperlink,
-  truncateToWidth,
-  visibleWidth,
-} from "@earendil-works/pi-tui";
+import { getCapabilities, hyperlink } from "@earendil-works/pi-tui";
 import {
   GIT_INFO_CHANNEL,
   MODEL_INFO_CHANNEL,
@@ -21,6 +16,7 @@ import {
   type GitInfoState,
   type ModelInfoState,
 } from "../shared/dashboard-state.ts";
+import { buildReading } from "../shared/stage-progress.ts";
 import {
   SUBAGENT_STATE_CHANNEL,
   WORKFLOW_STATE_CHANNEL,
@@ -30,6 +26,7 @@ import {
   type WorkflowState,
   type WorkflowSubagentSummary,
 } from "../shared/workflow-state.ts";
+import { columns, renderFooter } from "./footer.ts";
 
 const STAGES: StageName[] = ["part1", "part2", "part3", "part4"];
 
@@ -45,18 +42,6 @@ function formatDirectory(cwd: string) {
   const home = homedir();
   if (cwd === home) return "~";
   return cwd.startsWith(`${home}/`) ? `~/${relative(home, cwd)}` : cwd;
-}
-
-function columns(left: string, right: string, width: number) {
-  if (!right) return truncateToWidth(left, width);
-  const gap = width - visibleWidth(left) - visibleWidth(right);
-  if (gap >= 1) return `${left}${" ".repeat(gap)}${right}`;
-  const leftWidth = Math.max(1, Math.floor(width * 0.48));
-  const rightWidth = Math.max(1, width - leftWidth - 1);
-  return truncateToWidth(
-    `${truncateToWidth(left, leftWidth)} ${truncateToWidth(right, rightWidth)}`,
-    width,
-  );
 }
 
 function isWorkflowState(value: unknown): value is WorkflowState {
@@ -127,6 +112,9 @@ export default function uiCustomization(pi: ExtensionAPI) {
   let gitInfo = emptyGitInfoState();
   let workflow = emptyWorkflowState();
   let agents: WorkflowSubagentSummary[] = [];
+  // Epoch ms of the last subagent-state publish; readings are stamped with it
+  // so a quiet bus shows rows as stale (~) instead of falsely fresh.
+  let agentsAt = 0;
   let activity: Activity = "idle";
   let activeTui: { requestRender(force?: boolean): void } | undefined;
   let currentContext: ExtensionContext | undefined;
@@ -152,6 +140,7 @@ export default function uiCustomization(pi: ExtensionAPI) {
   const stopSubagentListener = pi.events.on(SUBAGENT_STATE_CHANNEL, (value) => {
     if (!Array.isArray(value)) return;
     agents = value.filter(isWorkflowSubagentSummary);
+    agentsAt = Date.now();
     refresh();
   });
   const stopRefreshListener = pi.events.on(REFRESH_CHANNEL, refresh);
@@ -234,24 +223,28 @@ export default function uiCustomization(pi: ExtensionAPI) {
               : gitInfo.pullRequest
                 ? `PR #${gitInfo.pullRequest.number}`
                 : git;
-          const lines = [
-            columns(
-              theme.fg("text", formatDirectory(ctx.cwd)),
-              theme.fg("muted", runtime),
-              width,
-            ),
-            columns(
-              `${theme.fg("accent", "flow")} ${flow}`,
-              theme.fg("muted", `${route} · ${workflow.status}`),
-              width,
-            ),
-            columns(theme.fg("muted", usage), theme.fg("muted", pr), width),
-          ];
-          const statuses = Array.from(
-            footerData.getExtensionStatuses().values(),
-          ).flatMap((value) => value.split("\n"));
-          lines.push(...statuses.map((line) => truncateToWidth(line, width)));
-          return lines;
+          return renderFooter({
+            width,
+            theme,
+            now: Date.now(),
+            cwdLabel: formatDirectory(ctx.cwd),
+            runtime,
+            rail: `${theme.fg("accent", "flow")} ${flow}`,
+            routeStatus: `${route} · ${workflow.status}`,
+            usage,
+            pr,
+            agents,
+            statuses: Array.from(footerData.getExtensionStatuses().values()),
+            readingFor: (agent) =>
+              buildReading({
+                source: "context",
+                done: agent.contextTokens,
+                total: agent.contextWindow,
+                at: agentsAt,
+                elapsedMs: Date.now() - agent.startedAt,
+                turns: agent.turns,
+              }),
+          });
         },
       };
     });
@@ -264,6 +257,7 @@ export default function uiCustomization(pi: ExtensionAPI) {
     gitInfo = emptyGitInfoState();
     workflow = emptyWorkflowState();
     agents = [];
+    agentsAt = 0;
     activity = "idle";
     install(ctx);
   });
