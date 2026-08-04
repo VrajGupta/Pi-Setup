@@ -29,8 +29,8 @@ export const STAGE_PROFILES = {
   },
   part4: {
     harness: "pi",
-    model: "openrouter/x-ai/grok-4.5",
-    defaultReasoning: "xhigh",
+    model: "openai-codex/gpt-5.6-sol",
+    defaultReasoning: "medium",
     color: "mint",
     label: "grade",
   },
