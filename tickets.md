@@ -29,11 +29,11 @@ Status: **Agent Ready** · Blocked-by: none · Phase 1
 
 Status: **Planned** · Blocked-by: PI-01 · Phase 1
 
-**What to build.** A pure module `extensions/shared/stage-progress.ts` exporting a `ProgressReading` discriminated union — `{kind:"measured", percent, done, total, source, at}` or `{kind:"indeterminate", elapsedMs, turns, at}` — plus a builder that accepts only explicit numerator/denominator pairs from the four allowed sources: `context`, `questions`, `stage`, `tickets`. No rendering, no I/O.
+**What to build.** A pure module `extensions/shared/stage-progress.ts` exporting a `ProgressReading` discriminated union — `{kind:"measured", percent, done, total, source, at}` or `{kind:"indeterminate", elapsedMs, turns, at}` — plus a builder that accepts only explicit numerator/denominator pairs from the three allowed in-process sources: `context`, `questions`, `stage`. No rendering, no I/O, no tracker.
 
 **Acceptance criteria.**
 - Building with a `total` of `0`, `null`, `undefined`, or `NaN` returns `kind:"indeterminate"`, never a percent.
-- Building with a `source` outside `context|questions|stage|tickets` throws.
+- Building with a `source` outside `context|questions|stage` throws — in particular a `"tickets"` source throws, since tracker-derived percent is out of scope.
 - A measured reading clamps `percent` to `0..100` and preserves the exact `done`/`total` it was built from.
 - A reading whose `at` is older than 30 000 ms is reported stale by the module's `isStale` helper; `isStale` is exactly `false` at 30 000 ms and `true` at 30 001 ms.
 - The module imports nothing from `node:fs`, `node:child_process`, or any network API (asserted by reading its own source text).
@@ -42,27 +42,17 @@ Status: **Planned** · Blocked-by: PI-01 · Phase 1
 
 ---
 
-## PI-03 — Ticket progress source with bounded, degrading reads (INV-6)
+## PI-03 — ~~Ticket progress source~~ (DROPPED)
 
-Status: **Planned** · Blocked-by: PI-02 · Phase 1
+Status: **Dropped** · Phase 1
 
-**What to build.** An async, cached tracker reader that parses this `tickets.md` format (count `## PI-NN` headings and their `Status:` values) into a `tickets` progress reading, refreshed off the render path.
-
-**Acceptance criteria.**
-- Given a `tickets.md` with 8 tickets of which 3 have `Status: **Done**`, the reader returns a measured reading with `done=3`, `total=8`.
-- A missing tracker file returns `kind:"indeterminate"` and does not throw.
-- A malformed tracker (no `## PI-` headings) returns `kind:"indeterminate"`, not `0%`.
-- A read that exceeds 1 000 ms is abandoned and returns `kind:"indeterminate"`.
-- Two refresh calls less than 5 000 ms apart perform exactly one filesystem read (the second returns the cached value).
-- A cached value older than 30 000 ms is returned with its original `at`, so `isStale` reports it stale rather than refreshed.
-
-**Verification-command.** `node --test --experimental-strip-types extensions/shared/ticket-progress.test.ts && npm run check`
+Dropped by the user's final answer to decision 2 (measured-only percentages, tracker excluded). No tracker read is on the UI path, which also removes the only filesystem dependency from the progress feature. The ID is retired rather than reused so downstream references stay unambiguous.
 
 ---
 
 ## PI-04 — Adaptive persistent footer with live stage rows (INV-3, INV-4, INV-5)
 
-Status: **Planned** · Blocked-by: PI-03 · Phase 1
+Status: **Planned** · Blocked-by: PI-02 · Phase 1
 
 **What to build.** Extract the footer body of `extensions/ui-customization/index.ts` into a pure `renderFooter(state) => string[]` function and add adaptive stage rows: the existing 3 base lines, plus one row per tracked part1–part4 agent — `<glyph> <stage> <backend>/<model> · <elapsed> · <turns>t · <progress>` — where `<progress>` is a percent only for a measured reading and is omitted otherwise.
 
@@ -148,3 +138,24 @@ Status: **Planned** · Blocked-by: PI-07 · Phase 2
 - `SETUP.md` documents the Windows install command and the fact that `bin/fd` is a platform-specific download, not a committed binary.
 
 **Verification-command.** `node --test --experimental-strip-types extensions/shared/*.test.ts && node scripts/install.mjs --dry-run --agent-dir "$(mktemp -d)" && npm run check && npm test`
+
+---
+
+## PI-09 — Investigate-only: compressing proxy evaluation (no adoption)
+
+Status: **Planned** · Blocked-by: PI-06 · Phase 2 · May run in parallel with PI-07/PI-08
+
+**What to build.** A written evaluation at `docs/2026-08-04-proxy-evaluation.md` of routing Pi through a compressing proxy — OmniRoute's RTK + Caveman compression (source already on this machine at `~/.hermes/node/lib/node_modules/omniroute`), and Headroom **if and only if** a real artifact or primary source for it can be identified. This ticket produces a recommendation and changes no configuration.
+
+**Acceptance criteria.**
+- `docs/2026-08-04-proxy-evaluation.md` exists and contains, for each candidate: what it compresses, where in the request it sits, the measured or vendor-claimed savings **with the claim's source cited**, and whether the claim was independently reproduced or not.
+- The document states, for each candidate, its effect on provider-side prompt caching, and says plainly when that effect is unknown rather than guessing.
+- The document lists exactly what the third party would see (system prompt, file contents, tool output, credentials) and names the resulting trust edge, including the fact that `agentrouter.org` already sits on the Anthropic route today.
+- The document ends with one of three explicit verdicts — `adopt`, `reject`, or `needs a further spike` — and the concrete next step for that verdict.
+- If no primary source for "Headroom" can be found, the document says so and marks it unassessed rather than describing it.
+- The diff for this ticket touches no file outside `docs/`: `models.json`, `settings.json`, `settings.example.json`, and all provider routing are unchanged (INV-8).
+- No credential, key, token, or real user prompt appears in the document or in any command it records; any measurement uses synthetic prompts and no credentials.
+
+**Verification-command.** `test -f docs/2026-08-04-proxy-evaluation.md && grep -Eq '^Verdict: (adopt|reject|needs a further spike)$' docs/2026-08-04-proxy-evaluation.md && git diff --quiet HEAD -- settings.example.json install.sh SYSTEM.md package.json && npm run check`
+
+The `git diff --quiet` clause is the INV-8 guard: this ticket must leave every routing/config file byte-identical, so the gate fails if the spike edited one.

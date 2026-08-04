@@ -22,8 +22,8 @@ Date: 2026-08-04 · Stage: part1 (plan) · Repo: `~/Work/pi-agent`
 ## Locked decisions (from the user)
 
 1. **Adaptive footer** — 3 base lines always; one row per tracked part1–part4 agent, shown only while that agent exists; max 4 rows (7 lines total).
-2. **Measured percent + ticket-based percent** — percentages only from a real denominator: context tokens/window, question `k/N`, stage `k/4`, and tickets done/total from the tracker. Everything else is indeterminate.
-3. **Local-only token savings, and the whole workflow must run on Windows.** No new proxy, no new network hop. Ponytail/Caveman/prompt-cache work stays local. Windows support is a first-class deliverable.
+2. **Measured-only percent** — percentages come from exactly three in-process denominators: context tokens/window, question `k/N`, stage `k/4`. Everything else shows elapsed + turns and no number. *(Revised: an earlier answer allowed a tracker-derived tickets done/total percent; the user's final answer excludes it, so no tracker read is on the UI path at all. PI-03 is dropped.)*
+3. **Local-only adoption; the proxy is investigate-only.** Ponytail, a Pi Caveman equivalent, and prompt-cache stability ship. A compressing proxy (OmniRoute RTK+Caveman, or Headroom if it can be located) is **evaluated and reported, never wired in** — adoption needs a fresh user decision. The whole workflow must also run on the user's Windows laptop.
 
 ## Invariants (testable; `/part3` attacks these, `/part4` grades them)
 
@@ -32,9 +32,9 @@ Date: 2026-08-04 · Stage: part1 (plan) · Repo: `~/Work/pi-agent`
 - **INV-3 render is pure and fast.** The footer render path performs no filesystem, network, or subprocess I/O and completes in **≤2 ms at width 200** (p95 over 1000 renders). All external reads happen off the render path.
 - **INV-4 bounded footprint.** Footer ≤7 lines and ≤4 stage rows, every line truncated to the terminal width, never wrapped, at any width ≥20 columns.
 - **INV-5 staleness is visible.** A reading older than **30 s** renders dimmed with a `~` prefix. Stale data is never presented as current.
-- **INV-6 degrade, never fabricate, never crash.** Tracker missing/unparseable, `gh` unauthenticated, or a refresh exceeding its **1 s** timeout → that reading becomes indeterminate (not `0%`, not last-known-good past the staleness window). Any throw inside the footer renderer is caught and the base 3 lines still render.
+- **INV-6 degrade, never fabricate, never crash.** A missing or malformed reading becomes indeterminate (not `0%`, not last-known-good past the staleness window). Any throw inside the footer renderer is caught and the base 3 lines still render.
 - **INV-7 portability.** No macOS-only assumption on the shipped path. Notification and installer paths degrade to a logged no-op on an unsupported platform instead of throwing.
-- **INV-8 no new trust edge.** Phase 2 adds no proxy, no new prompt-carrying network hop, and does not change provider routing.
+- **INV-8 no new trust edge without a decision.** No ticket in this plan changes provider routing, adds a prompt-carrying network hop, or sends any real prompt or credential to a third party. The proxy evaluation (PI-09) is a document-only spike: it may read public docs and run a local measurement with synthetic prompts and no credentials, and it ends in a recommendation, never in configuration.
 
 ### Latency / cadence budgets
 
@@ -42,26 +42,28 @@ Date: 2026-08-04 · Stage: part1 (plan) · Repo: `~/Work/pi-agent`
 | --- | --- |
 | Footer render | ≤2 ms @ width 200 |
 | `/flow` open | ≤50 ms |
-| Tracker refresh cadence | ≥5 s between reads |
-| Tracker read timeout | ≤1 s → indeterminate |
-| `gh` call timeout (if a board is ever configured) | ≤2 s → indeterminate |
-| Staleness threshold | 30 s |
+| Reading staleness threshold | 30 s |
+| Subagent bridge timeout (existing) | 10 s |
 
 ### Failure modes
 
 | Dependency | Down / slow / garbage | User sees |
 | --- | --- | --- |
-| `tickets.md` | missing, unreadable, malformed | ticket percent hidden; rail unaffected |
 | Subagent bridge | timeout (already 10 s) | stage row shows `×` + reason in `/flow`; footer stays bounded |
-| `gh` | unauthenticated / no scope | ticket percent hidden; `/flow` states the reason once |
+| Context usage unavailable | `getContextUsage()` returns nothing | context percent omitted; row falls back to elapsed + turns |
 | OS notifier | absent (`notify-send`, BurntToast) | silent no-op; TUI + title remain authoritative |
 | Extension throw | any | base 3 footer lines render; error surfaced in `/flow`, TUI does not crash |
 
 ## Phase order
 
-**Phase 1 (UI): PI-01 → PI-05.** **Phase 2 (tokens/portability): PI-06 → PI-08.**
+**Phase 1 (UI): PI-01 → PI-02 → PI-04 → PI-05.** (PI-03 dropped by decision 2.)
+**Phase 2 (tokens/portability/evaluation): PI-06 → PI-07 → PI-08, plus PI-09 which may run in parallel.**
 Phase 2 must not start before PI-04 lands, so token work is never blamed for UI regressions.
+
+## Adoption boundary
+
+PI-09 produces a written recommendation about a compressing proxy. It has no authority to change `models.json`, `settings.json`, or any provider route. If the recommendation is favourable, that is a new part1 run with its own decision, its own invariants for a second party seeing full prompts, and its own prompt-cache impact analysis.
 
 ## Out of scope (explicit)
 
-Headroom proxy, OmniRoute/RTK proxy compression, CodeGraph or any external structural-retrieval service — all excluded by decision 3 (INV-8). A future part1 run may reopen them as investigate-only.
+CodeGraph and any external structural-retrieval service — not chosen; reopen in a future part1 run if wanted. Direct adoption of any proxy — see the adoption boundary above.
