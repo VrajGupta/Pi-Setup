@@ -86,7 +86,7 @@ Dropped by the user's final answer to decision 2 (measured-only percentages, tra
 
 ## PI-04 — Adaptive persistent footer with live stage rows (INV-3, INV-4, INV-5)
 
-Status: **Debugger Ready** · Blocked-by: PI-02 · Phase 1
+Status: **Grading Ready** · Blocked-by: PI-02 · Phase 1
 
 **What to build.** Extract the footer body of `extensions/ui-customization/index.ts` into a pure `renderFooter(state) => string[]` function and add adaptive stage rows: the existing 3 base lines, plus one row per tracked part1–part4 agent — `<glyph> <stage> <backend>/<model> · <elapsed> · <turns>t · <progress>` — where `<progress>` is a percent only for a measured reading and is omitted otherwise.
 

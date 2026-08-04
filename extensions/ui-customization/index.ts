@@ -189,6 +189,7 @@ export default function uiCustomization(pi: ExtensionAPI) {
       return {
         invalidate() {},
         render(width: number) {
+          const now = Date.now();
           const model = modelInfo.provider
             ? `${modelInfo.provider}/${modelInfo.modelId}`
             : modelInfo.modelId;
@@ -223,10 +224,16 @@ export default function uiCustomization(pi: ExtensionAPI) {
               : gitInfo.pullRequest
                 ? `PR #${gitInfo.pullRequest.number}`
                 : git;
+          let statuses: string[] = [];
+          try {
+            statuses = Array.from(footerData.getExtensionStatuses().values());
+          } catch {
+            // INV-6: a broken extension status must not take down the footer.
+          }
           return renderFooter({
             width,
             theme,
-            now: Date.now(),
+            now,
             cwdLabel: formatDirectory(ctx.cwd),
             runtime,
             rail: `${theme.fg("accent", "flow")} ${flow}`,
@@ -234,14 +241,14 @@ export default function uiCustomization(pi: ExtensionAPI) {
             usage,
             pr,
             agents,
-            statuses: Array.from(footerData.getExtensionStatuses().values()),
+            statuses,
             readingFor: (agent) =>
               buildReading({
                 source: "context",
                 done: agent.contextTokens,
                 total: agent.contextWindow,
                 at: agentsAt,
-                elapsedMs: Date.now() - agent.startedAt,
+                elapsedMs: now - agent.startedAt,
                 turns: agent.turns,
               }),
           });

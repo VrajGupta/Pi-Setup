@@ -6,8 +6,12 @@ import {
   buildReading,
   type ProgressReading,
 } from "../shared/stage-progress.ts";
-import type { WorkflowSubagentSummary } from "../shared/workflow-state.ts";
+import {
+  SUBAGENT_STATE_CHANNEL,
+  type WorkflowSubagentSummary,
+} from "../shared/workflow-state.ts";
 import { renderFooter, type FooterState } from "./footer.ts";
+import uiCustomization from "./index.ts";
 
 const plainTheme = { fg: (_color: string, text: string) => text };
 
@@ -223,4 +227,201 @@ test("the module imports no fs, subprocess, or network APIs", () => {
     /from\s+["']node:(fs|child_process|http|https|net|os|path)/,
   );
   assert.doesNotMatch(source, /\b(fetch|XMLHttpRequest|WebSocket)\s*\(/);
+});
+
+test("unknown stages are omitted, duplicate stages remain distinct, and input order is preserved", () => {
+  const agents = [
+    agent({ id: "part4", stage: "part4", modelLabel: "model-part4" }),
+    agent({
+      id: "unknown",
+      stage: "mystery" as WorkflowSubagentSummary["stage"],
+    }),
+    agent({ id: "part2-a", stage: "part2", modelLabel: "model-part2-a" }),
+    agent({ id: "part2-b", stage: "part2", modelLabel: "model-part2-b" }),
+  ];
+  const before = [...agents];
+  const lines = renderFooter(state({ agents }));
+
+  assert.equal(lines.length, 6);
+  assert.ok(lines[3].includes("model-part2-a"));
+  assert.ok(lines[4].includes("model-part2-b"));
+  assert.ok(lines[5].includes("model-part4"));
+  assert.deepEqual(agents, before);
+});
+
+test("very narrow and non-finite widths never throw or overflow", () => {
+  const input = state({
+    width: 0,
+    agents: [agent({ stage: "part1", modelLabel: "模型😀" })],
+  });
+  for (const width of [0, 1, 2, 3, 4, 19, Number.NaN, Infinity]) {
+    assert.doesNotThrow(() => renderFooter({ ...input, width }));
+    const lines = renderFooter({ ...input, width });
+    for (const line of lines) {
+      assert.ok(
+        visibleWidth(line) <=
+          Math.max(0, Math.floor(Number.isFinite(width) ? width : 0)),
+        `${width}: ${JSON.stringify(line)}`,
+      );
+    }
+  }
+});
+
+test("empty and unicode model labels use a safe fallback and ANSI width is measured visibly", () => {
+  const ansiTheme = {
+    fg: (_color: string, text: string) => `\u001b[38;5;33m${text}\u001b[0m`,
+  };
+  const lines = renderFooter(
+    state({
+      width: 20,
+      theme: ansiTheme,
+      agents: [
+        agent({ stage: "part1", modelLabel: "" }),
+        agent({ stage: "part2", modelLabel: "模型😀模型😀模型😀" }),
+      ],
+    }),
+  );
+
+  assert.ok(lines[3].includes("pi/?"));
+  for (const line of lines) assert.ok(visibleWidth(line) <= 20);
+});
+
+test("non-finite timestamps, counters, clocks, and readings degrade without fabricated output", () => {
+  const lines = renderFooter(
+    state({
+      now: Infinity,
+      agents: [
+        agent({ stage: "part3", startedAt: Number.NaN, turns: Infinity }),
+      ],
+      readingFor: () =>
+        ({
+          kind: "measured",
+          percent: Number.NaN,
+          done: 1,
+          total: 2,
+          source: "context",
+          at: Number.POSITIVE_INFINITY,
+        }) as ProgressReading,
+    }),
+  );
+
+  assert.equal(lines.length, 4);
+  assert.ok(lines[3].startsWith("~"));
+  assert.ok(!lines[3].includes("NaN"));
+  assert.ok(!lines[3].includes("Infinity"));
+  assert.ok(!lines[3].includes("%"));
+});
+
+test("the stale boundary is fresh at exactly 30 seconds and stale one millisecond later", () => {
+  const reading = () =>
+    buildReading({ source: "context", done: 1, total: 2, at: 70_000 });
+  const fresh = renderFooter(
+    state({
+      now: 100_000,
+      agents: [agent({ stage: "part1" })],
+      readingFor: reading,
+    }),
+  );
+  const stale = renderFooter(
+    state({
+      now: 100_001,
+      agents: [agent({ stage: "part1" })],
+      readingFor: reading,
+    }),
+  );
+
+  assert.ok(!fresh[3].startsWith("~"));
+  assert.ok(stale[3].startsWith("~"));
+});
+
+test("theme and status rendering failures fall back to bounded base lines", () => {
+  const lines = renderFooter(
+    state({
+      agents: [agent({ stage: "part1" })],
+      statuses: ["a status that should not escape the width"],
+      theme: {
+        fg() {
+          throw new Error("theme unavailable");
+        },
+      },
+    }),
+  );
+
+  assert.equal(lines.length, 5);
+  for (const line of lines) assert.ok(visibleWidth(line) <= 80);
+});
+
+test("live subagent state reaches the footer as measured context progress and omits helpers", () => {
+  type EventHandler = (value: unknown) => void;
+  const listeners = new Map<string, Set<EventHandler>>();
+  const hooks = new Map<string, (...args: unknown[]) => void>();
+  let footerFactory:
+    | ((
+        tui: { requestRender(): void },
+        theme: typeof plainTheme,
+        footerData: { getExtensionStatuses(): Map<string, string> },
+      ) => { render(width: number): string[] })
+    | undefined;
+  const theme = plainTheme;
+  const pi = {
+    events: {
+      on(channel: string, handler: EventHandler) {
+        const channelListeners =
+          listeners.get(channel) ?? new Set<EventHandler>();
+        channelListeners.add(handler);
+        listeners.set(channel, channelListeners);
+        return () => channelListeners.delete(handler);
+      },
+      emit(channel: string, value: unknown) {
+        for (const handler of listeners.get(channel) ?? []) handler(value);
+      },
+    },
+    on(event: string, handler: (...args: unknown[]) => void) {
+      hooks.set(event, handler);
+    },
+    getThinkingLevel() {
+      return "high";
+    },
+  };
+  const context = {
+    mode: "tui",
+    cwd: "/repo",
+    ui: {
+      theme,
+      setHeader() {},
+      setFooter(factory: typeof footerFactory) {
+        footerFactory = factory;
+      },
+      setTitle() {},
+    },
+  };
+
+  uiCustomization(pi as never);
+  hooks.get("session_start")?.({}, context);
+  assert.ok(footerFactory);
+  const footer = footerFactory({ requestRender() {} }, theme, {
+    getExtensionStatuses: () => new Map(),
+  });
+  pi.events.emit(SUBAGENT_STATE_CHANNEL, [
+    agent({
+      id: "stage-agent",
+      stage: "part2",
+      contextTokens: 25,
+      contextWindow: 100,
+    }),
+    agent({ id: "helper-agent" }),
+  ]);
+
+  const lines = footer.render(80);
+  assert.equal(lines.length, 4);
+  assert.ok(lines[3].includes("part2"));
+  assert.ok(lines[3].includes("25%"));
+  assert.ok(!lines.some((line) => line.includes("helper-agent")));
+
+  const statusFailureFooter = footerFactory({ requestRender() {} }, theme, {
+    getExtensionStatuses() {
+      throw new Error("status provider unavailable");
+    },
+  });
+  assert.doesNotThrow(() => statusFailureFooter.render(80));
 });
