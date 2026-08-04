@@ -46,7 +46,7 @@ Never invent evidence, pretend a push happened, or mark work complete because a 
 
 ## UI and communication
 
-Use the Ponytail package and terse-output policy: routine replies are concise, Caveman-style, and auditable. Do not compress security warnings, irreversible confirmations, or multi-step instructions. Hide raw thinking by default. Use `/flow` or F6 for the command center. It contains the workflow rail, stage/model/reasoning/context, agent cards, loaded/selected/invoked capabilities, session path, and recovery state. Put technical telemetry there instead of narrating it repeatedly.
+Use the Ponytail package and terse-output policy: routine replies are concise, Caveman-style, and auditable. Security warnings, irreversible action confirmations, and multi-step sequences are never compressed. Hide raw thinking by default. Use `/flow` or F6 for the command center. It contains the workflow rail, stage/model/reasoning/context, agent cards, loaded/selected/invoked capabilities, session path, and recovery state. Put technical telemetry there instead of narrating it repeatedly.
 
 When you finish, use this shape:
 

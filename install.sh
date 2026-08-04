@@ -14,6 +14,19 @@ while [ -e "$BACKUP" ]; do
   BACKUP="$BACKUPS/pi-agent-$(date +%Y%m%d-%H%M%S)-$$-$suffix"
 done
 
+for source in \
+  "$ROOT/extensions" \
+  "$ROOT/skills" \
+  "$ROOT/themes" \
+  "$ROOT/SYSTEM.md" \
+  "$ROOT/keybindings.json"
+do
+  if [ ! -e "$source" ]; then
+    printf 'Refusing to install incomplete checkout; missing %s\n' "$source" >&2
+    exit 1
+  fi
+done
+
 backup_and_link() {
   local source=$1 target=$2
   if [ "$source" = "$target" ]; then
@@ -34,6 +47,8 @@ import sys
 import tempfile
 
 path = sys.argv[1]
+if os.path.islink(path):
+    path = os.path.realpath(path)
 try:
     with open(path, encoding="utf-8") as handle:
         settings = json.load(handle)
@@ -49,10 +64,13 @@ if not isinstance(settings, dict):
 
 ponytail = "git:github.com/DietrichGebert/ponytail"
 packages = settings.get("packages", [])
-if not isinstance(packages, list):
-    packages = []
+if not isinstance(packages, list) or not all(
+    isinstance(package, (str, dict)) for package in packages
+):
+    print(f"Refusing to overwrite malformed packages setting: {path}", file=sys.stderr)
+    raise SystemExit(1)
 settings["packages"] = [
-    package for package in packages if isinstance(package, str) and package != ponytail
+    package for package in packages if package != ponytail
 ] + [ponytail]
 
 settings.update({

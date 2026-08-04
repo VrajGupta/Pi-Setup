@@ -6,7 +6,9 @@ import {
   readFileSync,
   rmSync,
   cpSync,
+  existsSync,
   lstatSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -37,7 +39,10 @@ test("settings document Pi's accepted steering values and keep stages on relay",
   assert.deepEqual(readSettings(settingsExample).packages, [
     "git:github.com/DietrichGebert/ponytail",
   ]);
-  assert.match(readFileSync(terseOutput, "utf8"), /safety exceptions/i);
+  assert.match(
+    readFileSync(terseOutput, "utf8"),
+    /Security warnings, irreversible action confirmations, and multi-step sequences are never compressed\./i,
+  );
   const text = readFileSync(setup, "utf8");
   assert.match(text, /"all".*"one-at-a-time"/);
   assert.match(text, /orchestrator.*workflow send/i);
@@ -61,6 +66,22 @@ test("settings document Pi's accepted steering values and keep stages on relay",
     );
     assert.match(contents, /Ponytail/i);
     assert.match(contents, /Caveman/i);
+    assert.match(
+      contents,
+      /Security warnings, irreversible action confirmations, and multi-step sequences are never compressed\./i,
+    );
+  }
+  for (const path of [
+    installer,
+    settingsExample,
+    terseOutput,
+    readme,
+    system,
+  ]) {
+    assert.doesNotMatch(
+      readFileSync(path, "utf8"),
+      /(?:sk-[A-Za-z0-9]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|xox[baprs]-[A-Za-z0-9-]{20,}|AKIA[0-9A-Z]{16}|Bearer\s+[A-Za-z0-9._~+/=-]{20,})/,
+    );
   }
 });
 
@@ -76,6 +97,8 @@ test("installer replaces legacy all steering mode and is idempotent", () => {
       preserved: true,
       packages: [
         "npm:example",
+        { source: "pi-skills", skills: ["brave-search"] },
+        "npm:例子-🧪;$(touch SHOULD_NOT_EXIST)",
         "git:github.com/DietrichGebert/ponytail",
         "git:github.com/DietrichGebert/ponytail",
       ],
@@ -96,6 +119,8 @@ test("installer replaces legacy all steering mode and is idempotent", () => {
     assert.equal(once.preserved, true);
     assert.deepEqual(once.packages, [
       "npm:example",
+      { source: "pi-skills", skills: ["brave-search"] },
+      "npm:例子-🧪;$(touch SHOULD_NOT_EXIST)",
       "git:github.com/DietrichGebert/ponytail",
     ]);
     assert.equal(lstatSync(join(agentDir, "skills")).isSymbolicLink(), true);
@@ -159,12 +184,62 @@ test("installer refuses non-object settings without overwriting them", () => {
   }
 });
 
+test("installer refuses malformed package settings without overwriting them", () => {
+  const temporary = mkdtempSync(join(tmpdir(), "pi-agent-packages-"));
+  const agentDir = join(temporary, "agent");
+  const settings = join(agentDir, "settings.json");
+  mkdirSync(agentDir);
+
+  try {
+    for (const value of [{ custom: true }, ["npm:example", null]]) {
+      const original = JSON.stringify({ packages: value });
+      writeFileSync(settings, original);
+      assert.throws(() =>
+        execFileSync("bash", [installer], {
+          cwd: root,
+          env: { ...process.env, PI_CODING_AGENT_DIR: agentDir },
+          stdio: "pipe",
+        }),
+      );
+      assert.equal(readFileSync(settings, "utf8"), original);
+    }
+  } finally {
+    rmSync(temporary, { recursive: true, force: true });
+  }
+});
+
+test("installer updates a symlinked settings target without replacing the link", () => {
+  const temporary = mkdtempSync(join(tmpdir(), "pi-agent-settings-link-"));
+  const agentDir = join(temporary, "agent");
+  const target = join(temporary, "settings-target.json");
+  const settings = join(agentDir, "settings.json");
+  mkdirSync(agentDir);
+  writeFileSync(target, JSON.stringify({ packages: ["npm:example"] }));
+  symlinkSync(target, settings);
+
+  try {
+    execFileSync("bash", [installer], {
+      cwd: root,
+      env: { ...process.env, PI_CODING_AGENT_DIR: agentDir },
+      stdio: "pipe",
+    });
+    assert.equal(lstatSync(settings).isSymbolicLink(), true);
+    assert.deepEqual(readSettings(target).packages, [
+      "npm:example",
+      "git:github.com/DietrichGebert/ponytail",
+    ]);
+  } finally {
+    rmSync(temporary, { recursive: true, force: true });
+  }
+});
+
 test("installer leaves an in-place repository's resources intact", () => {
   const temporary = mkdtempSync(join(tmpdir(), "pi-agent-in-place-"));
   const repository = join(temporary, "repo");
   const settings = join(repository, "settings.json");
   mkdirSync(join(repository, "node_modules"), { recursive: true });
   mkdirSync(join(repository, "extensions"));
+  mkdirSync(join(repository, "skills"));
   mkdirSync(join(repository, "themes"));
   cpSync(installer, join(repository, "install.sh"));
   cpSync(join(root, "SYSTEM.md"), join(repository, "SYSTEM.md"));
@@ -181,6 +256,7 @@ test("installer leaves an in-place repository's resources intact", () => {
     for (const name of [
       "node_modules",
       "extensions",
+      "skills",
       "themes",
       "SYSTEM.md",
       "keybindings.json",
@@ -191,6 +267,36 @@ test("installer leaves an in-place repository's resources intact", () => {
         name,
       );
     }
+  } finally {
+    rmSync(temporary, { recursive: true, force: true });
+  }
+});
+
+test("installer refuses an incomplete checkout before changing settings", () => {
+  const temporary = mkdtempSync(join(tmpdir(), "pi-agent-incomplete-"));
+  const repository = join(temporary, "repo");
+  const agentDir = join(temporary, "agent");
+  const settings = join(agentDir, "settings.json");
+  mkdirSync(join(repository, "node_modules"), { recursive: true });
+  mkdirSync(join(repository, "extensions"));
+  mkdirSync(join(repository, "themes"));
+  mkdirSync(agentDir);
+  cpSync(installer, join(repository, "install.sh"));
+  writeFileSync(join(repository, "SYSTEM.md"), "system");
+  writeFileSync(join(repository, "keybindings.json"), "{}");
+  const original = JSON.stringify({ packages: ["npm:example"] });
+  writeFileSync(settings, original);
+
+  try {
+    assert.throws(() =>
+      execFileSync("bash", [join(repository, "install.sh")], {
+        cwd: repository,
+        env: { ...process.env, PI_CODING_AGENT_DIR: agentDir },
+        stdio: "pipe",
+      }),
+    );
+    assert.equal(readFileSync(settings, "utf8"), original);
+    assert.equal(existsSync(join(agentDir, "skills")), false);
   } finally {
     rmSync(temporary, { recursive: true, force: true });
   }
