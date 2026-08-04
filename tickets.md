@@ -7,6 +7,10 @@ Every `Verification-command` is run from the repo root and must exit 0 exactly w
 
 Status legend: `Planned` · `Agent Ready` · `Coding` · `Debugger Ready` · `Debugging` · `Review Ready` · `Reviewing` · `Done`
 
+GitHub issue mirror (no GitHub Project; this local tracker remains authoritative):
+`PI-06 → #2` · `PI-07 → #9` · `PI-08 → #10` · `PI-09 → #11` · `PI-10 → #7` · `PI-11 → #1`
+`PI-12 → #6` · `PI-13 → #4` · `PI-14 → #8` · `PI-15 → #12` · `PI-16 → #3` · `PI-17 → #5`
+
 ## Immediate priority override
 
 1. **Orchestrator-only conversation (user-restated, 2026-08-04)** — Vraj talks only to the orchestrator. No keystroke, setting, or extension hook may deliver his input to a stage agent. Includes the Pi `steeringMode` setting and the header `STEER` label. → PI-11.
@@ -462,3 +466,20 @@ Status: **Planned** · Blocked-by: PI-08 · Phase 2
 - The ticket changes only documentation and installer test fixtures: `git diff --stat` shows no change under `extensions/`.
 
 **Verification-command.** `node --test --experimental-strip-types extensions/workflow/config-docs.test.ts scripts/install-rollback.test.mjs && npm run check`
+
+---
+
+## PI-17 — Explicit direct conversation from an opened stage view
+
+Status: **Planned** · Blocked-by: PI-11 · Phase 3
+
+**What to build.** Keep the main chat permanently orchestrator-only, while allowing deliberate direct conversation only after the user explicitly opens a stage's subagent view. The stage view must expose a clear input affordance and never capture ambient main-chat input.
+
+**Acceptance criteria.**
+- Main-chat interactive input is never delivered to a stage; only the explicit stage-view send action may target the selected stage.
+- The opened stage view clearly identifies the destination and supports send, cancel, and bounded error handling; no hidden or automatic forwarding exists.
+- Opening, closing, scrolling, or typing outside the explicit stage input cannot mutate a stage run.
+- Helper takeover behavior remains unchanged, and workflow-stage messages cannot use the generic helper relay.
+- Tests cover the main-chat boundary, explicit stage-view send, helper behavior, stage identity checks, terminal-safe/redacted text, and width bounds.
+
+**Verification-command.** `node --test --experimental-strip-types extensions/workflow/policy.test.ts extensions/subagents/takeover.test.ts extensions/subagents/manager.test.ts && npm run check && npm test`
