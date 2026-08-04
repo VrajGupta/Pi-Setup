@@ -7,7 +7,9 @@ Every `Verification-command` is run from the repo root and must exit 0 exactly w
 
 Status legend: `Planned` · `Agent Ready` · `Coding` · `Debugger Ready` · `Debugging` · `Review Ready` · `Reviewing` · `Done`
 
-GitHub issue mirror (no GitHub Project; this local tracker remains authoritative):
+GitHub issue mirror. Live board: **GitHub Project #12 (owner `VrajGupta`)** — its `Status` field is the
+workflow authority for stage state; this file mirrors it and carries the durable ticket text.
+
 `PI-06 → #2` · `PI-07 → #9` · `PI-08 → #10` · `PI-09 → #11` · `PI-10 → #7` · `PI-11 → #1`
 `PI-12 → #6` · `PI-13 → #4` · `PI-14 → #8` · `PI-15 → #12` · `PI-16 → #3` · `PI-17 → #5`
 
@@ -216,18 +218,38 @@ Status: **Planned** · Blocked-by: PI-04 · Phase 2
 
 ## PI-07 — Prompt-cache-stable system prompt assembly (Phase 2)
 
-Status: **Planned** · Blocked-by: PI-06 · Phase 2
+Status: **Agent Ready** · Blocked-by: PI-06 (Done) · Phase 2 · GitHub issue #9
 
-**What to build.** Today `extensions/workflow/index.ts` appends a per-turn route block to the system prompt. Split assembly into an explicitly stable prefix and a volatile suffix, and prove the prefix is byte-identical across turns whose route differs.
+**What to build.** Today `extensions/workflow/index.ts` appends a per-turn route block to the system prompt. Split assembly into an explicitly stable prefix and a volatile suffix, prove the prefix is byte-identical across turns whose route differs, and scrub credentials of the **supported shapes below** before either region is assembled.
+
+**Scope decision (human-authorized narrowing, 2026-08-04, after bounce 3/3 escalation).** PI-07's credential criterion was originally absolute ("no credential of any syntax"). Three bounces plus one authorized recovery pass showed the absolute was being chased with an expanding syntax blacklist that does not converge. The human decision is: **narrow PI-07 to the supported credential-redaction boundary already implemented; do not attempt another redaction implementation now.**
+
+*Supported boundary — PI-07 guarantees redaction for:* (1) named credential assignments (`api_key`, `access_key`, `access_token`, `aws_access_key_id`, `authorization`, `cookie`, `credential`, `password`, `passwd`, `private_key`, `secret`, `token`, `*_url`, `*_uri`), including quoted values with whitespace/escaped quotes and failing closed on malformed quoting; (2) `Authorization:`/`Cookie:` headers including folded continuations, plus `Bearer`/`Basic` tokens; (3) recognized secret token formats (`sk-…`, `gh[pousr]_…`, JWT); (4) hierarchical or slash-prefixed credential URIs (`postgres://user:pw@host`, `rediss://`, `mongodb+srv://`, `http(s)://`, `jdbc:oracle:thin:user/pw@host:1521:app`, malformed one-slash variants), with every `scheme://` and `scheme:/` URL replaced by `[URL]` (also covers INV-8's provider base URL); (5) query-string credentials (`api_key=`, `access_token=`, `key=`, `secret=`, `token=`).
+
+*Explicit exclusion — outside PI-07's guarantee and tests:* **opaque/rootless URIs whose userinfo is colon-delimited with no `//` root and no `/` separator**, canonically `sip:user:password@example.test`, and the same shape in other rootless schemes (SIP/SIPS, colon-delimited JDBC userinfo variants). `scheme:a:b@c` is syntactically indistinguishable from ordinary prose, so it is not redacted by pattern here. PI-07 does not claim it, does not test it, and a reviewer must not bounce PI-07 for it. **This narrows PI-07 only, not INV-2** — the residual gap is a documented accepted risk recorded under INV-2 in `docs/2026-08-04-flow-ui-and-token-savings.md`. A fail-closed structured-boundary redesign would be a new ticket and is deliberately not attempted now. **Security warning preserved:** never paste raw `.env` files, credential URIs, or provider secrets into prompts; redaction is defense in depth, not permission to be careless.
 
 **Acceptance criteria.**
 - Two assemblies with different route decisions produce a byte-identical stable prefix.
 - The volatile suffix is the only region that differs, and it appears after the entire stable prefix.
 - Changing the user's task text does not change the stable prefix.
 - Changing the active stage changes only the volatile suffix.
-- The assembled prompt contains no credential, key, token, or provider base URL (INV-2, INV-8).
+- Through the production `before_agent_start` seam, a `baseSystemPrompt` containing each supported-boundary form (1)–(5) returns a system prompt with no synthetic credential marker remaining, while ordinary neighboring lines are preserved byte-for-byte (INV-2, INV-8, within the narrowed scope).
+- The boundary is observable in the source: `extensions/workflow/prompt-assembly.ts` carries a doc comment stating the supported forms and naming the excluded opaque/rootless colon-delimited userinfo form (`sip:user:password@example.test`) as out of scope, referencing PI-07 and INV-2.
+- `extensions/workflow/prompt-assembly.test.ts` contains exactly one explicitly named scope test documenting the exclusion, asserting the excluded form is not part of PI-07's guarantee, so the gap is visible in test output rather than implicit in a missing case.
+- Out of criteria (do not add): speculative tests for further URI dialects, SIP/rootless redaction behavior, or any new redaction implementation.
 
 **Verification-command.** `node --test --experimental-strip-types extensions/workflow/prompt-assembly.test.ts extensions/workflow/policy.test.ts && npm run check`
+
+*(Verification-command unchanged by this repair: criteria 5–7 all live in `prompt-assembly.test.ts` and `tsc --noEmit` runs via `npm run check`.)*
+
+**Bounce history and human decision (preserved evidence — do not erase).**
+1. Bounce 1 (reviewer): `AWS_ACCESS_KEY_ID=` assignment leaked through the production seam → key matcher + production-seam regression added.
+2. Bounce 2 (reviewer): credential-bearing non-HTTP `.env` URLs (`postgres://…`) leaked → `*_URL`/`*_URI` and slash-prefixed URI redaction added.
+3. Bounce 3 of 3 (reviewer, budget exhausted): opaque/rootless `jdbc:oracle:thin:user/pw@host` leaked; reviewer reported non-convergence of an absolute boundary enforced by a syntax blacklist and escalated for a human choice (fail-closed structured boundary vs. narrowed criterion).
+4. Human-authorized recovery review: closed the Oracle/JDBC slash form; `sip:user:password@example.test` still leaked → escalated again.
+5. Human decision (2026-08-04, this repair): narrow the scope as above; do not attempt another redaction implementation now. Reviewer verdicts, handoffs, PR #14, and the existing code remain untouched as evidence.
+
+**Planner repair (2026-08-04).** PI-07 moved out of human-escalated `Reviewing` → `Planned` (repair) → `Agent Ready` on Project #12 (blocker PI-06 is Done). PI-09/#11 left untouched at `Agent Ready`.
 
 ---
 

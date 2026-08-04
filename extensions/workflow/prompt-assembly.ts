@@ -11,8 +11,32 @@ const STABLE_WORKFLOW_INSTRUCTIONS = `
 const SENSITIVE_HEADER_PATTERN =
   /\b(Authorization|Cookie)[ \t]*:[ \t]*[^\r\n]*?(?:\r?\n[ \t]+[^\r\n]*?)*(?=\r?\n(?![ \t])|[ \t]+\b(?:Authorization|Cookie)[ \t]*:|$)/gi;
 
+const URI_TOKEN_PATTERN = /\b[a-z][a-z0-9+.-]*:[^\s]+/gi;
+const CREDENTIAL_URI_PATTERN =
+  /\/\/[^/\s:@]+:[^@\s]+@|(?:^|[:/])[^/\s:@]+\/[^@\s/]+@/i;
+
+function redactCredentialUris(text: string) {
+  return text.replace(URI_TOKEN_PATTERN, (candidate) => {
+    const schemeEnd = candidate.indexOf(":");
+    const opaquePart = candidate.slice(schemeEnd + 1);
+    return CREDENTIAL_URI_PATTERN.test(opaquePart) ? "[URL]" : candidate;
+  });
+}
+
+/**
+ * PI-07 supports named assignments (`api_key`, `access_key`, `access_token`,
+ * `aws_access_key_id`, `authorization`, `cookie`, `credential`, `password`,
+ * `passwd`, `private_key`, `secret`, `token`, `*_url`, `*_uri`),
+ * Authorization/Cookie headers (including folded continuations), Bearer/Basic
+ * and recognized token formats, hierarchical or slash-prefixed credential URIs,
+ * and query-string credentials.
+ *
+ * Excluded: opaque/rootless colon-delimited userinfo with no `//` root or `/`
+ * separator (for example, `sip:user:password@example.test`). This is a known,
+ * accepted residual risk under unchanged global INV-2, not a PI-07 guarantee.
+ */
 function redactPromptText(text: string) {
-  return text
+  const redacted = text
     .replace(SENSITIVE_HEADER_PATTERN, "$1: [REDACTED]")
     .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [REDACTED]")
     .replace(
@@ -20,14 +44,18 @@ function redactPromptText(text: string) {
       "[REDACTED]",
     )
     .replace(
-      /(["']?(?:api[_-]?key|access[_-]?key|access[_-]?token|authorization|cookie|credential|password|passwd|private[_-]?key|secret|token)["']?\s*[:=]\s*)(["']?)[^\s,;}]+\2/gi,
+      /(["']?(?:api[_-]?key|access[_-]?key|access[_-]?token|aws[_-]?access[_-]?key[_-]?id|authorization|cookie|credential|password|passwd|private[_-]?key|secret|token|[a-z][a-z0-9_-]*[_-](?:url|uri))["']?\s*[:=]\s*)(?:"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|["'][^\r\n]*|[^\r\n]+)/gi,
       "$1[REDACTED]",
     )
     .replace(
       /([?&](?:api[_-]?key|access[_-]?token|key|secret|token)=)[^&#\s]+/gi,
       "$1[REDACTED]",
-    )
-    .replace(/\bhttps?:\/\/[^\s]+/gi, "[URL]");
+    );
+
+  return redactCredentialUris(redacted).replace(
+    /\b[a-z][a-z0-9+.-]*:\/{1,2}[^\s]+/gi,
+    "[URL]",
+  );
 }
 
 export function assembleWorkflowSystemPrompt({
