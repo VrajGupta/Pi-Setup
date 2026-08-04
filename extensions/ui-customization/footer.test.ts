@@ -33,9 +33,9 @@ function state(overrides: Partial<FooterState> = {}): FooterState {
     theme: plainTheme,
     now: 10_000,
     cwdLabel: "~/repo",
-    runtime: "pi/model · high · · part2",
-    rail: "flow · part1 → ◉ part2 → · part3 → · part4",
-    routeStatus: "fleet/part2 · running",
+    runtime: "pi/model · high · · coder",
+    rail: "flow · planner → ◉ coder → · debugger → · reviewer",
+    routeStatus: "fleet/coder · running",
     usage: "42%/200k · $0.12 · 13 tok/s",
     pr: "main · 2 changed",
     agents: [],
@@ -50,14 +50,14 @@ test("no tracked agents renders exactly the 3 base lines", () => {
 });
 
 test("2 stage agents render 5 lines, 4 render 7, a 5th adds no row", () => {
-  const stages = ["part1", "part2", "part3", "part4"] as const;
+  const stages = ["planner", "coder", "debugger", "reviewer"] as const;
   const make = (n: number) =>
     stages.slice(0, n).map((stage, i) => agent({ id: `a${i}`, stage }));
   assert.equal(renderFooter(state({ agents: make(2) })).length, 5);
   assert.equal(renderFooter(state({ agents: make(4) })).length, 7);
   assert.equal(
     renderFooter(
-      state({ agents: [...make(4), agent({ id: "a5", stage: "part2" })] }),
+      state({ agents: [...make(4), agent({ id: "a5", stage: "coder" })] }),
     ).length,
     7,
   );
@@ -71,7 +71,7 @@ test("non-stage helper agents produce no footer row", () => {
 });
 
 test("every line fits the requested width at 20, 60, 80, and 200", () => {
-  const agents = (["part1", "part2", "part3", "part4"] as const).map(
+  const agents = (["planner", "coder", "debugger", "reviewer"] as const).map(
     (stage, i) =>
       agent({
         id: `a${i}`,
@@ -103,13 +103,13 @@ test("every line fits the requested width at 20, 60, 80, and 200", () => {
 test("an indeterminate reading renders no % character", () => {
   const lines = renderFooter(
     state({
-      agents: [agent({ stage: "part2" })],
+      agents: [agent({ stage: "coder" })],
       readingFor: () => buildReading({ source: "stage", at: 10_000 }),
     }),
   );
   assert.equal(lines.length, 4);
   assert.ok(!lines[3].includes("%"));
-  assert.ok(lines[3].includes("part2"));
+  assert.ok(lines[3].includes("coder"));
   assert.ok(lines[3].includes("pi/?"));
   assert.ok(lines[3].includes("3t"));
 });
@@ -117,7 +117,7 @@ test("an indeterminate reading renders no % character", () => {
 test("a measured reading renders a rounded percent", () => {
   const lines = renderFooter(
     state({
-      agents: [agent({ stage: "part1" })],
+      agents: [agent({ stage: "planner" })],
       readingFor: () =>
         buildReading({ source: "context", done: 1, total: 3, at: 10_000 }),
     }),
@@ -129,7 +129,7 @@ test("a stale reading renders with a leading ~", () => {
   const lines = renderFooter(
     state({
       now: 100_000,
-      agents: [agent({ stage: "part3" })],
+      agents: [agent({ stage: "debugger" })],
       readingFor: () =>
         buildReading({ source: "context", done: 1, total: 2, at: 60_000 }),
     }),
@@ -141,7 +141,7 @@ test("a stale reading renders with a leading ~", () => {
 test("a fresh reading has no ~ prefix", () => {
   const lines = renderFooter(
     state({
-      agents: [agent({ stage: "part3" })],
+      agents: [agent({ stage: "debugger" })],
       readingFor: () =>
         buildReading({ source: "context", done: 1, total: 2, at: 10_000 }),
     }),
@@ -152,7 +152,7 @@ test("a fresh reading has no ~ prefix", () => {
 test("a throwing reading getter still returns the 3 base lines", () => {
   const lines = renderFooter(
     state({
-      agents: [agent({ stage: "part2" })],
+      agents: [agent({ stage: "coder" })],
       statuses: ["ignored on failure"],
       readingFor: () => {
         throw new Error("boom");
@@ -163,29 +163,29 @@ test("a throwing reading getter still returns the 3 base lines", () => {
   assert.ok(lines[0].includes("~/repo"));
 });
 
-test("stage rows sort part1 → part4 regardless of input order", () => {
+test("stage rows sort planner → reviewer regardless of input order", () => {
   const lines = renderFooter(
     state({
       agents: [
-        agent({ id: "a4", stage: "part4" }),
-        agent({ id: "a1", stage: "part1" }),
+        agent({ id: "a4", stage: "reviewer" }),
+        agent({ id: "a1", stage: "planner" }),
       ],
     }),
   );
-  assert.ok(lines[3].includes("part1"));
-  assert.ok(lines[4].includes("part4"));
+  assert.ok(lines[3].includes("planner"));
+  assert.ok(lines[4].includes("reviewer"));
 });
 
 test("elapsed renders from startedAt and clamps at 0", () => {
   const lines = renderFooter(
     state({
       now: 61_000,
-      agents: [agent({ stage: "part2", startedAt: 1_000 })],
+      agents: [agent({ stage: "coder", startedAt: 1_000 })],
     }),
   );
   assert.ok(lines[3].includes("1m"));
   const future = renderFooter(
-    state({ now: 500, agents: [agent({ stage: "part2", startedAt: 1_000 })] }),
+    state({ now: 500, agents: [agent({ stage: "coder", startedAt: 1_000 })] }),
   );
   assert.ok(future[3].includes("0s"));
 });
@@ -194,7 +194,7 @@ test("extension status lines append after stage rows, split and truncated", () =
   const lines = renderFooter(
     state({
       width: 30,
-      agents: [agent({ stage: "part1" })],
+      agents: [agent({ stage: "planner" })],
       statuses: ["one\ntwo three four five six seven"],
     }),
   );
@@ -204,7 +204,7 @@ test("extension status lines append after stage rows, split and truncated", () =
 });
 
 test("1 000 renders at width 200 complete in under 2 000 ms", () => {
-  const agents = (["part1", "part2", "part3", "part4"] as const).map(
+  const agents = (["planner", "coder", "debugger", "reviewer"] as const).map(
     (stage, i) => agent({ id: `a${i}`, stage, turns: 40 }),
   );
   const input = state({
@@ -231,28 +231,28 @@ test("the module imports no fs, subprocess, or network APIs", () => {
 
 test("unknown stages are omitted, duplicate stages remain distinct, and input order is preserved", () => {
   const agents = [
-    agent({ id: "part4", stage: "part4", modelLabel: "model-part4" }),
+    agent({ id: "reviewer", stage: "reviewer", modelLabel: "model-reviewer" }),
     agent({
       id: "unknown",
       stage: "mystery" as WorkflowSubagentSummary["stage"],
     }),
-    agent({ id: "part2-a", stage: "part2", modelLabel: "model-part2-a" }),
-    agent({ id: "part2-b", stage: "part2", modelLabel: "model-part2-b" }),
+    agent({ id: "coder-a", stage: "coder", modelLabel: "model-coder-a" }),
+    agent({ id: "coder-b", stage: "coder", modelLabel: "model-coder-b" }),
   ];
   const before = [...agents];
   const lines = renderFooter(state({ agents }));
 
   assert.equal(lines.length, 6);
-  assert.ok(lines[3].includes("model-part2-a"));
-  assert.ok(lines[4].includes("model-part2-b"));
-  assert.ok(lines[5].includes("model-part4"));
+  assert.ok(lines[3].includes("model-coder-a"));
+  assert.ok(lines[4].includes("model-coder-b"));
+  assert.ok(lines[5].includes("model-reviewer"));
   assert.deepEqual(agents, before);
 });
 
 test("very narrow and non-finite widths never throw or overflow", () => {
   const input = state({
     width: 0,
-    agents: [agent({ stage: "part1", modelLabel: "模型😀" })],
+    agents: [agent({ stage: "planner", modelLabel: "模型😀" })],
   });
   for (const width of [0, 1, 2, 3, 4, 19, Number.NaN, Infinity]) {
     assert.doesNotThrow(() => renderFooter({ ...input, width }));
@@ -276,8 +276,8 @@ test("empty and unicode model labels use a safe fallback and ANSI width is measu
       width: 20,
       theme: ansiTheme,
       agents: [
-        agent({ stage: "part1", modelLabel: "" }),
-        agent({ stage: "part2", modelLabel: "模型😀模型😀模型😀" }),
+        agent({ stage: "planner", modelLabel: "" }),
+        agent({ stage: "coder", modelLabel: "模型😀模型😀模型😀" }),
       ],
     }),
   );
@@ -291,7 +291,7 @@ test("non-finite timestamps, counters, clocks, and readings degrade without fabr
     state({
       now: Infinity,
       agents: [
-        agent({ stage: "part3", startedAt: Number.NaN, turns: Infinity }),
+        agent({ stage: "debugger", startedAt: Number.NaN, turns: Infinity }),
       ],
       readingFor: () =>
         ({
@@ -318,14 +318,14 @@ test("the stale boundary is fresh at exactly 30 seconds and stale one millisecon
   const fresh = renderFooter(
     state({
       now: 100_000,
-      agents: [agent({ stage: "part1" })],
+      agents: [agent({ stage: "planner" })],
       readingFor: reading,
     }),
   );
   const stale = renderFooter(
     state({
       now: 100_001,
-      agents: [agent({ stage: "part1" })],
+      agents: [agent({ stage: "planner" })],
       readingFor: reading,
     }),
   );
@@ -337,7 +337,7 @@ test("the stale boundary is fresh at exactly 30 seconds and stale one millisecon
 test("theme and status rendering failures fall back to bounded base lines", () => {
   const lines = renderFooter(
     state({
-      agents: [agent({ stage: "part1" })],
+      agents: [agent({ stage: "planner" })],
       statuses: ["a status that should not escape the width"],
       theme: {
         fg() {
@@ -405,7 +405,7 @@ test("live subagent state reaches the footer as measured context progress and om
   pi.events.emit(SUBAGENT_STATE_CHANNEL, [
     agent({
       id: "stage-agent",
-      stage: "part2",
+      stage: "coder",
       contextTokens: 25,
       contextWindow: 100,
     }),
@@ -414,7 +414,7 @@ test("live subagent state reaches the footer as measured context progress and om
 
   const lines = footer.render(80);
   assert.equal(lines.length, 4);
-  assert.ok(lines[3].includes("part2"));
+  assert.ok(lines[3].includes("coder"));
   assert.ok(lines[3].includes("25%"));
   assert.ok(!lines.some((line) => line.includes("helper-agent")));
 

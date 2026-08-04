@@ -1,6 +1,6 @@
 # Vraj Pi
 
-Personal Pi configuration for the part1 → part2 → part3 → part4 workflow.
+Personal Pi configuration for the planner → coder → debugger → reviewer workflow.
 
 ## What this owns
 
@@ -29,10 +29,12 @@ Stage profiles:
 
 | Stage | Harness | Model | Default effort |
 | --- | --- | --- | --- |
-| part1 | Claude Code | Opus | high |
-| part2 | Pi | Kimi K3 | high |
-| part3 | Codex | GPT-5.6 Luna | max |
-| part4 | Pi | Grok 4.5 | xhigh |
+| planner | Claude Code | Opus | high |
+| coder | Pi | GPT-5.6 Terra | xhigh |
+| debugger | Codex | GPT-5.6 Luna | max |
+| reviewer | Pi | GPT-5.6 Sol | medium |
+
+These match `STAGE_PROFILES` in `extensions/workflow/src/policy.ts`, which is the pinned source of truth.
 
 A stage child cannot spawn children. It may return a validated `helper_request`; the Sol coordinator brokers sibling helpers and sends bounded results back.
 

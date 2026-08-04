@@ -175,20 +175,20 @@ test("stage identity stays absent on helper snapshots and summaries", async () =
   await withManager(async (manager, runtime) => {
     const stage = await runTool(
       runtime,
-      manager.spawn("claude", { ...task("stage task"), stage: "part3" }),
+      manager.spawn("claude", { ...task("stage task"), stage: "debugger" }),
     );
     const helper = await runTool(
       runtime,
       manager.spawn("codex", task("helper task")),
     );
 
-    assert.equal(stage.stage, "part3");
+    assert.equal(stage.stage, "debugger");
     assert.equal(Object.hasOwn(stage, "stage"), true);
     assert.equal(Object.hasOwn(helper, "stage"), false);
 
     const stageSummary = summarizeSubagent(stage);
     const helperSummary = summarizeSubagent(helper);
-    assert.equal(stageSummary.stage, "part3");
+    assert.equal(stageSummary.stage, "debugger");
     assert.equal(Object.hasOwn(stageSummary, "stage"), true);
     assert.equal(Object.hasOwn(helperSummary, "stage"), false);
 

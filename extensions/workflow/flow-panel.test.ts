@@ -79,16 +79,16 @@ function agentsTab(flow: FlowPanel) {
 test("Agents lists stages in pipeline order before helpers", () => {
   const flow = panel(state(), [
     agent({ id: "helper", title: "helper" }),
-    agent({ id: "p4", stage: "part4" }),
-    agent({ id: "p2", stage: "part2" }),
-    agent({ id: "p1", stage: "part1" }),
+    agent({ id: "p4", stage: "reviewer" }),
+    agent({ id: "p2", stage: "coder" }),
+    agent({ id: "p1", stage: "planner" }),
   ]);
   agentsTab(flow);
 
   const output = flow.render(120).join("\n");
-  assert.ok(output.indexOf("part1") < output.indexOf("part2"));
-  assert.ok(output.indexOf("part2") < output.indexOf("part4"));
-  assert.ok(output.indexOf("part4") < output.indexOf("helper"));
+  assert.ok(output.indexOf("planner") < output.indexOf("coder"));
+  assert.ok(output.indexOf("coder") < output.indexOf("reviewer"));
+  assert.ok(output.indexOf("reviewer") < output.indexOf("helper"));
 });
 
 test("Agents renders the literal none tracked line", () => {
@@ -136,7 +136,7 @@ test("panel rows fit widths 40 and 120", () => {
       lastEvent: "a very long reason that must remain bounded in the panel",
       route: {
         mode: "fleet",
-        stage: "part2",
+        stage: "coder",
         confidence: "high",
         reason:
           "the request spans several modules and needs independent review",
@@ -145,7 +145,7 @@ test("panel rows fit widths 40 and 120", () => {
     }),
     [
       agent({
-        stage: "part1",
+        stage: "planner",
         modelLabel: "openai-codex/gpt-5.6-terra-with-an-extra-long-label",
         title: "a very long agent title that must remain bounded",
       }),
@@ -163,12 +163,12 @@ test("panel rows fit widths 40 and 120", () => {
 
 test("stage readings use shared measured progress and omit percent when indeterminate", () => {
   const measured = panel(state(), [
-    agent({ stage: "part2", contextTokens: 1, contextWindow: 2 }),
+    agent({ stage: "coder", contextTokens: 1, contextWindow: 2 }),
   ]);
   agentsTab(measured);
   assert.match(measured.render(120).join("\n"), /50%/);
 
-  const indeterminate = panel(state(), [agent({ stage: "part2" })]);
+  const indeterminate = panel(state(), [agent({ stage: "coder" })]);
   agentsTab(indeterminate);
   assert.doesNotMatch(indeterminate.render(120).join("\n"), /%/);
 });
@@ -193,21 +193,21 @@ test("unknown stages behave as helpers while duplicate known stages stay stable"
       contextTokens: 1,
       contextWindow: 2,
     }),
-    agent({ id: "part2-b", stage: "part2" }),
-    agent({ id: "part2-a", stage: "part2" }),
-    agent({ id: "part1", stage: "part1" }),
+    agent({ id: "coder-b", stage: "coder" }),
+    agent({ id: "coder-a", stage: "coder" }),
+    agent({ id: "planner", stage: "planner" }),
   ]);
   agentsTab(flow);
 
   const output = flow.render(120).join("\n");
   assert.ok(
-    output.indexOf("part1 · part1") < output.indexOf("part2 · part2-b"),
+    output.indexOf("planner · planner") < output.indexOf("coder · coder-b"),
   );
   assert.ok(
-    output.indexOf("part2 · part2-b") < output.indexOf("part2 · part2-a"),
+    output.indexOf("coder · coder-b") < output.indexOf("coder · coder-a"),
   );
   assert.ok(
-    output.indexOf("part2 · part2-a") < output.indexOf("helper · helper"),
+    output.indexOf("coder · coder-a") < output.indexOf("helper · helper"),
   );
   assert.ok(
     output.indexOf("helper · helper · helper") <
@@ -279,7 +279,7 @@ test("malformed and stale readings degrade without fabricated values", () => {
     [
       agent({
         id: "bad",
-        stage: "part2",
+        stage: "coder",
         startedAt: Number.NaN,
         turns: Number.POSITIVE_INFINITY,
         contextTokens: Number.POSITIVE_INFINITY,
@@ -363,7 +363,7 @@ test("tab, arrow, unknown, and escape input have bounded effects", () => {
 
 test("the frame never overflows narrow, zero, negative, or non-finite widths", () => {
   const flow = panel(state({ lastEvent: "日本語😀" }), [
-    agent({ stage: "part1", title: "模型😀" }),
+    agent({ stage: "planner", title: "模型😀" }),
   ]);
   for (const width of [
     0,
@@ -410,7 +410,7 @@ test("ANSI-themed panel rows stay within visible width at 40 and 120", () => {
         lastEvent: "a long waiting event 日本語😀".repeat(10),
         route: {
           mode: "fleet",
-          stage: "part2",
+          stage: "coder",
           confidence: "high",
           reason: "a long route reason 日本語😀".repeat(10),
           skills: [],
@@ -418,7 +418,7 @@ test("ANSI-themed panel rows stay within visible width at 40 and 120", () => {
       }),
     () => [
       agent({
-        stage: "part2",
+        stage: "coder",
         title: "a long agent title 日本語😀".repeat(10),
         modelLabel: "a-long-model-label/with-ansi-safe-width",
         contextTokens: 1,
@@ -441,10 +441,10 @@ test("ANSI-themed panel rows stay within visible width at 40 and 120", () => {
 
 test("1 000 panel renders at width 120 stay within a practical budget", () => {
   const flow = panel(state(), [
-    agent({ stage: "part1" }),
-    agent({ stage: "part2" }),
-    agent({ stage: "part3" }),
-    agent({ stage: "part4" }),
+    agent({ stage: "planner" }),
+    agent({ stage: "coder" }),
+    agent({ stage: "debugger" }),
+    agent({ stage: "reviewer" }),
     agent({ title: "helper" }),
   ]);
   agentsTab(flow);

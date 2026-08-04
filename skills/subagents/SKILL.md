@@ -8,7 +8,7 @@ description: invoke this skill when the user asks you to use subagents
 Each native subagent is headless, has its own context window, cannot see the parent conversation, cannot ask the user, and cannot spawn subagents or workflows. Give every child a self-contained prompt with paths, constraints, and the expected report.
 
 A **stage parent** is different: it is a separately launched top-level chat/session
-that runs one pipeline stage, such as `/part2` or `/part3`. It may coordinate its own
+that runs one pipeline stage, such as `/coder` or `/debugger`. It may coordinate its own
 one-level child workers when that harness supports them. If a stage is launched via
 `subagent_spawn` as a child of another session, it is not a stage parent and must
 perform its work directly without nested dispatch. Use the GitHub Project item, the
@@ -88,16 +88,16 @@ it:
 
 | Stage | Parent | Harness / model | Effort |
 |---|---|---|---|
-| `/part1` | Opus 5, dispatched by Luna or run visibly | Claude Code harness, `model: "opus"` | medium/high |
-| `/part2` | Kimi K3 | Pi harness, `openrouter/moonshotai/kimi-k3` | high |
-| `/part3` | GPT-5.6 Luna | Codex harness, `gpt-5.6-luna` | **max** |
-| `/part4` | Grok 4.5 | Pi harness, `openrouter/x-ai/grok-4.5` | high/xhigh |
+| `/planner` | Opus 5, dispatched by Luna or run visibly | Claude Code harness, `model: "opus"` | medium/high |
+| `/coder` | Kimi K3 | Pi harness, `openrouter/moonshotai/kimi-k3` | high |
+| `/debugger` | GPT-5.6 Luna | Codex harness, `gpt-5.6-luna` | **max** |
+| `/reviewer` | Grok 4.5 | Pi harness, `openrouter/x-ai/grok-4.5` | high/xhigh |
 
 Kimi K2.7 Code helpers use the Pi harness and
 `openrouter/moonshotai/kimi-k2.7-code` when the independent Kimi stage parent is
 running. Do not route a Claude subscription through Pi: use the Claude Code harness.
 If Luna dispatches Opus as a headless Claude child, provide the planning decisions
 up front because the child cannot ask the user; use a visible Claude session for an
-interactive `/part1` grill.
+interactive `/planner` grill.
 Do not confuse `codex/gpt-5.6-luna` with
 `openrouter/openai/gpt-5.6-luna`; they are different auth routes.

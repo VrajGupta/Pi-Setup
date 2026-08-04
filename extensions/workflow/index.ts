@@ -928,9 +928,9 @@ export default function workflow(pi: ExtensionAPI) {
     name: "workflow",
     label: "Workflow Control",
     description:
-      "Route work, start a pinned part1-part4 stage, relay a response to a stage, or inspect workflow state.",
+      "Route work, start a pinned planner/coder/debugger/reviewer stage, relay a response to a stage, or inspect workflow state.",
     promptSnippet:
-      "Route tasks and control Vraj's part1 → part2 → part3 → part4 workflow",
+      "Route tasks and control Vraj's planner → coder → debugger → reviewer workflow",
     promptGuidelines: [
       "Use workflow action route before choosing a direct path or fleet stage when the task is ambiguous.",
       "Use workflow action start to launch an explicit stage; it runs the pinned model and returns evidence through the session.",
@@ -996,7 +996,7 @@ export default function workflow(pi: ExtensionAPI) {
       }
       if (!input.prompt) throw new Error("workflow start requires prompt.");
       const decision = classifyRequest(input.prompt);
-      const stage = input.stage ?? decision.stage ?? "part1";
+      const stage = input.stage ?? decision.stage ?? "planner";
       const response = await startStage(
         ctx,
         stage,

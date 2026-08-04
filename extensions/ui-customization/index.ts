@@ -28,7 +28,7 @@ import {
 } from "../shared/workflow-state.ts";
 import { columns, renderFooter } from "./footer.ts";
 
-const STAGES: StageName[] = ["part1", "part2", "part3", "part4"];
+const STAGES: StageName[] = ["planner", "coder", "debugger", "reviewer"];
 
 type Activity = "idle" | "working" | "done" | "error";
 
@@ -61,11 +61,11 @@ function stageLabel(
   const index = STAGES.indexOf(stage);
   const activeIndex = activeStage ? STAGES.indexOf(activeStage) : -1;
   const color =
-    stage === "part1"
+    stage === "planner"
       ? "mdHeading"
-      : stage === "part2"
+      : stage === "coder"
         ? "accent"
-        : stage === "part3"
+        : stage === "debugger"
           ? "warning"
           : "success";
   if (stage === activeStage) return theme.fg(color, `◉ ${stage}`);

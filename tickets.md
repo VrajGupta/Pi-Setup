@@ -4,7 +4,7 @@ Local-file tracker (no GitHub Project for this repo; see `docs/2026-08-04-flow-u
 Work top to bottom. A ticket is claimable only when every **Blocked-by** ticket is Done.
 Every `Verification-command` is run from the repo root and must exit 0 exactly when the ticket is complete.
 
-Status legend: `Planned` · `Agent Ready` · `Coding` · `Debugger Ready` · `Debugging` · `Grading Ready` · `Done`
+Status legend: `Planned` · `Agent Ready` · `Coding` · `Debugger Ready` · `Debugging` · `Review Ready` · `Reviewing` · `Done`
 
 ---
 
@@ -16,29 +16,29 @@ Status: **Done** · Blocked-by: none · Phase 1
 
 **Acceptance criteria.**
 - `isWorkflowSubagentSummary` returns `false` when `startedAt` is missing or is not a number.
-- `isWorkflowSubagentSummary` returns `false` when `stage` is present but is not one of `part1|part2|part3|part4`.
+- `isWorkflowSubagentSummary` returns `false` when `stage` is present but is not one of `planner|coder|debugger|reviewer`.
 - `isWorkflowSubagentSummary` returns `true` for a summary with no `stage` (a non-stage helper agent).
 - An agent spawned through the workflow tool's `start` action carries `stage` equal to the started stage.
 - A helper agent spawned through `subagent_spawn` carries no `stage`.
 
 **Verification-command.** `node --test --experimental-strip-types extensions/shared/workflow-state.test.ts extensions/workflow/policy.test.ts && npm run check`
 
-**Grade (part4, 2026-08-04).**
+**Review (reviewer, 2026-08-04).**
 - Verdict: **PASS** (score: 94/100, diagnostic only)
 - Bounce: 0 of 3
 - Gate: `node --test --experimental-strip-types extensions/shared/workflow-state.test.ts extensions/workflow/policy.test.ts && npm run check` → exit 0 (13 tests pass; tsc clean)
 - Blocking findings: none
-- Advisory: Verification-command does not run `extensions/subagents/manager.test.ts`; stage/helper propagation is covered there and was re-run green (exit 0) during grade. Full workflow→event-bus→subagents extension round trip remains unharnessed.
+- Advisory: Verification-command does not run `extensions/subagents/manager.test.ts`; stage/helper propagation is covered there and was re-run green (exit 0) during review. Full workflow→event-bus→subagents extension round trip remains unharnessed.
 - Routing: → **Done** — all five acceptance criteria met in code; INV-6 boundary on non-finite `startedAt` held; no blocking rubric defects.
 
 
-**Part3 debugger audit (2026-08-04).**
+**Debugger audit (2026-08-04).**
 - Baseline four-net result: the exact gate was green before the audit; no failing tests or static errors. The original tests covered validator acceptance/rejection but did not cover non-finite timestamps, runtime manager propagation, or the helper summary shape.
 - Fixed INV-1/INV-6 boundary weakness: `isWorkflowSubagentSummary` now rejects `NaN`, `Infinity`, and `-Infinity` timestamps in addition to missing/non-number values.
 - Fixed helper-vs-stage identity weakness: helper snapshots and summaries omit the `stage` property entirely; workflow stage snapshots and summaries retain the valid stage. Added a real manager-runtime regression test for both paths.
 - Timestamp review: `startedAt` remains the manager-created epoch-ms value copied unchanged by summarization. Workflow persistence stores `WorkflowState`, not summaries, and does not reconstruct malformed summary timestamps.
 - Red-team inputs included missing, null, string, non-finite, invalid-stage, valid-stage, helper, and stage cases. No persistence or provider-routing defect was found.
-- **Unfixed follow-up:** the production `workflow` → event bus → `subagents` extension → manager → published summary round trip still has no dedicated runtime harness. The manager/runtime seam is tested; the extension-to-extension seam remains for the grader/follow-up test work.
+- **Unfixed follow-up:** the production `workflow` → event bus → `subagents` extension → manager → published summary round trip still has no dedicated runtime harness. The manager/runtime seam is tested; the extension-to-extension seam remains for the reviewer/follow-up test work.
 
 ---
 
@@ -57,7 +57,7 @@ Status: **Done** · Blocked-by: PI-01 · Phase 1
 
 **Verification-command.** `node --test --experimental-strip-types extensions/shared/stage-progress.test.ts && npm run check`
 
-**Grade (part4, 2026-08-04).**
+**Review (reviewer, 2026-08-04).**
 - Verdict: **PASS** (score: 96/100, diagnostic only)
 - Bounce: 0 of 3
 - Gate: `node --test --experimental-strip-types extensions/shared/stage-progress.test.ts && npm run check` → exit 0 (13 tests pass; tsc clean)
@@ -65,14 +65,14 @@ Status: **Done** · Blocked-by: PI-01 · Phase 1
 - Advisory: no-I/O source assertion is regex-on-source (honest for static imports; module also has zero import statements). UI `~`/dim rendering of stale readings remains PI-04.
 - Routing: → **Done** — all five acceptance criteria met; INV-1/INV-5/INV-6 held on this pure module; pure/no-I/O and no-false-progress confirmed from diff + independent probes.
 
-**Part3 debugger audit (2026-08-04).**
-- Claim path: `Debugger Ready` → `Debugging` → `Grading Ready`; local-file tracker mode, no GitHub Project, no remote, no push claim.
+**Debugger audit (2026-08-04).**
+- Claim path: `Debugger Ready` → `Debugging` → `Review Ready`; local-file tracker mode, no GitHub Project, no remote, no push claim.
 - Baseline four-net result: the exact gate was green before the audit; no failing tests or static errors. The original tests did not directly cover non-finite `done`, malformed runtime containers, malformed timestamps/counters, future clocks, invalid stale inputs, or immutability.
 - Red-team defects found: finite numerators/denominators paired with non-finite `at` produced measured readings; malformed inputs could throw or pass NaN/negative counters through; `isStale` could treat malformed readings or a NaN clock as fresh; readings were mutable.
 - Fixed test-first: malformed runtime containers now degrade to frozen indeterminate readings; invalid sources on object inputs still throw; non-finite `done`/`total`/`at` never yield a percent; invalid counters normalize safely; malformed stale inputs are conservatively stale; future timestamps remain non-stale; all returned readings are frozen and inputs are not mutated.
 - Added 5 regression tests covering the requested boundaries while preserving the exact source allowlist and no-I/O assertion. The module still has zero imports and no rendering, tracker, filesystem, subprocess, or network path.
 - Honest follow-up: none identified within PI-02's pure builder/staleness scope. UI consumption remains PI-04's scope and was not touched.
-- Routing: → **Grading Ready** for independent part4 review.
+- Routing: → **Review Ready** for independent review by `/reviewer`.
 
 ---
 
@@ -88,7 +88,7 @@ Dropped by the user's final answer to decision 2 (measured-only percentages, tra
 
 Status: **Done** · Blocked-by: PI-02 · Phase 1
 
-**What to build.** Extract the footer body of `extensions/ui-customization/index.ts` into a pure `renderFooter(state) => string[]` function and add adaptive stage rows: the existing 3 base lines, plus one row per tracked part1–part4 agent — `<glyph> <stage> <backend>/<model> · <elapsed> · <turns>t · <progress>` — where `<progress>` is a percent only for a measured reading and is omitted otherwise.
+**What to build.** Extract the footer body of `extensions/ui-customization/index.ts` into a pure `renderFooter(state) => string[]` function and add adaptive stage rows: the existing 3 base lines, plus one row per tracked planner–reviewer agent — `<glyph> <stage> <backend>/<model> · <elapsed> · <turns>t · <progress>` — where `<progress>` is a percent only for a measured reading and is omitted otherwise.
 
 **Acceptance criteria.**
 - With no tracked agents the footer renders exactly 3 lines (plus any extension status lines, unchanged from today).
@@ -103,7 +103,7 @@ Status: **Done** · Blocked-by: PI-02 · Phase 1
 
 **Verification-command.** `node --test --experimental-strip-types extensions/ui-customization/footer.test.ts && npm run check && npm test`
 
-**Grade (part4, 2026-08-04).**
+**Review (reviewer, 2026-08-04).**
 - Verdict: **PASS** (score: 95/100, diagnostic only)
 - Bounce: 0 of 3
 - Gate: `node --test --experimental-strip-types extensions/ui-customization/footer.test.ts && npm run check && npm test` → exit 0 (21 footer tests; tsc clean; 149 node:test + 22 vitest)
@@ -115,12 +115,12 @@ Status: **Done** · Blocked-by: PI-02 · Phase 1
 
 ## PI-05 — `/flow` parity, why-this-route, and plain-language status
 
-Status: **Grading Ready** · Blocked-by: PI-04 · Phase 1
+Status: **Review Ready** · Blocked-by: PI-04 · Phase 1
 
 **What to build.** Bring `FlowPanel` in `extensions/workflow/index.ts` in line with the footer: the Agents tab lists stage rows first (using the same progress readings), the Overview tab states the route reason in one plain sentence, and the panel shows what it is waiting on when status is `needs-input`, `needs-helper`, or `blocked`.
 
 **Acceptance criteria.**
-- The Agents tab orders part1→part4 stage agents before helper agents.
+- The Agents tab orders planner→reviewer stage agents before helper agents.
 - With no agents tracked, the Agents tab renders the literal line ` none tracked` and does not throw.
 - Overview renders a `waiting on` line whenever status is `needs-input`, `needs-helper`, or `blocked`, and omits that line otherwise.
 - Every panel line is truncated to the panel width at widths 40 and 120.
@@ -129,9 +129,9 @@ Status: **Grading Ready** · Blocked-by: PI-04 · Phase 1
 
 **Verification-command.** `node --test --experimental-strip-types extensions/workflow/flow-panel.test.ts extensions/workflow/policy.test.ts && npm run check`
 
-**Part3 debugger audit (2026-08-04).**
-- Claim path: local-file tracker `Debugger Ready` → `Debugging` → `Grading Ready`; only PI-05 moved. No GitHub Project and no git remote. Phase 2 and PI-06 were not started.
-- Actual profiles: PI-05 maker handoff records Pi · `openai-codex/gpt-5.6-terra` · xhigh; this debugger ran in the Codex part3 session. The repository pin is GPT-5.6 Luna/max, while this runtime exposes the model as GPT-5/Codex rather than a versioned Luna identifier; no helper was spawned or silently substituted.
+**Debugger audit (2026-08-04).**
+- Claim path: local-file tracker `Debugger Ready` → `Debugging` → `Review Ready`; only PI-05 moved. No GitHub Project and no git remote. Phase 2 and PI-06 were not started.
+- Actual profiles: PI-05 maker handoff records Pi · `openai-codex/gpt-5.6-terra` · xhigh; this debugger ran in the Codex debugger session. The repository pin is GPT-5.6 Luna/max, while this runtime exposes the model as GPT-5/Codex rather than a versioned Luna identifier; no helper was spawned or silently substituted.
 - Baseline four-net result: the locked gate was green before the audit (12 targeted tests; `tsc` clean), with weak coverage for malformed agent data, unknown stages, terminal/control injection, narrow/non-finite widths, getter failures, stale timestamps, input transitions, and panel performance.
 - Fixed test-first: unknown or missing stages now render as stable helper rows while duplicate known stages preserve input order; stage percentages are measured-only. Route reasons, waiting events, task/title/model/session/capability text are one-line, terminal-safe, URL/secret-redacted, and visibly truncated. Malformed counters/timestamps/readings degrade without `NaN`/`Infinity`; stale agent snapshots show `~`; failed data getters fall back safely; frame widths from zero through 120 and non-finite inputs never overflow or throw; runtime agent-update timestamps feed stale detection; tab/arrow/escape behavior and a 1,000-render budget are covered.
 - Purity: the FlowPanel render class has no filesystem, network, or subprocess calls; the source-scope assertion remains green.
@@ -226,7 +226,7 @@ inside the render path.
 **Acceptance criteria.**
 - Every ticket in the local tracker appears exactly once with its current status.
 - The list includes the ticket ID, title, status, and `Blocked-by` value when present.
-- Planned, ready, active, grading, done, dropped, and blocked work are visibly distinguishable.
+- Planned, ready, active, reviewing, done, dropped, and blocked work are visibly distinguishable.
 - Missing or malformed tracker data degrades to a bounded `issue list unavailable` message without throwing.
 - Every rendered line fits the panel width and user-controlled ticket text is terminal-safe and secret-redacted.
 - Rendering the view performs no filesystem, network, or subprocess call; tracker reads are performed off the render path.

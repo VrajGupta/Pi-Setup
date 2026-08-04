@@ -6,33 +6,33 @@ import {
 } from "../../shared/workflow-state.ts";
 
 export const STAGE_PROFILES = {
-  part1: {
+  planner: {
     harness: "claude",
     model: "opus",
     defaultReasoning: "high",
     color: "violet",
     label: "plan",
   },
-  part2: {
+  coder: {
     harness: "pi",
     model: "openai-codex/gpt-5.6-terra",
     defaultReasoning: "xhigh",
     color: "cyan",
     label: "build",
   },
-  part3: {
+  debugger: {
     harness: "codex",
     model: "gpt-5.6-luna",
     defaultReasoning: "max",
     color: "amber",
     label: "debug",
   },
-  part4: {
+  reviewer: {
     harness: "pi",
     model: "openai-codex/gpt-5.6-sol",
     defaultReasoning: "medium",
     color: "mint",
-    label: "grade",
+    label: "review",
   },
 } as const satisfies Record<
   StageName,
@@ -162,9 +162,23 @@ function hasTerm(text: string, terms: string[]) {
   return terms.some((term) => text.includes(term));
 }
 
+/**
+ * Legacy positional stage names. Kept as input aliases only so an older prompt,
+ * transcript, or handoff that still says "part3" still routes; nothing renders
+ * or emits these spellings.
+ */
+const LEGACY_STAGE_ALIASES: Record<string, StageName> = {
+  part1: "planner",
+  part2: "coder",
+  part3: "debugger",
+  part4: "reviewer",
+};
+
 function explicitStage(text: string) {
-  const match = text.match(/\bpart\s*([1-4])\b/i);
-  return match ? (`part${match[1]}` as StageName) : null;
+  const legacy = text.match(/\bpart\s*([1-4])\b/i);
+  if (legacy) return LEGACY_STAGE_ALIASES[`part${legacy[1]}`];
+  const named = text.match(/\/?\b(planner|coder|debugger|reviewer)\b/i);
+  return named ? (named[1].toLowerCase() as StageName) : null;
 }
 
 function findSkills(text: string) {
@@ -197,7 +211,7 @@ export function classifyRequest(prompt: string): RouteDecision {
   if (fleet) {
     return {
       mode: "fleet",
-      stage: "part1",
+      stage: "planner",
       confidence: risk ? "high" : "medium",
       reason: risk
         ? "crosses a high-risk boundary"
@@ -331,7 +345,7 @@ Operate directly. Do not spawn agents, delegate, ask interactive UI questions, o
 Control protocol: when you must pause, return exactly one JSON object and stop. Do not wrap it in prose.
 - User decisions: {"kind":"question_batch","stage":"${stage}","questions":[{"id":"decision-1","question":"...","recommendation":"...","options":[{"label":"...","description":"..."},{"label":"..."}]}]}
 - Specialist help: {"kind":"helper_request","stage":"${stage}","role":"...","task":"...","harness":"pi|claude|codex","model":"provider/model or harness alias","reasoning_effort":"..."}
-- Finished: {"kind":"stage_complete","stage":"${stage}","summary":"...","evidence":["runnable command and result", "artifact path"],"next":"part2|part3|part4"}
+- Finished: {"kind":"stage_complete","stage":"${stage}","summary":"...","evidence":["runnable command and result", "artifact path"],"next":"coder|debugger|reviewer"}
 - Blocked: {"kind":"blocked","stage":"${stage}","reason":"...","recovery":"..."}
 
 When the coordinator sends a question_answers or helper_result message, continue from the saved state. Never silently substitute a stage model. Keep output concise and evidence-first.`;

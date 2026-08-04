@@ -1,6 +1,6 @@
 # Spec — persistent flow UI + local token savings + Windows portability
 
-Date: 2026-08-04 · Stage: part1 (plan) · Repo: `~/Work/pi-agent`
+Date: 2026-08-04 · Stage: planner (plan) · Repo: `~/Work/pi-agent`
 
 ## Audit (evidence, gathered before planning)
 
@@ -21,11 +21,11 @@ Date: 2026-08-04 · Stage: part1 (plan) · Repo: `~/Work/pi-agent`
 
 ## Locked decisions (from the user)
 
-1. **Adaptive footer** — 3 base lines always; one row per tracked part1–part4 agent, shown only while that agent exists; max 4 rows (7 lines total).
+1. **Adaptive footer** — 3 base lines always; one row per tracked planner–reviewer agent, shown only while that agent exists; max 4 rows (7 lines total).
 2. **Measured-only percent** — percentages come from exactly three in-process denominators: context tokens/window, question `k/N`, stage `k/4`. Everything else shows elapsed + turns and no number. *(Revised: an earlier answer allowed a tracker-derived tickets done/total percent; the user's final answer excludes it, so no tracker read is on the UI path at all. PI-03 is dropped.)*
 3. **Local-only adoption; the proxy is investigate-only.** Ponytail, a Pi Caveman equivalent, and prompt-cache stability ship. A compressing proxy (OmniRoute RTK+Caveman, or Headroom if it can be located) is **evaluated and reported, never wired in** — adoption needs a fresh user decision. The whole workflow must also run on the user's Windows laptop.
 
-## Invariants (testable; `/part3` attacks these, `/part4` grades them)
+## Invariants (testable; `/debugger` attacks these, `/reviewer` reviews them)
 
 - **INV-1 no-false-progress.** No percentage is rendered unless the same reading carries the numerator *and* denominator it was computed from. Absent a denominator the UI shows glyph + elapsed + turns and no number that could be read as completion.
 - **INV-2 no-secret.** No API key, token, cookie, auth header, provider base URL, or `.env` value ever reaches the footer, `/flow`, OS notifications, `tickets.md`, or a handoff. Task previews and agent titles are truncated and secret-pattern scrubbed before display.
@@ -62,8 +62,8 @@ Phase 2 must not start before PI-04 lands, so token work is never blamed for UI 
 
 ## Adoption boundary
 
-PI-09 produces a written recommendation about a compressing proxy. It has no authority to change `models.json`, `settings.json`, or any provider route. If the recommendation is favourable, that is a new part1 run with its own decision, its own invariants for a second party seeing full prompts, and its own prompt-cache impact analysis.
+PI-09 produces a written recommendation about a compressing proxy. It has no authority to change `models.json`, `settings.json`, or any provider route. If the recommendation is favourable, that is a new planner run with its own decision, its own invariants for a second party seeing full prompts, and its own prompt-cache impact analysis.
 
 ## Out of scope (explicit)
 
-CodeGraph and any external structural-retrieval service — not chosen; reopen in a future part1 run if wanted. Direct adoption of any proxy — see the adoption boundary above.
+CodeGraph and any external structural-retrieval service — not chosen; reopen in a future planner run if wanted. Direct adoption of any proxy — see the adoption boundary above.

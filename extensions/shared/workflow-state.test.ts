@@ -8,7 +8,7 @@ import {
 
 const base = {
   id: "sa-1",
-  title: "part2 · build the thing",
+  title: "coder · build the thing",
   status: "running",
   backend: "pi",
   turns: 3,
@@ -16,7 +16,7 @@ const base = {
 };
 
 test("accepts a summary with stage and startedAt", () => {
-  assert.equal(isWorkflowSubagentSummary({ ...base, stage: "part2" }), true);
+  assert.equal(isWorkflowSubagentSummary({ ...base, stage: "coder" }), true);
 });
 
 test("accepts a summary with no stage (non-stage helper agent)", () => {
@@ -48,7 +48,7 @@ test("rejects non-finite summary timestamps", () => {
   );
 });
 
-test("rejects a stage outside part1|part2|part3|part4", () => {
+test("rejects a stage outside planner|coder|debugger|reviewer", () => {
   assert.equal(isWorkflowSubagentSummary({ ...base, stage: "part5" }), false);
   assert.equal(isWorkflowSubagentSummary({ ...base, stage: "helper" }), false);
   assert.equal(isWorkflowSubagentSummary({ ...base, stage: 2 }), false);
@@ -60,14 +60,17 @@ test("rejects a stage outside part1|part2|part3|part4", () => {
 const spawnBase = {
   kind: "spawn",
   prompt: "do the thing",
-  title: "part3 · attack it",
+  title: "debugger · attack it",
   cwd: "/tmp",
   harness: "pi",
   resolve: () => undefined,
 };
 
 test("spawn bridge requests may carry a valid stage", () => {
-  assert.equal(isWorkflowBridgeRequest({ ...spawnBase, stage: "part3" }), true);
+  assert.equal(
+    isWorkflowBridgeRequest({ ...spawnBase, stage: "debugger" }),
+    true,
+  );
   assert.equal(isWorkflowBridgeRequest(spawnBase), true);
 });
 

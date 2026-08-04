@@ -8,7 +8,7 @@ import type { WorkflowSubagentSummary } from "../shared/workflow-state.ts";
 
 export const MAX_STAGE_ROWS = 4;
 
-const STAGE_ORDER = ["part1", "part2", "part3", "part4"] as const;
+const STAGE_ORDER = ["planner", "coder", "debugger", "reviewer"] as const;
 
 export interface FooterTheme {
   fg(color: string, text: string): string;

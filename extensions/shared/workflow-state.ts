@@ -4,7 +4,12 @@ export const WORKFLOW_STATE_CHANNEL = "vraj:workflow-state";
 export const SUBAGENT_BRIDGE_CHANNEL = "vraj:subagent-bridge";
 export const SUBAGENT_STATE_CHANNEL = "vraj:subagent-state";
 
-export const STAGE_NAMES = ["part1", "part2", "part3", "part4"] as const;
+export const STAGE_NAMES = [
+  "planner",
+  "coder",
+  "debugger",
+  "reviewer",
+] as const;
 export type StageName = (typeof STAGE_NAMES)[number];
 export type WorkflowReasoningEffort =
   "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
