@@ -44,7 +44,7 @@ Status: **Done** · Blocked-by: none · Phase 1
 
 ## PI-02 — Honest progress reading module (INV-1)
 
-Status: **Planned** · Blocked-by: PI-01 · Phase 1
+Status: **Debugger Ready** · Blocked-by: PI-01 · Phase 1
 
 **What to build.** A pure module `extensions/shared/stage-progress.ts` exporting a `ProgressReading` discriminated union — `{kind:"measured", percent, done, total, source, at}` or `{kind:"indeterminate", elapsedMs, turns, at}` — plus a builder that accepts only explicit numerator/denominator pairs from the three allowed in-process sources: `context`, `questions`, `stage`. No rendering, no I/O, no tracker.
 
