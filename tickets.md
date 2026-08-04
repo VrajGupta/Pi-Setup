@@ -293,7 +293,7 @@ read happens off the render path.
 
 ## PI-11 — Retro-gate the orchestrator-only + honest-telemetry continuation (`bb5d79e`)
 
-Status: **Review Ready** · Blocked-by: none · Phase 3 · Priority 1
+Status: **Debugger Ready** · Blocked-by: none · Phase 3 · Priority 1
 
 **Why this exists.** Commit `bb5d79e` ("fix: keep user messages with orchestrator") is the current HEAD and the current `origin/main`. It removed the workflow `input` steering hook and `canSteerStage`, changed stage-row progress to `<1% ctx`, and made zero Claude usage report unknown — but it has no ticket, no debugger audit, and no reviewer verdict. **The commit is preserved. No reset, rebase, revert, or force-push is authorized.** This ticket retro-gates it forward-only and closes the remaining gaps the user re-reported on 2026-08-04: the Pi `steeringMode` setting and the header `STEER` affordance still imply direct stage steering.
 
@@ -319,6 +319,14 @@ Status: **Review Ready** · Blocked-by: none · Phase 3 · Priority 1
 - Telemetry now treats zero, negative, non-finite, and malformed Claude usage as unknown; unknown readings omit `%`; measured values between 0% and 1% render `<1% ctx`. Static/UI audits found no implementation `canSteerStage` and no visible `STEER` affordance. `NO_COLOR=1` scoped tests passed.
 - Evidence: the exact verification command passed with 57 targeted tests, `npm run check`, 174 full Node tests, and 22 Vitest tests; `npm run format:check` passed; `git diff --check` passed; source audits passed. No PI-16, PI-12, or PI-10 implementation file was changed. No push was performed.
 - Routing: **Review Ready**. Handoff: `docs/handoffs/2026-08-04-debugger-pi11.md`.
+
+**Review: FAIL (68/100, diagnostic only) — 2026-08-04.**
+
+- Bounce: **1 of 3**.
+- Gate: exact PI-11 verification command → exit 0; format and diff checks → exit 0.
+- Blocking correctness: Codex `totalTokens` values of `0` and `-1` pass through `parseThreadTokenUsage` and `buildReading` as measured zero, so stage rows render `0% ctx` instead of unknown with no `%` (`extensions/subagents/src/backends/codex.ts:215`, `extensions/shared/stage-progress.ts:72`, `extensions/ui-customization/footer.ts:165`).
+- Blocking correctness: the workflow-stage takeover handles `app.clear` before its stage guard and calls `requestAbort`, so the purported read-only stage view can terminate the stage (`extensions/subagents/src/ui/takeover.ts:451`).
+- Routing: **Debugger Ready**. Grade: `docs/handoffs/2026-08-04-reviewer-pi11.md`.
 
 ---
 
