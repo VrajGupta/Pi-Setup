@@ -293,7 +293,7 @@ read happens off the render path.
 
 ## PI-11 — Retro-gate the orchestrator-only + honest-telemetry continuation (`bb5d79e`)
 
-Status: **Debugger Ready** · Blocked-by: none · Phase 3 · Priority 1
+Status: **Review Ready** · Blocked-by: none · Phase 3 · Priority 1
 
 **Why this exists.** Commit `bb5d79e` ("fix: keep user messages with orchestrator") is the current HEAD and the current `origin/main`. It removed the workflow `input` steering hook and `canSteerStage`, changed stage-row progress to `<1% ctx`, and made zero Claude usage report unknown — but it has no ticket, no debugger audit, and no reviewer verdict. **The commit is preserved. No reset, rebase, revert, or force-push is authorized.** This ticket retro-gates it forward-only and closes the remaining gaps the user re-reported on 2026-08-04: the Pi `steeringMode` setting and the header `STEER` affordance still imply direct stage steering.
 
@@ -310,6 +310,15 @@ Status: **Debugger Ready** · Blocked-by: none · Phase 3 · Priority 1
 - Full suite stays green: `npm test` exits 0.
 
 **Verification-command.** `node --test --experimental-strip-types extensions/workflow/policy.test.ts extensions/workflow/flow-panel.test.ts extensions/ui-customization/footer.test.ts extensions/subagents/context-usage.test.ts extensions/workflow/config-docs.test.ts && npm run check && npm test`
+
+**Debugger audit (2026-08-04).**
+
+- Starting state was clean commit `3e8ea05ec91f533c45ceda513037d0e81cc32ccd`, with this ticket in `Debugger Ready`. The local tracker is authoritative; no GitHub Project or issue tracker is configured for this repository.
+- Red-team probes found real defects: same-second installer backups collided on a repeated run; malformed settings were silently replaced; an in-place repository install could move its own resources and create broken links; malformed or negative Claude token readings could look measured; unknown context text rendered `?%`; and `workflow send` did not reject helper IDs. These were fixed test-first.
+- The installer now fails closed for malformed/non-object JSON, migrates legacy `steeringMode: "all"` to `"one-at-a-time"` atomically, uses collision-safe backups, is idempotent with paths containing spaces, and leaves in-place repository resources intact. Relay sends require the active stage ID and blank sends are rejected. Documentation now describes the coordinator-only input path and explicit `workflow send` relay accurately.
+- Telemetry now treats zero, negative, non-finite, and malformed Claude usage as unknown; unknown readings omit `%`; measured values between 0% and 1% render `<1% ctx`. Static/UI audits found no implementation `canSteerStage` and no visible `STEER` affordance. `NO_COLOR=1` scoped tests passed.
+- Evidence: the exact verification command passed with 57 targeted tests, `npm run check`, 174 full Node tests, and 22 Vitest tests; `npm run format:check` passed; `git diff --check` passed; source audits passed. No PI-16, PI-12, or PI-10 implementation file was changed. No push was performed.
+- Routing: **Review Ready**. Handoff: `docs/handoffs/2026-08-04-debugger-pi11.md`.
 
 ---
 

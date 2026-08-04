@@ -245,14 +245,30 @@ export function contextOccupancyTokens(
     | null
     | undefined,
 ) {
-  if (!usage || typeof usage.input_tokens !== "number") return undefined;
-  const count = (value: number | null | undefined) =>
-    typeof value === "number" && Number.isFinite(value) ? value : 0;
-  const tokens =
-    count(usage.input_tokens) +
-    count(usage.cache_read_input_tokens) +
-    count(usage.cache_creation_input_tokens) +
-    count(usage.output_tokens);
+  if (!usage) return undefined;
+  if (
+    typeof usage.input_tokens !== "number" ||
+    !Number.isFinite(usage.input_tokens) ||
+    usage.input_tokens < 0
+  )
+    return undefined;
+  const count = (value: number | null | undefined) => {
+    if (value === null || value === undefined) return 0;
+    return typeof value === "number" && Number.isFinite(value) && value >= 0
+      ? value
+      : undefined;
+  };
+  const counts = [
+    usage.input_tokens,
+    count(usage.cache_read_input_tokens),
+    count(usage.cache_creation_input_tokens),
+    count(usage.output_tokens),
+  ];
+  const usableCounts = counts.filter(
+    (value): value is number => value !== undefined,
+  );
+  if (usableCounts.length !== counts.length) return undefined;
+  const tokens = usableCounts.reduce((total, value) => total + value, 0);
   return tokens > 0 ? tokens : undefined;
 }
 

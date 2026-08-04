@@ -27,18 +27,18 @@ test("clamps over-capacity and nonsensical token values", () => {
       tokens: Number.POSITIVE_INFINITY,
       contextWindow: 200_000,
     }),
-    "?%/200k",
+    "?/200k",
   );
   assert.equal(
     formatContextUtilization({ tokens: -1, contextWindow: 200_000 }),
-    "?%/200k",
+    "?/200k",
   );
 });
 
 test("handles missing usage or capacity without NaN or Infinity", () => {
   assert.equal(
     formatContextUtilization({ tokens: null, contextWindow: 372_000 }),
-    "?%/372k",
+    "?/372k",
   );
   assert.equal(formatContextUtilization({ tokens: 12_000 }), "");
   assert.equal(

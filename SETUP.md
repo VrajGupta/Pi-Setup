@@ -37,4 +37,4 @@ Pi will load the extensions, skills, and theme from their directories the next t
 
 ## Message delivery
 
-The installed Pi runtime accepts `"all"` and `"one-at-a-time"` for `steeringMode`; `"one-at-a-time"` is its default. This setup uses `"one-at-a-time"` so queued messages stay serial with the coordinator. That setting controls Pi's coordinator queue only: Vraj messages the orchestrator, and stages receive text only through its explicit `workflow send` relay.
+The installed Pi runtime accepts `"all"` and `"one-at-a-time"` for `steeringMode`; `"one-at-a-time"` is its default. This setup uses `"one-at-a-time"` so queued messages stay serial with the coordinator. That setting controls Pi's coordinator queue only: Vraj messages the orchestrator; `workflow start` supplies the initial stage task, and subsequent user or decision text reaches stages only through the coordinator's explicit `workflow send` relay.

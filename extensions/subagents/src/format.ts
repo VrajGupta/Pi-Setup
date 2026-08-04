@@ -40,13 +40,13 @@ export function formatCompactTokens(count: number) {
 
 /**
  * Render `%/capacity`. If occupancy is unknown, retain the useful capacity
- * as `?%/capacity`; with no valid capacity, omit the statistic entirely.
+ * as `?/capacity`; with no valid capacity, omit the statistic entirely.
  */
 export function formatContextUtilization(usage: ContextUtilization) {
   const capacity = usableCapacity(usage.contextWindow);
   if (capacity === undefined) return "";
   const percent = contextPercent(usage);
-  return `${percent === undefined ? "?" : percent}%/${formatCompactTokens(capacity)}`;
+  return `${percent === undefined ? "?" : `${percent}%`}/${formatCompactTokens(capacity)}`;
 }
 
 interface ActivityCounts {

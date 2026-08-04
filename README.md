@@ -5,7 +5,7 @@ Personal Pi configuration for the planner → coder → debugger → reviewer wo
 ## What this owns
 
 - `SYSTEM.md`: coordinator policy and stage protocol.
-- `extensions/workflow`: risk-based routing, pinned stage launch, question relay, recovery state, and `/flow`/F6 command center.
+- `extensions/workflow`: risk-based routing, pinned stage launch, coordinator-mediated question relay, recovery state, and `/flow`/F6 command center.
 - `extensions/ui-customization`: compact `π + project` header, permanent workflow rail, technical footer.
 - `extensions/subagents`: the existing multi-harness engine plus the workflow bridge and safe `subagent_send` tool.
 - `themes/vraj-ink.json`: OLED-black cyan/violet theme with semantic stage colors.
@@ -23,7 +23,7 @@ The installer backs up current runtime resources before linking this repo into `
 
 ## Workflow
 
-Normal requests are classified automatically. Small reversible work stays direct. Risky or broad work is routed to the fleet. Vraj messages only the coordinator; stages receive text solely through its explicit `workflow send` relay. Use `/flow` or **F6** for the command center.
+Normal requests are classified automatically. Small reversible work stays direct. Risky or broad work is routed to the fleet. Vraj messages only the coordinator; the initial task goes to a stage through `workflow start`, and subsequent user or decision text reaches stages solely through the coordinator's explicit `workflow send` relay. Use `/flow` or **F6** for the command center.
 
 Stage rows show elapsed time, completed assistant turns (`1t` = one turn), and measured context-window use (`<1% ctx`, for example). Context use is not task-completion progress; unavailable usage shows no percentage.
 

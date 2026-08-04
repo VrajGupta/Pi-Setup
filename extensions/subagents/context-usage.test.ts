@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { contextOccupancyTokens } from "./src/backends/claude.ts";
 import { parseThreadTokenUsage } from "./src/backends/codex.ts";
+import { formatContextUtilization } from "./src/format.ts";
 
 // --- Claude: per-request occupancy, never the run aggregate ------------------
 
@@ -40,6 +41,38 @@ test("Claude occupancy is unknown without usable nonzero per-request usage", () 
     contextOccupancyTokens({ input_tokens: 0, output_tokens: 0 }),
     undefined,
   );
+  assert.equal(
+    contextOccupancyTokens({
+      input_tokens: 0,
+      cache_read_input_tokens: 0,
+      cache_creation_input_tokens: 0,
+      output_tokens: 0,
+    }),
+    undefined,
+  );
+});
+
+test("Claude occupancy rejects negative and non-finite token readings", () => {
+  assert.equal(
+    contextOccupancyTokens({ input_tokens: -1, output_tokens: 5 }),
+    undefined,
+  );
+  assert.equal(
+    contextOccupancyTokens({ input_tokens: Number.POSITIVE_INFINITY }),
+    undefined,
+  );
+  assert.equal(
+    contextOccupancyTokens({ input_tokens: 10, cache_read_input_tokens: -4 }),
+    undefined,
+  );
+});
+
+test("unknown context utilization omits the percent sign", () => {
+  assert.equal(
+    formatContextUtilization({ tokens: undefined, contextWindow: 200_000 }),
+    "?/200k",
+  );
+  assert.equal(formatContextUtilization({ tokens: 0, contextWindow: 0 }), "");
 });
 
 test("Claude occupancy from the last request stays below the window where the run aggregate would not", () => {

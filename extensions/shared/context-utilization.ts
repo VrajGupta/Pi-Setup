@@ -35,7 +35,7 @@ export function formatCompactTokens(count: number) {
 
 /**
  * Render `%/capacity`. If occupancy is temporarily unknown (notably directly
- * after compaction), retain the useful model capacity as `?%/capacity`. If no
+ * after compaction), retain the useful model capacity as `?/capacity`. If no
  * valid capacity is available, omit the statistic because no percentage can
  * be computed.
  */
@@ -43,5 +43,5 @@ export function formatContextUtilization(usage: ContextUtilization) {
   const capacity = usableCapacity(usage.contextWindow);
   if (capacity === undefined) return "";
   const percent = contextPercent(usage);
-  return `${percent === undefined ? "?" : percent}%/${formatCompactTokens(capacity)}`;
+  return `${percent === undefined ? "?" : `${percent}%`}/${formatCompactTokens(capacity)}`;
 }

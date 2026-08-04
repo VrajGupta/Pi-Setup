@@ -739,6 +739,8 @@ export default function workflow(pi: ExtensionAPI) {
   };
 
   const sendToStage = async (id: string, text: string) => {
+    if (state.stageAgentId !== id)
+      throw new Error("workflow send requires the active workflow stage id.");
     const response = await bridge((resolve) => ({
       kind: "send",
       id,
@@ -946,7 +948,7 @@ export default function workflow(pi: ExtensionAPI) {
         };
       }
       if (input.action === "send") {
-        if (!input.id || !input.text)
+        if (!input.id || !input.text?.trim())
           throw new Error("workflow send requires id and text.");
         const response = await sendToStage(input.id, input.text);
         return {
@@ -1019,7 +1021,7 @@ export default function workflow(pi: ExtensionAPI) {
     });
     const skills = decision.skills.length ? decision.skills.join(", ") : "none";
     return {
-      systemPrompt: `${event.systemPrompt}\n\n## Vraj route for this turn\n- Recommendation: ${decision.mode}${decision.stage ? ` via ${decision.stage}` : ""}\n- Reason: ${decision.reason}\n- Supporting skills: ${skills}\n- Human messages always go to the orchestrator, never directly to a stage. Interpret them first; relay to an active stage with workflow send only when needed.\n- If this is fleet work, use the workflow tool to start the pinned stage and stop doing the stage's work in the coordinator turn.\n- If a stage result contains a control JSON envelope, honor it: the workflow extension handles questions; broker helper requests with sibling subagents; verify evidence before advancing.\n- Keep user-facing updates terse and put technical detail in /flow.`,
+      systemPrompt: `${event.systemPrompt}\n\n## Vraj route for this turn\n- Recommendation: ${decision.mode}${decision.stage ? ` via ${decision.stage}` : ""}\n- Reason: ${decision.reason}\n- Supporting skills: ${skills}\n- Human messages always go to the orchestrator, never directly to a stage. Interpret them first; relay to an active stage with workflow send only when needed.\n- If this is fleet work, use the workflow tool to start the pinned stage and stop doing the stage's work in the coordinator turn.\n- If a stage result contains a control JSON envelope, honor it: the workflow extension records questions as awaiting coordinator relay; broker helper requests with sibling subagents; verify evidence before advancing.\n- Keep user-facing updates terse and put technical detail in /flow.`,
     };
   });
 
