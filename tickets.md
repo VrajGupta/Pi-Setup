@@ -255,7 +255,7 @@ Status: **Agent Ready** · Blocked-by: PI-06 (Done) · Phase 2 · GitHub issue #
 
 ## PI-08 — Windows support for the whole Pi workflow (INV-7)
 
-Status: **Review Ready** · Blocked-by: PI-07 · Phase 2
+Status: **Done** · Blocked-by: PI-07 · Phase 2
 
 **What to build.** Replace the bash+python `install.sh` path with a cross-platform Node installer (`scripts/install.mjs`, invoked by both `install.sh` and a new `install.ps1`) that resolves the agent dir, links or copies resources, and merges settings; make every path join platform-safe; confirm the notification branch degrades cleanly on Windows; and document the Windows setup in `SETUP.md`.
 
@@ -268,6 +268,14 @@ Status: **Review Ready** · Blocked-by: PI-07 · Phase 2
 - `SETUP.md` documents the Windows install command and the fact that `bin/fd` is a platform-specific download, not a committed binary.
 
 **Verification-command.** `node --test --experimental-strip-types extensions/shared/*.test.ts && node scripts/install.mjs --dry-run --agent-dir "$(mktemp -d)" && npm run check && npm test`
+
+**Review (reviewer, 2026-08-04).**
+- Verdict: **PASS** (score: 96/100, diagnostic only) · Bounce: 0 of 3.
+- Tested commit: `4cfc409a49b4a36adb95b60aef178bfd51a5a38c` over base `8a2d3da45e39ed96e5634b77d904b9e3de36f117`.
+- Exact gate passed: 41 targeted tests, dry-run, TypeScript check, 204 Node tests, and 22 Vitest tests; exit 0.
+- Static checks passed: `git diff --check`, `npm run format:check`, and `sh -n install.sh`. PowerShell was unavailable on this macOS runner; `install.ps1` was inspected statically.
+- Blocking findings: none. Routing: → **Done** — all acceptance criteria and INV-7 hold. Project #12 item read back `Done`.
+- Review artifact: `docs/handoffs/2026-08-04-reviewer-pi08.md`.
 
 ---
 
