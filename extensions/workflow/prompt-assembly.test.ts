@@ -258,6 +258,51 @@ ordinary-after=keep`,
   assert.match(result.systemPrompt, /ordinary-after=keep/);
 });
 
+test("redacts every supported credential family through the production seam", async () => {
+  let beforeAgentStart: unknown;
+  const workflowPi = {
+    on(event: string, handler: unknown) {
+      if (event === "before_agent_start") beforeAgentStart = handler;
+    },
+    events: {
+      emit() {},
+      on() {
+        return () => {};
+      },
+    },
+    registerCommand() {},
+    registerShortcut() {},
+    registerTool() {},
+  } as unknown as ExtensionAPI;
+
+  workflowExtension(workflowPi);
+  assert.ok(beforeAgentStart);
+  const result = await (
+    beforeAgentStart as (
+      event: { prompt: string; systemPrompt: string },
+      ctx: { mode: "tui" },
+    ) => Promise<{ systemPrompt?: string } | undefined>
+  )(
+    {
+      prompt: "Explain the session tree",
+      systemPrompt: `CORE
+ordinary-before=keep
+Authorization: Bearer SYNTHETIC_BEARER_VALUE
+ folded=SYNTHETIC_FOLDED_VALUE
+Cookie: session=SYNTHETIC_COOKIE_VALUE
+tokens sk-SYNTHETIC_TOKEN_VALUE ghp_SYNTHETIC_GH_VALUE eyJ_SYNTHETIC_HEADER.abcdefg.hijklmn
+request https://provider.example/v1?access_token=SYNTHETIC_QUERY_VALUE
+ordinary-after=keep`,
+    },
+    { mode: "tui" },
+  );
+
+  assert.ok(result?.systemPrompt);
+  assert.doesNotMatch(result.systemPrompt, /SYNTHETIC_/);
+  assert.match(result.systemPrompt, /ordinary-before=keep/);
+  assert.match(result.systemPrompt, /ordinary-after=keep/);
+});
+
 test("uses the tested assembly seam on the production before_agent_start path", () => {
   const source = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
   assert.match(source, /from "\.\/prompt-assembly\.ts"/);
