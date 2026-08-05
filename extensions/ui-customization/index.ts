@@ -74,15 +74,6 @@ function stageLabel(
   return theme.fg("dim", `· ${stage}`);
 }
 
-function railLabel(
-  workflow: WorkflowState,
-  theme: ExtensionContext["ui"]["theme"],
-) {
-  return STAGES.map((stage) =>
-    stageLabel(stage, workflow.activeStage, workflow.status, theme),
-  ).join(theme.fg("dim", "  →  "));
-}
-
 function activityGlyph(activity: Activity) {
   if (activity === "working") return "·";
   if (activity === "done") return "✓";
@@ -180,30 +171,7 @@ export default function uiCustomization(pi: ExtensionAPI) {
           const identity =
             theme.fg("accent", "π") +
             theme.fg("text", ` ${formatDirectory(ctx.cwd)}`);
-          const route = workflow.route
-            ? `${workflow.route.mode}${workflow.route.stage ? `/${workflow.route.stage}` : ""}`
-            : "direct";
-          const running = agents.filter(
-            (agent) => agent.status === "running",
-          ).length;
-          const agentStatus = `${running} running · ${agents.length} tracked`;
-          const flowStatus = workflow.activeStage
-            ? `${workflow.status} · ${workflow.activeStage}`
-            : workflow.status;
-          const headerFlow =
-            theme.fg("accent", "FLOW") +
-            theme.fg("muted", ` ${route} · ${flowStatus}`);
-          const headerAgents =
-            theme.fg("mdHeading", "AGENTS") +
-            theme.fg("muted", ` ${agentStatus}`);
-          return [
-            columns(identity, headerFlow, width),
-            columns(
-              theme.fg("dim", ` ${railLabel(workflow, theme)}`),
-              headerAgents,
-              width,
-            ),
-          ];
+          return [columns(identity, "", width)];
         },
         invalidate() {},
       };
@@ -222,6 +190,9 @@ export default function uiCustomization(pi: ExtensionAPI) {
           const route = workflow.route
             ? `${workflow.route.mode}${workflow.route.stage ? `/${workflow.route.stage}` : ""}`
             : "direct";
+          const running = agents.filter(
+            (agent) => agent.status === "running",
+          ).length;
           const flow = STAGES.map((stage) =>
             stageLabel(stage, workflow.activeStage, workflow.status, theme),
           ).join(theme.fg("dim", "  →  "));
@@ -262,7 +233,7 @@ export default function uiCustomization(pi: ExtensionAPI) {
             cwdLabel: formatDirectory(ctx.cwd),
             runtime,
             rail: `${theme.fg("accent", "flow")} ${flow}`,
-            routeStatus: `${route} · ${workflow.status}`,
+            routeStatus: `${route} · ${workflow.status} · ${running} running · ${agents.length} tracked`,
             usage,
             pr,
             agents,

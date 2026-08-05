@@ -448,7 +448,9 @@ Status: **Review Ready** · Blocked-by: PI-11 · Phase 3 · Priority 2
 
 ## PI-12 — Retire the header status block; the footer is the single status surface (INV-3, INV-4, INV-11)
 
-Status: **Planned** · Blocked-by: PI-16 · Phase 3
+Status: **Debugger Ready** · Blocked-by: PI-16 (Done) · Phase 3
+
+**Coder delivery (2026-08-05).** Header now renders only `π + cwd`; footer retains `fleet/coder`, `running`, `coder`, and `N running · N tracked` on its existing three-line base rail. Product diff SHA-256: `55b06a445ab40979af4e82d90c287a0252e3b14c8ca4b151f8229e878f830c99`. Exact gate `node --test --experimental-strip-types extensions/ui-customization/footer.test.ts extensions/ui-customization/header.test.ts && npm run check && npm test` → exit 0 (23 focused tests; 218 Node tests; 22 Vitest tests). `npm run format:check` → exit 0; `git diff --check` → exit 0. Artifact: `docs/handoffs/2026-08-05-coder-pi12.md`; gate log: `/tmp/pi12-gate.log`; product diff: `/tmp/pi12-product.diff`. Project #12 issue #6 moved `Agent Ready` → `Coding`; final `Debugger Ready` read-back recorded in the coder handoff.
 
 **What to build.** `extensions/ui-customization/index.ts:151-186` renders route, workflow status, active stage, and `N running · N tracked` in the header while the footer renders the same rail. Move every piece of still-wanted status into the persistent footer and remove the header status block, keeping the identity line (π + cwd) wherever the user still needs it.
 
