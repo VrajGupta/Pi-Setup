@@ -165,7 +165,7 @@ test("stage rows keep a closed, redacted reason when stale or indeterminate", ()
     state({
       width: 200,
       now: 100_000,
-      agents: [agent({ stage: "coder" })],
+      agents: [agent({ stage: "coder", modelLabel: "model%label" })],
       readingFor: () => buildReading({ source: "stage", at: 60_000 }),
       reasonFor: () =>
         "provider error: \u001b[2JAuthorization: Bearer synthetic-secret-token",
@@ -357,6 +357,48 @@ test("non-finite timestamps, counters, clocks, and readings degrade without fabr
   assert.ok(!lines[3].includes("NaN"));
   assert.ok(!lines[3].includes("Infinity"));
   assert.ok(!lines[3].includes("%"));
+});
+
+test("malformed measured readings and secret-shaped provider reasons fail closed", () => {
+  const line = renderFooter(
+    state({
+      width: 200,
+      agents: [agent({ stage: "coder" })],
+      readingFor: () => ({
+        kind: "measured",
+        percent: 0,
+        done: 1,
+        total: 2,
+        source: "context",
+        at: 10_000,
+      }),
+      reasonFor: () =>
+        "provider error: upstream reported 50% failure; api_key=PI12_API_SECRET password=PI12_PASSWORD_SECRET Cookie: session=PI12_COOKIE_SECRET",
+    }),
+  )[3];
+
+  assert.match(line, /^~ provider error/);
+  assert.doesNotMatch(
+    line,
+    /0%|PI12_API_SECRET|PI12_PASSWORD_SECRET|PI12_COOKIE_SECRET/,
+  );
+  assert.match(line, /\[REDACTED\]/);
+
+  const inconsistent = renderFooter(
+    state({
+      agents: [agent({ stage: "coder", modelLabel: "model%label" })],
+      readingFor: () => ({
+        kind: "measured",
+        percent: 99,
+        done: 1,
+        total: 2,
+        source: "context",
+        at: 10_000,
+      }),
+    }),
+  )[3];
+  assert.match(inconsistent, /^~/);
+  assert.doesNotMatch(inconsistent, /%/);
 });
 
 test("the stale boundary is fresh at exactly 30 seconds and stale one millisecond later", () => {

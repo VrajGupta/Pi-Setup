@@ -448,9 +448,13 @@ Status: **Review Ready** · Blocked-by: PI-11 · Phase 3 · Priority 2
 
 ## PI-12 — Retire the header status block; the footer is the single status surface (INV-3, INV-4, INV-11)
 
-Status: **Debugger Ready** · Blocked-by: PI-16 (Done) · Phase 3
+Status: **Review Ready** · Blocked-by: PI-16 (Done) · Phase 3
 
 **Coder delivery (2026-08-05).** Header now renders only `π + cwd`; footer retains `fleet/coder`, `running`, `coder`, and `N running · N tracked` on its existing three-line base rail. Product diff SHA-256: `55b06a445ab40979af4e82d90c287a0252e3b14c8ca4b151f8229e878f830c99`. Exact gate `node --test --experimental-strip-types extensions/ui-customization/footer.test.ts extensions/ui-customization/header.test.ts && npm run check && npm test` → exit 0 (23 focused tests; 218 Node tests; 22 Vitest tests). `npm run format:check` → exit 0; `git diff --check` → exit 0. Artifact: `docs/handoffs/2026-08-05-coder-pi12.md`; gate log: `/tmp/pi12-gate.log`; product diff: `/tmp/pi12-product.diff`. Project #12 issue #6 moved `Agent Ready` → `Coding`; final `Debugger Ready` read-back recorded in the coder handoff.
+
+**Debugger audit (2026-08-05).** Independent red-team found three footer-boundary defects: malformed measured readings could render fabricated `0%` or an inconsistent supplied percent; PI-16 `provider error:` reasons leaked `Cookie`/password-shaped values and other supported secret forms; and a percent sign in a provider reason or model label could appear in an indeterminate row. Fixed test-first in `extensions/ui-customization/footer.ts` with one compact regression in `footer.test.ts`: measured rows now require a positive percent that exactly matches their numerator/denominator, secret-shaped reason text fails closed while preserving the PI-16 reason prefix, and non-progress display tokens cannot introduce `%`. Header production-seam probe passed; no `index.ts` change was needed. No render-path I/O or performance regression found.
+
+Debugger product diff SHA-256: `3e7fd263b28b19e4d16b1a850ef1f86d1927e576ab40ef0e193426d7f5136c7a` (implementation/tests only). Exact Verification-command → exit 0 (24 focused tests; `npm run check`; 219 Node tests; 22 Vitest tests). `npm run format:check` → exit 0; `git diff --check` → exit 0. Two earlier combined-gate attempts exposed only the pre-existing PI-13 10,000-line benchmark flake (133.6 ms and 144.3 ms against its 100 ms threshold); the isolated test and final exact gate passed. Artifact: `docs/handoffs/2026-08-05-debugger-pi12.md`. Project #12 issue #6 read back `Review Ready`.
 
 **What to build.** `extensions/ui-customization/index.ts:151-186` renders route, workflow status, active stage, and `N running · N tracked` in the header while the footer renders the same rail. Move every piece of still-wanted status into the persistent footer and remove the header status block, keeping the identity line (π + cwd) wherever the user still needs it.
 

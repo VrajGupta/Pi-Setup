@@ -18,6 +18,9 @@ const REASONS = [
   "stale bridge",
   "reason unknown",
 ] as const;
+const SENSITIVE_HEADER_PATTERN = /\b(Authorization|Cookie)\s*:\s*.*/gi;
+const SECRET_ASSIGNMENT_PATTERN =
+  /(["']?(?:api[_-]?key|access[_-]?key|access[_-]?token|authorization|cookie|credential|password|passwd|private[_-]?key|secret|token)["']?\s*[:=]\s*)(?:"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|[^\s,;}]+)/gi;
 
 export interface FooterTheme {
   fg(color: string, text: string): string;
@@ -64,15 +67,24 @@ function reasonText(value: unknown) {
     .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "")
     // eslint-disable-next-line no-control-regex
     .replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, "")
-    .replace(/\bAuthorization\s*:\s*.*/gi, "Authorization: [REDACTED]")
+    .replace(SENSITIVE_HEADER_PATTERN, "$1: [REDACTED]")
     .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [REDACTED]")
     .replace(
-      /\b(api[_-]?key|access[_-]?token|key|secret|token)\s*[:=]\s*[^\s,;]+/gi,
-      "$1=[REDACTED]",
+      /\b(sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9_]{12,}|eyJ[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,})\b/g,
+      "[REDACTED]",
     )
+    .replace(SECRET_ASSIGNMENT_PATTERN, "$1[REDACTED]")
+    .replace(
+      /([?&](?:api[_-]?key|access[_-]?token|key|secret|token)=)[^&#\s]+/gi,
+      "$1[REDACTED]",
+    )
+    .replace(/\b[a-z][a-z0-9+.-]*:\/{1,2}[^\s]+/gi, "[URL]")
+    .replace(/%/g, " percent")
     .trim();
   const reason = REASONS.find(
-    (candidate) => text === candidate || text.startsWith(`${candidate}:`),
+    (candidate) =>
+      text === candidate ||
+      (candidate === "provider error" && text.startsWith(`${candidate}:`)),
   );
   return reason ? text : "reason unknown";
 }
@@ -151,13 +163,15 @@ function isValidReading(value: unknown): value is ProgressReading {
   if (reading.kind === "measured") {
     return (
       isFiniteNumber(reading.percent) &&
-      reading.percent >= 0 &&
+      reading.percent > 0 &&
       reading.percent <= 100 &&
       isFiniteNumber(reading.done) &&
       reading.done > 0 &&
       isFiniteNumber(reading.total) &&
       reading.total > 0 &&
-      (PROGRESS_SOURCES as readonly unknown[]).includes(reading.source)
+      (PROGRESS_SOURCES as readonly unknown[]).includes(reading.source) &&
+      reading.percent ===
+        Math.min(100, Math.max(0, (reading.done / reading.total) * 100))
     );
   }
   return (
@@ -175,7 +189,7 @@ function safeElapsed(now: unknown, startedAt: unknown) {
 }
 
 function displayToken(value: unknown, fallback: string) {
-  const text = oneLine(value).trim();
+  const text = oneLine(value).replace(/%/g, " percent").trim();
   return text || fallback;
 }
 
