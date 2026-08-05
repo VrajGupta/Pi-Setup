@@ -47,8 +47,8 @@ function normalizeWidth(width: unknown) {
 
 function normalizeMaxLines(value: unknown) {
   if (value === undefined) return DEFAULT_MAX_LINES;
-  if (typeof value !== "number") return DEFAULT_MAX_LINES;
-  if (!Number.isFinite(value)) return 8;
+  if (typeof value !== "number" || Number.isNaN(value))
+    return DEFAULT_MAX_LINES;
   return Math.max(8, Math.min(200, Math.floor(value)));
 }
 
@@ -104,7 +104,7 @@ function routeLabel(route: unknown) {
       ? (route as Record<string, unknown>)
       : null;
   if (r && r.mode === "fleet") {
-    const stage = r.stage != null ? safeToken(String(r.stage), "") : "";
+    const stage = r.stage != null ? safeToken(r.stage, "") : "";
     return stage ? `route fleet/${stage}` : "route fleet";
   }
   return "route direct";
@@ -322,7 +322,7 @@ export function renderStatusWidget(state: StatusWidgetState): string[] {
     ];
     const lines = [
       ...base.map((line) => safeTruncate(safeString(line), width)),
-      ...inputLines.map((line) => safeTruncate(safeString(line), width)),
+      ...inputLines.map((line) => safeTruncate(safeToken(line, ""), width)),
     ];
 
     if (lines.length <= maxLines) return lines;

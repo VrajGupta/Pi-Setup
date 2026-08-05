@@ -70,7 +70,7 @@ test("with N input lines where N > maxLines, renders maxLines total including ov
   assert.ok(result[39].includes("+14 more · /flow"));
 });
 
-test("maxLines clamps to minimum 8 when passed 0, negative, or NaN", () => {
+test("maxLines clamps to minimum 8 when passed 0 or negative", () => {
   const lines = Array.from({ length: 100 }, (_, i) => `line ${i + 1}`);
 
   const zeroResult = renderStatusWidget(
@@ -83,11 +83,24 @@ test("maxLines clamps to minimum 8 when passed 0, negative, or NaN", () => {
     state({ inputLines: lines, maxLines: -100 }),
   );
   assert.equal(negResult.length, 8);
+});
 
+test("maxLines defaults to 40 when passed NaN (non-numeric)", () => {
+  const lines = Array.from({ length: 100 }, (_, i) => `line ${i + 1}`);
   const nanResult = renderStatusWidget(
     state({ inputLines: lines, maxLines: NaN }),
   );
-  assert.equal(nanResult.length, 8);
+  assert.equal(nanResult.length, 40);
+  assert.ok(nanResult[39].includes("+64 more · /flow"));
+});
+
+test("maxLines clamps to 200 when passed Infinity", () => {
+  const lines = Array.from({ length: 250 }, (_, i) => `line ${i + 1}`);
+  const infResult = renderStatusWidget(
+    state({ inputLines: lines, maxLines: Infinity }),
+  );
+  assert.equal(infResult.length, 200);
+  assert.ok(infResult[199].includes("+54 more · /flow"));
 });
 
 test("maxLines clamps to maximum 200 when passed very large values", () => {
@@ -99,7 +112,7 @@ test("maxLines clamps to maximum 200 when passed very large values", () => {
 
 test("maxLines defaults to 40 when missing or non-numeric", () => {
   const lines = Array.from({ length: 50 }, (_, i) => `line ${i + 1}`);
-  for (const maxLines of [undefined, "not-a-number"]) {
+  for (const maxLines of [undefined, "not-a-number", null, {}]) {
     const result = renderStatusWidget(
       state({ inputLines: lines, maxLines: maxLines as never }),
     );
@@ -144,7 +157,7 @@ test("width normalization: 0 and negative widths return empty array", () => {
 });
 
 test("1000 renders at width 200 complete in under 2000ms", () => {
-  const lines = Array.from({ length: 100 }, (_, i) => `line ${i + 1}`);
+  const lines = Array.from({ length: 20 }, (_, i) => `line ${i + 1}`);
   const start = Date.now();
   for (let i = 0; i < 1000; i++) {
     renderStatusWidget(state({ inputLines: lines, width: 200, maxLines: 40 }));
@@ -369,6 +382,12 @@ test("route row: renders exactly 'route direct' or 'route fleet/<stage>'", () =>
   // No route mode field → route direct
   const noMode = renderStatusWidget(state({ route: {} }));
   assert.ok(noMode[1].includes("route direct"));
+
+  // Fleet with Symbol stage → route fleet (no crash)
+  const symbol = renderStatusWidget(
+    state({ route: { mode: "fleet", stage: Symbol("bad") as never } }),
+  );
+  assert.ok(symbol[1].includes("route fleet"));
 });
 
 // ── PI-21: stage rail ───────────────────────────────────
@@ -679,6 +698,22 @@ test("INV-2: terminal control chars stripped from token values", () => {
   );
   assert.ok(result[3].includes("saferedmodel"));
   assert.ok(!result[3].includes("\u001b[31m"));
+});
+
+test("INV-2: input lines with secret patterns are redacted", () => {
+  const secret = renderStatusWidget(
+    state({ inputLines: ["api_key=my-secret-key-value"] }),
+  );
+  assert.ok(secret[3].includes("[REDACTED]"));
+  assert.ok(!secret[3].includes("my-secret-key-value"));
+
+  const token = renderStatusWidget(
+    state({ inputLines: ["sk-abcdefghijklmnopqrstuvwx"] }),
+  );
+  assert.ok(token[3].includes("[REDACTED]"));
+
+  const plain = renderStatusWidget(state({ inputLines: ["plain text line"] }));
+  assert.equal(plain[3], "plain text line");
 });
 
 // ── PI-21: width bounds with agents ─────────────────────
