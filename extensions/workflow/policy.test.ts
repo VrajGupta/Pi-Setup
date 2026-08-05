@@ -13,12 +13,11 @@ test("routes high-risk work into planner", () => {
   assert.deepEqual(route.skills, ["provider-integration-tdd"]);
 });
 
-test("only the orchestrator relays text to a stage through workflow send", () => {
+test("main-chat input remains orchestrator-only while workflow relay checks identity", () => {
   const source = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
   assert.doesNotMatch(source, /pi\.on\(\s*["']input["']/);
   assert.doesNotMatch(source, /ctx\.ui\.(input|select)\(/);
   assert.doesNotMatch(source, /canSteerStage/);
-  assert.equal((source.match(/await sendToStage\(/g) ?? []).length, 1);
   assert.match(
     source,
     /if \(input\.action === "send"\)[\s\S]*await sendToStage\(input\.id, input\.text\)/,

@@ -30,6 +30,8 @@ type TakeoverInternals = {
   input: { onSubmit?: (value: string) => void };
 };
 
+type StageSend = { id: string; stage: string; text: string };
+
 type DashboardFactory = (
   tui: TUI,
   theme: Theme,
@@ -61,6 +63,7 @@ async function openForTest(snap: SubagentSnapshot) {
   let closed = false;
   let aborts = 0;
   let sends: string[] = [];
+  let stageSends: StageSend[] = [];
   let renders = 0;
   const tui = {
     requestRender: () => {
@@ -74,6 +77,7 @@ async function openForTest(snap: SubagentSnapshot) {
   } as unknown as Theme;
   const bindings = new Set<string>();
   const keybindings = {
+    getKeys: () => ["enter"],
     matches: (data: string, key: string) => bindings.has(`${data}:${key}`),
   } as unknown as KeybindingsManager;
   const view = {
@@ -84,6 +88,15 @@ async function openForTest(snap: SubagentSnapshot) {
     },
     requestSend: (_id: string, text: string) => {
       sends.push(text);
+    },
+    requestStageSend: (
+      id: string,
+      stage: string,
+      text: string,
+      onError: (message: string) => void,
+    ) => {
+      stageSends.push({ id, stage, text });
+      onError("Authorization: Bearer STAGE_SEND_SECRET\u001b[31m");
     },
   } as unknown as SubagentReadModel;
   const factoryContext = {
@@ -113,6 +126,9 @@ async function openForTest(snap: SubagentSnapshot) {
     get sends() {
       return sends;
     },
+    get stageSends() {
+      return stageSends;
+    },
     get renders() {
       return renders;
     },
@@ -122,7 +138,7 @@ async function openForTest(snap: SubagentSnapshot) {
   };
 }
 
-test("workflow stage takeover cannot abort, but can scroll and close", async () => {
+test("opened stage takeover sends only through its identified input and bounds errors", async () => {
   const harness = await openForTest(snapshot("debugger"));
   try {
     harness.bindings.add("clear:app.clear");
@@ -132,6 +148,20 @@ test("workflow stage takeover cannot abort, but can scroll and close", async () 
     harness.bindings.add("up:tui.editor.cursorUp");
     harness.component.handleInput?.("up");
     assert.equal(harness.renders, 1);
+    assert.deepEqual(harness.stageSends, []);
+
+    const internals = harness.component as unknown as TakeoverInternals;
+    internals.input.onSubmit?.(" direct answer ");
+    assert.deepEqual(harness.stageSends, [
+      { id: "sa-1", stage: "debugger", text: "direct answer" },
+    ]);
+    assert.deepEqual(harness.sends, []);
+
+    const lines = harness.component.render(40);
+    const output = lines.join("\n");
+    assert.match(output, /Send to debugger \(sa-1\)/);
+    assert.doesNotMatch(output, /STAGE_SEND_SECRET|\u001b\[31m/);
+    assert.ok(lines.every((line) => visibleWidth(line) <= 40));
 
     harness.bindings.add("escape:app.interrupt");
     harness.component.handleInput?.("escape");
@@ -226,20 +256,13 @@ test("stage takeover preserves tiny measured context in its width-bounded header
   }
 });
 
-test("workflow stage takeovers never accept typed text", () => {
+test("stage takeover keeps generic helper relay blocked", () => {
   const source = readFileSync(
     new URL("./src/ui/takeover.ts", import.meta.url),
     "utf8",
   );
-  assert.match(
-    source,
-    /this\.input\.onSubmit = \(value: string\) => \{[\s\S]*if \(this\.snap\(\)\?\.stage !== undefined\) return;[\s\S]*requestSend/,
-  );
-  assert.match(
-    source,
-    /if \(isStageTakeover\) return;\s*this\.input\.handleInput\(data\)/,
-  );
-  assert.match(source, /Vraj messages only the coordinator/);
+  assert.match(source, /requestStageSend\(this\.id, snap\.stage, text,/);
+  assert.match(source, /if \(snap\.stage\) \{/);
   const tools = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
   assert.match(
     tools,

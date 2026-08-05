@@ -22,6 +22,7 @@ import {
   Stream,
 } from "effect";
 import type { StageName } from "../../shared/workflow-state.ts";
+import { redactSecrets } from "../../summaries/src/transcript.ts";
 import type { SubagentBackend, SubagentSession } from "./backend.ts";
 import { BackendRegistry } from "./backend.ts";
 import type {
@@ -53,11 +54,11 @@ const FINAL_TEXT_MAX_LENGTH = 1_024 * 1_024;
 const MAX_TRANSCRIPT_ITEMS = 512;
 
 function bounded(text: string) {
-  return text.slice(0, ERROR_TEXT_MAX_LENGTH);
+  return redactSecrets(text).slice(0, ERROR_TEXT_MAX_LENGTH);
 }
 
 function boundedTranscriptText(text: string) {
-  return text.slice(0, TRANSCRIPT_TEXT_MAX_LENGTH);
+  return redactSecrets(text).slice(0, TRANSCRIPT_TEXT_MAX_LENGTH);
 }
 
 function appendTranscript(snapshot: MutableSnapshot, item: TranscriptItem) {
@@ -117,8 +118,15 @@ export interface SubagentReadModel {
   subscribe(listener: () => void): () => void;
   /** Per-subagent notification (takeover view). */
   subscribeTo(id: string, listener: () => void): () => void;
-  /** Fire-and-forget: steer/continue a subagent (takeover input). */
+  /** Fire-and-forget: steer/continue a non-workflow subagent (takeover input). */
   requestSend(id: string, text: string): void;
+  /** Explicit stage-view send; the selected stage must still match. */
+  requestStageSend(
+    id: string,
+    stage: StageName,
+    text: string,
+    onError: (message: string) => void,
+  ): void;
   /** Fire-and-forget: abort a running subagent (dashboard `x`, takeover). */
   requestAbort(id: string): void;
   /**
@@ -163,6 +171,12 @@ export interface SubagentManagerShape {
     ids: ReadonlyArray<string>,
   ): Effect.Effect<ReadonlyArray<CancelResult>>;
   send(id: string, text: string): Effect.Effect<void, SendError>;
+  /** Explicit stage-view send; rejects a stale or helper destination. */
+  sendStage(
+    id: string,
+    stage: StageName,
+    text: string,
+  ): Effect.Effect<void, SendError>;
   get(id: string): Effect.Effect<SubagentSnapshot | undefined>;
   readonly list: Effect.Effect<ReadonlyArray<SubagentSnapshot>>;
   readonly disposeAll: Effect.Effect<void>;
@@ -657,6 +671,18 @@ const makeManager = Effect.gen(function* () {
       return entry.session.send(text);
     });
 
+  const sendStage = (id: string, stage: StageName, text: string) =>
+    Effect.suspend((): Effect.Effect<void, SendError> => {
+      const entry = entries.get(id);
+      if (!entry || entry.snapshot.stage !== stage) {
+        return new SendError({
+          message:
+            "Stage view destination no longer matches the selected stage.",
+        });
+      }
+      return send(id, redactSecrets(text));
+    });
+
   const disposeAll = Effect.gen(function* () {
     disposed = true;
     const all = [...entries.values()];
@@ -704,6 +730,16 @@ const makeManager = Effect.gen(function* () {
     requestSend: (id, text) => {
       runDetached(send(id, text).pipe(Effect.ignore));
     },
+    requestStageSend: (id, stage, text, onError) => {
+      runDetached(
+        sendStage(id, stage, text).pipe(
+          Effect.tapError((error) =>
+            Effect.sync(() => onError(bounded(error.message))),
+          ),
+          Effect.ignore,
+        ),
+      );
+    },
     requestAbort: (id) => {
       const entry = entries.get(id);
       if (!entry) return;
@@ -725,6 +761,7 @@ const makeManager = Effect.gen(function* () {
     waitFor,
     cancel,
     send,
+    sendStage,
     get: (id) => Effect.sync(() => entries.get(id)?.snapshot),
     list: Effect.sync(() => [...entries.values()].map((e) => e.snapshot)),
     disposeAll,

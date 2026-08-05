@@ -300,3 +300,38 @@ test("send steers an idle subagent into another turn", async () => {
     assert.match(afterSecond?.finalText ?? "", /Second turn/);
   });
 });
+
+test("stage sends require the opened stage identity and redact displayed text", async () => {
+  await withManager(async (manager, runtime) => {
+    const stage = await runTool(
+      runtime,
+      manager.spawn("claude", { ...task("stage task"), stage: "debugger" }),
+    );
+    const helper = await runTool(
+      runtime,
+      manager.spawn("codex", task("helper task")),
+    );
+
+    await assert.rejects(
+      runTool(runtime, manager.sendStage(stage.id, "planner", "wrong stage")),
+      /destination no longer matches/,
+    );
+    await assert.rejects(
+      runTool(runtime, manager.sendStage(helper.id, "debugger", "not a stage")),
+      /destination no longer matches/,
+    );
+
+    await runTool(
+      runtime,
+      manager.sendStage(
+        stage.id,
+        "debugger",
+        "Authorization: Bearer STAGE_MANAGER_SECRET",
+      ),
+    );
+    await runTool(runtime, manager.waitFor([stage.id, helper.id]));
+    const transcript = manager.view.get(stage.id)?.transcript ?? [];
+    assert.doesNotMatch(JSON.stringify(transcript), /STAGE_MANAGER_SECRET/);
+    assert.match(JSON.stringify(transcript), /\[REDACTED\]/);
+  });
+});

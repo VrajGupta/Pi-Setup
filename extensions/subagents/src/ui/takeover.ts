@@ -12,10 +12,11 @@ import type {
 } from "@earendil-works/pi-coding-agent";
 import type { Component, Focusable, TUI } from "@earendil-works/pi-tui";
 import { Input, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { redactSecrets } from "../../../summaries/src/transcript.ts";
 import { formatElapsed, type SubagentSnapshot } from "../domain.ts";
 import { formatContextUtilization } from "../format.ts";
 import type { SubagentReadModel } from "../manager.ts";
-import { buildTranscriptLines } from "./transcript.ts";
+import { buildTranscriptLines, sanitizeText } from "./transcript.ts";
 
 function configuredKeys(
   keybindings: KeybindingsManager,
@@ -359,6 +360,7 @@ class SubagentDashboard implements Component {
 // --- Takeover view ------------------------------------------------------------
 
 const TRANSCRIPT_SCROLL_STEP = 6;
+const TAKEOVER_ERROR_MAX_LENGTH = 160;
 
 class TakeoverView implements Component, Focusable {
   private tui: TUI;
@@ -370,6 +372,7 @@ class TakeoverView implements Component, Focusable {
   private options?: TakeoverOptions;
 
   private input = new Input();
+  private sendError?: string;
   /** Scroll offset in lines from the bottom of the transcript. 0 = pinned to bottom. */
   private scrollOffset = 0;
   private unsubscribe: () => void;
@@ -407,10 +410,21 @@ class TakeoverView implements Component, Focusable {
     this.ticker = setInterval(() => this.tui.requestRender(), 1000);
     this.input.onSubmit = (value: string) => {
       const text = value.trim();
-      if (!text) return;
-      if (this.snap()?.stage !== undefined) return;
+      const snap = this.snap();
+      if (!text || !snap) return;
       this.input.setValue("");
-      this.view.requestSend(this.id, text);
+      this.sendError = undefined;
+      if (snap.stage) {
+        this.view.requestStageSend(this.id, snap.stage, text, (message) => {
+          this.sendError = sanitizeText(redactSecrets(message)).slice(
+            0,
+            TAKEOVER_ERROR_MAX_LENGTH,
+          );
+          this.tui.requestRender();
+        });
+      } else {
+        this.view.requestSend(this.id, text);
+      }
       this.scrollOffset = 0;
       this.tui.requestRender();
     };
@@ -489,7 +503,6 @@ class TakeoverView implements Component, Focusable {
       this.tui.requestRender();
       return;
     }
-    if (isStageTakeover) return;
     this.input.handleInput(data);
     this.tui.requestRender();
   }
@@ -528,11 +541,12 @@ class TakeoverView implements Component, Focusable {
     lines.push(truncateToWidth(header, width));
     lines.push(border);
 
-    // Fixed-height transcript viewport. Error and scroll status consume rows
+    // Fixed-height transcript viewport. Errors and scroll status consume rows
     // inside the viewport so streaming/scrolling never changes overlay height.
     const transcript = buildTranscriptLines(snap, width, theme);
     const viewport = this.viewportHeight();
-    const errorRows = snap.errorText ? 1 : 0;
+    const errorRows =
+      Number(Boolean(snap.errorText)) + Number(Boolean(this.sendError));
     const scrollRows = this.scrollOffset > 0 ? 1 : 0;
     const transcriptCapacity = Math.max(1, viewport - errorRows - scrollRows);
     const maxOffset = Math.max(0, transcript.length - transcriptCapacity);
@@ -542,6 +556,14 @@ class TakeoverView implements Component, Focusable {
     if (snap.errorText) {
       body.push(
         truncateToWidth(theme.fg("error", `error: ${snap.errorText}`), width),
+      );
+    }
+    if (this.sendError) {
+      body.push(
+        truncateToWidth(
+          theme.fg("error", `send failed: ${this.sendError}`),
+          width,
+        ),
       );
     }
 
@@ -566,28 +588,18 @@ class TakeoverView implements Component, Focusable {
     lines.push(...body.slice(0, viewport));
 
     lines.push(border);
-    if (snap.stage) {
-      lines.push(
-        truncateToWidth(
-          theme.fg(
-            "dim",
-            "Vraj messages only the coordinator; stages use workflow send.",
-          ),
-          width,
+    lines.push(...this.input.render(width));
+    lines.push(
+      truncateToWidth(
+        theme.fg(
+          "dim",
+          snap.stage
+            ? `Send to ${snap.stage} (${snap.id}) · ${configuredKeys(this.keybindings, "tui.input.submit")} send · ${configuredKeys(this.keybindings, "app.interrupt")} cancel · ${configuredKeys(this.keybindings, "tui.editor.cursorUp")}/${configuredKeys(this.keybindings, "tui.editor.cursorDown")} scroll · ${configuredKeys(this.keybindings, "tui.editor.pageUp")}/${configuredKeys(this.keybindings, "tui.editor.pageDown")} page`
+            : `${configuredKeys(this.keybindings, "tui.input.submit")} send · ${configuredKeys(this.keybindings, "app.interrupt")} back · ${configuredKeys(this.keybindings, "app.clear")} abort run · ${configuredKeys(this.keybindings, "tui.editor.cursorUp")}/${configuredKeys(this.keybindings, "tui.editor.cursorDown")} scroll · ${configuredKeys(this.keybindings, "tui.editor.pageUp")}/${configuredKeys(this.keybindings, "tui.editor.pageDown")} page`,
         ),
-      );
-    } else {
-      lines.push(...this.input.render(width));
-      lines.push(
-        truncateToWidth(
-          theme.fg(
-            "dim",
-            `${configuredKeys(this.keybindings, "tui.input.submit")} send · ${configuredKeys(this.keybindings, "app.interrupt")} back · ${configuredKeys(this.keybindings, "app.clear")} abort run · ${configuredKeys(this.keybindings, "tui.editor.cursorUp")}/${configuredKeys(this.keybindings, "tui.editor.cursorDown")} scroll · ${configuredKeys(this.keybindings, "tui.editor.pageUp")}/${configuredKeys(this.keybindings, "tui.editor.pageDown")} page`,
-          ),
-          width,
-        ),
-      );
-    }
+        width,
+      ),
+    );
     lines.push(border);
     return lines;
   }
