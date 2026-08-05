@@ -927,6 +927,7 @@ Status: **Done** · Blocked-by: PI-23, PI-25 · GitHub issue #24
 **Verification-command.** `npm test && npm run check && npm run format:check`
 
 **Coder delivery (2026-08-05).**
+
 - Changed: `extensions/ui-customization/footer.ts`, `extensions/ui-customization/index.ts`, `extensions/ui-customization/footer.test.ts`, `extensions/subagents/context-usage.test.ts`, `settings.example.json`, `README.md`, `SYSTEM.md`
 - Product diff SHA-256: `ce525f44fbeccec5da65f9ee51f3605934416bad6ea36b51d13d184d4f2bee51` (staged `/tmp/pi26-product.diff`)
 - Gate: `node --test --experimental-strip-types extensions/ui-customization/status-widget.test.ts extensions/ui-customization/footer.test.ts` → exit 0 (77 tests, 0 fail)
@@ -934,6 +935,7 @@ Status: **Done** · Blocked-by: PI-23, PI-25 · GitHub issue #24
 - `npm run format:check` → exit 0 (all lane files clean)
 
 **Debugger delivery (2026-08-05).**
+
 - Independent adversarial audit: footer dedup verified (no duplicated mode/route/stage/issue tokens between footer and widget); every `renderFooter` caller updated; width bounds 40/80/120/200 hold; INV-1/INV-5/INV-6/INV-11/INV-14 all pass; INV-2 redaction intact; perf 87/87/0 x3 runs under 2.4s; docs contain all required literal strings; settings.example.json has trackerPollMs=10000, statusWidget.maxLines=40, mode=workflow.
 - No code changes needed — coder delivery complete and correct.
 - Exact gate `node --test --experimental-strip-types extensions/ui-customization/status-widget.test.ts extensions/ui-customization/footer.test.ts extensions/subagents/context-usage.test.ts && npm run check && npm run format:check` → exit 0 (87 tests, tsc clean, format clean).
@@ -964,6 +966,7 @@ Status: **Agent Ready** · Blocked-by: none · GitHub issue #27
 **What to build.** `extensions/workflow/routine-scheduler.ts`: off-render, fixed-interval, single-flight-per-routine scheduler with injectable timers. `startRoutineScheduler({ routines, now, setTimer, clearTimer, onDue })` returning `{ getDueRoutines(), stop() }`. Tick interval is the gcd of all routine intervals, clamped [5000, 60000], default 10000. Per-routine isolation (INV-15, INV-16). No filesystem I/O (INV-3).
 
 **Acceptance criteria.**
+
 - Two routines of intervals 60000 and 120000 fire at expected counts (2 and 1) over 120000 ms.
 - A routine whose check is still in flight is skipped for that tick (single-flight per routine).
 - Snoozed routines report as snoozed with remaining time; disabled routines never appear as due.
@@ -976,11 +979,12 @@ Status: **Agent Ready** · Blocked-by: none · GitHub issue #27
 
 ## PI-29 — Definitions in settings (read/write workflow.routines)
 
-Status: **Agent Ready** · Blocked-by: none · GitHub issue #26
+Status: **Debugger Ready** · Blocked-by: none · GitHub issue #26
 
 **What to build.** `extensions/workflow/routine-definitions.ts`: validation, read, and write helpers for `workflow.routines` in settings. `readRoutines()`, `writeRoutines()`, `validateRoutine()`. Same atomic write pattern as `settings-mode.ts`. `settings.example.json` gains `workflow.routines: []`.
 
 **Acceptance criteria.**
+
 - Valid routine round-trips.
 - `intervalMs: 0` clamps to 60000; `1000000000` clamps to 604800000.
 - Missing `name` or `prompt` rejected with reason.
@@ -992,6 +996,8 @@ Status: **Agent Ready** · Blocked-by: none · GitHub issue #26
 
 **Verification-command.** `node --test --experimental-strip-types extensions/workflow/routine-definitions.test.ts && npm run check`
 
+**Coder delivery (2026-08-05).** Changed paths: `extensions/workflow/routines-settings.ts` (new), `extensions/workflow/routines-settings.test.ts` (new), `settings.example.json` (add `workflow.routines: []`). Diff SHA-256: `8f573b58d5f03bab096a970cf81056fa4f80b524fb22b1445cefef1d91410ba6`. Gate: `node --test --experimental-strip-types extensions/workflow/routines-settings.test.ts && npm run check` → exit 0 (29 tests; tsc clean); `npm run format:check` (laned files) → exit 0. Handoff: `docs/handoffs/2026-08-05-coder-pi29.md`.
+
 ## PI-30 — Due-routine banner and /routine command
 
 Status: **Planned** · Blocked-by: PI-28, PI-29 · GitHub issue #28
@@ -999,6 +1005,7 @@ Status: **Planned** · Blocked-by: PI-28, PI-29 · GitHub issue #28
 **What to build.** Non-blocking banner in belowEditor surface (`routine <name> due · /run <name> to execute`). Commands: `/routine`, `/run`, `/snooze`, `/disable-routine`, `/enable-routine`. Mirror `/mode` pattern (PI-24). INV-8: only `classifyRequest` is called, never spawn/send.
 
 **Acceptance criteria.**
+
 - Due routine produces a banner line.
 - Bare `/routine` opens picker of enabled/not-snoozed routines.
 - `/routine <name>` shows details.
@@ -1017,6 +1024,7 @@ Status: **Planned** · Blocked-by: PI-30 · GitHub issue #29
 **What to build.** belowEditor routines section (rule `─ routines · 1 due ───`, rows per due/snoozed/disabled routine). `/flow` Routines tab with full details. Width-safe, secret-redacted, terminal-safe, INV-11 glyphs.
 
 **Acceptance criteria.**
+
 - 1 due + 1 snoozed + 1 disabled renders rule and 3 rows in order.
 - Due row shows name, schedule summary, age.
 - Snoozed row shows name and remaining snooze time.
@@ -1036,6 +1044,7 @@ Status: **Planned** · Blocked-by: PI-31 · GitHub issue #30
 **What to build.** Wire scheduler + commands into `session_start`/`session_shutdown`. Document routines in `README.md`, `SYSTEM.md`, `settings.example.json`. INV-14 render budget holds with routines section. Closing gate.
 
 **Acceptance criteria.**
+
 - `session_start` starts scheduler; `session_shutdown` stops it.
 - Timer is `unref`'d.
 - `settings.example.json` contains `workflow.routines: []` with docs.

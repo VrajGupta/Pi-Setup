@@ -16,7 +16,8 @@
     "statusWidget": {
       "maxLines": 40
     },
-    "repositories": ["~/Work/pi-agent"]
+    "repositories": ["~/Work/pi-agent"],
+    "routines": []
   },
   "compaction": {
     "enabled": true,
