@@ -10,7 +10,13 @@ import {
   FlowPanel,
   MODE_COMPLETIONS,
   normalizeModeCommand,
+  applyRoutineUpdate,
+  classifyRoutinePrompt,
+  normalizeRoutineCommand,
+  routineBanner,
+  routineCompletions,
   type FlowPanelContext,
+  type RoutineCommandOutcome,
 } from "./index.ts";
 
 const theme = {
@@ -744,4 +750,184 @@ test("/mode invalid value with whitespace preserves original casing in message",
       'unknown mode "BaD_VaLuE" — use workflow or free',
     );
   }
+});
+
+test("routineBanner produces exact affordance tokens", () => {
+  const banner = routineBanner("standup");
+  assert.match(banner, /routine standup due/);
+  assert.match(banner, /\/routine run standup/);
+  assert.match(banner, /\/routine snooze standup/);
+  assert.match(banner, /\/routine disable standup/);
+  assert.match(banner, /· dismiss/);
+  // INV-8: never auto-runs — the banner is purely informational.
+  assert.doesNotMatch(banner, /spawn|send|execute|auto|start/);
+});
+
+test("routineBanner handles empty name safely", () => {
+  const banner = routineBanner("");
+  assert.match(banner, /\?/);
+  assert.doesNotThrow(() => routineBanner(""));
+  assert.doesNotThrow(() => routineBanner("  "));
+});
+
+test("normalizeRoutineCommand bare → pick", () => {
+  assert.equal(normalizeRoutineCommand("").kind, "pick");
+  assert.equal(normalizeRoutineCommand("   ").kind, "pick");
+});
+
+test("normalizeRoutineCommand run", () => {
+  const outcome = normalizeRoutineCommand("run standup");
+  assert.equal(outcome.kind, "run");
+  if (outcome.kind === "run") assert.equal(outcome.name, "standup");
+  // Empty name → usage warning
+  const empty = normalizeRoutineCommand("run");
+  assert.equal(empty.kind, "warn");
+  if (empty.kind === "warn")
+    assert.match(empty.message, /usage: \/routine run/);
+  // Whitespace name → usage warning
+  const ws = normalizeRoutineCommand("run  ");
+  assert.equal(ws.kind, "warn");
+  if (ws.kind === "warn") assert.match(ws.message, /usage: \/routine run/);
+});
+
+test("normalizeRoutineCommand snooze", () => {
+  // Default minutes
+  const def = normalizeRoutineCommand("snooze standup");
+  assert.equal(def.kind, "snooze");
+  if (def.kind === "snooze") {
+    assert.equal(def.name, "standup");
+    assert.equal(def.minutes, 60);
+  }
+  // Explicit minutes
+  const explicit = normalizeRoutineCommand("snooze standup 30");
+  assert.equal(explicit.kind, "snooze");
+  if (explicit.kind === "snooze") assert.equal(explicit.minutes, 30);
+  // Clamp upper bound
+  const clamped = normalizeRoutineCommand("snooze standup 20000");
+  assert.equal(clamped.kind, "snooze");
+  if (clamped.kind === "snooze") assert.equal(clamped.minutes, 10080);
+  // Invalid minutes (non-numeric)
+  const bad = normalizeRoutineCommand("snooze standup abc");
+  assert.equal(bad.kind, "warn");
+  if (bad.kind === "warn") assert.match(bad.message, /invalid minutes/);
+  // Invalid minutes (zero)
+  const zero = normalizeRoutineCommand("snooze standup 0");
+  assert.equal(zero.kind, "warn");
+  // Invalid minutes (negative)
+  const neg = normalizeRoutineCommand("snooze standup -5");
+  assert.equal(neg.kind, "warn");
+  // Non-integer
+  const frac = normalizeRoutineCommand("snooze standup 5.5");
+  assert.equal(frac.kind, "warn");
+  // Empty name → usage warning
+  const empty = normalizeRoutineCommand("snooze");
+  assert.equal(empty.kind, "warn");
+  if (empty.kind === "warn")
+    assert.match(empty.message, /usage: \/routine snooze/);
+});
+
+test("normalizeRoutineCommand disable and enable", () => {
+  const disable = normalizeRoutineCommand("disable standup");
+  assert.equal(disable.kind, "disable");
+  if (disable.kind === "disable") assert.equal(disable.name, "standup");
+
+  const enable = normalizeRoutineCommand("enable standup");
+  assert.equal(enable.kind, "enable");
+  if (enable.kind === "enable") assert.equal(enable.name, "standup");
+
+  // Empty name → usage warning
+  const noName = normalizeRoutineCommand("disable");
+  assert.equal(noName.kind, "warn");
+  if (noName.kind === "warn")
+    assert.match(noName.message, /usage: \/routine disable/);
+
+  const noNameEn = normalizeRoutineCommand("enable");
+  assert.equal(noNameEn.kind, "warn");
+  if (noNameEn.kind === "warn")
+    assert.match(noNameEn.message, /usage: \/routine enable/);
+});
+
+test("normalizeRoutineCommand unknown subcommand → unknown routine warning", () => {
+  const outcome = normalizeRoutineCommand("standup");
+  assert.equal(outcome.kind, "warn");
+  if (outcome.kind === "warn")
+    assert.match(outcome.message, /unknown routine "standup"/);
+  // Whitespace prefix
+  const ws = normalizeRoutineCommand("  unknown");
+  assert.equal(ws.kind, "warn");
+  if (ws.kind === "warn") assert.match(ws.message, /unknown routine "unknown"/);
+});
+
+test("applyRoutineUpdate snoozedUntil", () => {
+  const routines = [
+    { name: "standup", scheduleMs: 3600000, prompt: "standup", enabled: true },
+  ];
+  const result = applyRoutineUpdate(routines, "standup", {
+    snoozedUntil: 1000 + 30 * 60_000,
+  });
+  assert.ok(result.ok);
+  assert.ok(result.routines);
+  assert.equal(result.routines[0].snoozedUntil, 1000 + 30 * 60_000);
+  assert.ok(result.routines[0].enabled);
+  // Unknown name → ok: false
+  const missing = applyRoutineUpdate(routines, "nope", { enabled: false });
+  assert.equal(missing.ok, false);
+  assert.equal(missing.routines, undefined);
+});
+
+test("applyRoutineUpdate disable and enable", () => {
+  const routines = [
+    { name: "standup", scheduleMs: 3600000, prompt: "standup", enabled: true },
+  ];
+  const disabled = applyRoutineUpdate(routines, "standup", { enabled: false });
+  assert.ok(disabled.ok);
+  assert.ok(disabled.routines);
+  assert.equal(disabled.routines[0].enabled, false);
+
+  const enabled = applyRoutineUpdate(disabled.routines, "standup", {
+    enabled: true,
+  });
+  assert.ok(enabled.ok);
+  assert.ok(enabled.routines);
+  assert.equal(enabled.routines[0].enabled, true);
+});
+
+test("routineCompletions includes configured routine names", () => {
+  const routines = [
+    { name: "standup", scheduleMs: 3600000, prompt: "standup", enabled: true },
+    { name: "review", scheduleMs: 86400000, prompt: "review", enabled: true },
+  ];
+  const completions = routineCompletions(routines);
+  assert.equal(completions.length, 2);
+  assert.ok(completions.some((c) => c.value === "standup"));
+  assert.ok(completions.some((c) => c.value === "review"));
+  // Empty routines → empty completions
+  assert.equal(routineCompletions([]).length, 0);
+});
+
+test("classifyRoutinePrompt routes through classifyRequest", () => {
+  // Risky prompt in workflow mode → fleet/planner
+  const risky = classifyRoutinePrompt(
+    "audit the codebase for security issues",
+    "workflow",
+  );
+  assert.equal(risky.mode, "fleet");
+
+  // Simple prompt in free mode → direct
+  const simpleFree = classifyRoutinePrompt("show me the weather", "free");
+  assert.equal(simpleFree.mode, "direct");
+
+  // Simple prompt in workflow mode → direct
+  const simpleWorkflow = classifyRoutinePrompt(
+    "show me the weather",
+    "workflow",
+  );
+  assert.equal(simpleWorkflow.mode, "direct");
+
+  // INV-8: never returns spawn/send (no such fields in RouteDecision)
+  const decision = classifyRoutinePrompt("hello", "free");
+  assert.ok("mode" in decision);
+  assert.ok("stage" in decision);
+  assert.ok("confidence" in decision);
+  assert.ok("reason" in decision);
 });

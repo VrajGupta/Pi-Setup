@@ -46,6 +46,11 @@ import {
   type RouteDecision,
   type WorkflowMode,
 } from "./src/policy.ts";
+import {
+  readRoutines,
+  writeRoutines,
+  type RoutineDefinition,
+} from "./routines-settings.ts";
 import { assembleWorkflowSystemPrompt } from "./prompt-assembly.ts";
 import { persistWorkflowMode, validateWorkflowMode } from "./settings-mode.ts";
 
@@ -1076,6 +1081,119 @@ export const MODE_COMPLETIONS = [
   { value: "free", label: "free" },
 ];
 
+export type RoutineCommandOutcome =
+  | { kind: "pick" }
+  | { kind: "run"; name: string }
+  | { kind: "snooze"; name: string; minutes: number }
+  | { kind: "disable"; name: string }
+  | { kind: "enable"; name: string }
+  | { kind: "warn"; message: string };
+
+const DEFAULT_SNOOZE_MINUTES = 60;
+const MAX_SNOOZE_MINUTES = 10080;
+
+/** Parse a snooze minutes argument; absent defaults to 60, out-of-range clamps. */
+function parseSnoozeMinutes(raw: string | undefined): number | null {
+  if (raw === undefined || raw.trim() === "") return DEFAULT_SNOOZE_MINUTES;
+  const n = Number(raw.trim());
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1) return null;
+  return Math.min(MAX_SNOOZE_MINUTES, n);
+}
+
+/** Quiet due-routine banner (q3). Terminal-safe; never auto-runs (INV-8). */
+export function routineBanner(name: string): string {
+  const safe = displayText(name).trim() || "?";
+  return `routine ${safe} due — /routine run ${safe} · /routine snooze ${safe} [min] · /routine disable ${safe} · dismiss`;
+}
+
+/** Parse a raw `/routine` argument string into a command outcome. */
+export function normalizeRoutineCommand(value: string): RoutineCommandOutcome {
+  const trimmed = value.trim();
+  if (!trimmed) return { kind: "pick" };
+  const parts = trimmed.split(/\s+/);
+  const [sub, rest, extra] = parts;
+  const lowered = sub.toLowerCase();
+  if (lowered === "run") {
+    if (!rest || !rest.trim())
+      return { kind: "warn", message: "usage: /routine run <name>" };
+    return { kind: "run", name: rest };
+  }
+  if (lowered === "snooze") {
+    if (!rest || !rest.trim())
+      return {
+        kind: "warn",
+        message: "usage: /routine snooze <name> [minutes]",
+      };
+    const minutes = parseSnoozeMinutes(extra);
+    if (minutes === null)
+      return {
+        kind: "warn",
+        message: `invalid minutes "${extra}" — use a whole number from 1 to 10080`,
+      };
+    return { kind: "snooze", name: rest, minutes };
+  }
+  if (lowered === "disable") {
+    if (!rest || !rest.trim())
+      return { kind: "warn", message: "usage: /routine disable <name>" };
+    return { kind: "disable", name: rest };
+  }
+  if (lowered === "enable") {
+    if (!rest || !rest.trim())
+      return { kind: "warn", message: "usage: /routine enable <name>" };
+    return { kind: "enable", name: rest };
+  }
+  return {
+    kind: "warn",
+    message: `unknown routine "${sub}" — use /flow to list routines`,
+  };
+}
+
+/** Apply a persisted update (snooze/disable/enable) to one routine by name. */
+export function applyRoutineUpdate(
+  routines: readonly RoutineDefinition[],
+  name: string,
+  update: { snoozedUntil?: number; enabled?: boolean },
+): { ok: boolean; routines?: readonly RoutineDefinition[] } {
+  const index = routines.findIndex((r) => r.name === name);
+  if (index < 0) return { ok: false };
+  const next = routines.map((r, i) => (i === index ? { ...r, ...update } : r));
+  return { ok: true, routines: next };
+}
+
+/** Argument completions for `/routine` mirroring the configured routine names. */
+export function routineCompletions(
+  routines: readonly RoutineDefinition[],
+): { value: string; label: string }[] {
+  return routines.map((r) => ({ value: r.name, label: r.name }));
+}
+
+/** INV-8: a routine's prompt is classified like any normal user request. */
+export function classifyRoutinePrompt(
+  prompt: string,
+  mode: WorkflowMode,
+): RouteDecision {
+  return classifyRequest(prompt, mode);
+}
+
+/** Persist a full settings object atomically (temp-file + rename, INV-12). */
+async function persistSettingsFile(
+  settings: Record<string, unknown>,
+): Promise<boolean> {
+  try {
+    const path = join(getAgentDir(), "settings.json");
+    const temporary = `${path}.${process.pid}.${Date.now()}.tmp`;
+    await writeFile(
+      temporary,
+      `${JSON.stringify(settings, null, 2)}\n`,
+      "utf8",
+    );
+    await rename(temporary, path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function isFlowInput(value: unknown): value is FlowInput {
   if (!value || typeof value !== "object") return false;
   const input = value as Record<string, unknown>;
@@ -1107,6 +1225,7 @@ export default function workflow(pi: ExtensionAPI) {
   const usedCapabilities = new Set<string>();
   let requestRender: (() => void) | undefined;
   let lastEnvelope = "";
+  let configuredRoutines: readonly RoutineDefinition[] = [];
 
   const publish = () => {
     state = { ...state, updatedAt: Date.now() };
@@ -1251,6 +1370,24 @@ export default function workflow(pi: ExtensionAPI) {
     if (!response.ok) throw new Error(response.error);
     setState({ status: "running", lastEvent: `sent response to ${id}` });
     return response;
+  };
+
+  // INV-8: classify only; never spawn or send on the subagent bridge.
+  const runRoutine = async (
+    routine: RoutineDefinition,
+    ctx: ExtensionContext,
+  ) => {
+    const decision = classifyRoutinePrompt(routine.prompt, mode);
+    setState({
+      status: "routing",
+      route: decision,
+      taskPreview: preview(routine.prompt),
+      lastEvent: `routine ${routine.name} · ${decision.reason}`,
+    });
+    ctx.ui.notify(
+      `routine ${routine.name} → ${decision.mode}${decision.stage ? `/${decision.stage}` : ""} · ${decision.reason}`,
+      "info",
+    );
   };
 
   const handleEnvelope = async (envelope: ControlEnvelope) => {
@@ -1424,6 +1561,98 @@ export default function workflow(pi: ExtensionAPI) {
     },
   });
 
+  pi.registerCommand("routine", {
+    description: "Run, snooze, disable, or enable a routine",
+    getArgumentCompletions: (prefix: string) => {
+      if (!prefix) return routineCompletions(configuredRoutines);
+      const lower = prefix.toLowerCase();
+      return routineCompletions(configuredRoutines).filter((item) =>
+        item.value.toLowerCase().startsWith(lower),
+      );
+    },
+    handler: async (args, ctx) => {
+      const outcome = normalizeRoutineCommand(
+        typeof args === "string" ? args : "",
+      );
+      if (outcome.kind === "warn") {
+        ctx.ui.notify(outcome.message, "warning");
+        return;
+      }
+      const settings = await readGlobalSettings();
+      const base = isRecord(settings) ? settings : {};
+      const { routines: raw } = readRoutines(base);
+      const routines = [...raw];
+      configuredRoutines = routines;
+      if (outcome.kind === "pick") {
+        const available = routines.filter(
+          (r) =>
+            r.enabled &&
+            (r.snoozedUntil === undefined || r.snoozedUntil <= Date.now()),
+        );
+        if (available.length === 0) {
+          ctx.ui.notify(
+            "no routines configured — add workflow.routines to settings.json",
+            "info",
+          );
+          return;
+        }
+        const choice = await ctx.ui.select(
+          "Routine",
+          available.map((r) => r.name),
+        );
+        if (!choice) return;
+        const routine = available.find((r) => r.name === choice);
+        if (routine) await runRoutine(routine, ctx);
+        return;
+      }
+      if (outcome.kind === "run") {
+        const routine = routines.find((r) => r.name === outcome.name);
+        if (!routine) {
+          ctx.ui.notify(
+            `unknown routine "${outcome.name}" — use /flow to list routines`,
+            "warning",
+          );
+          return;
+        }
+        await runRoutine(routine, ctx);
+        return;
+      }
+      const update =
+        outcome.kind === "snooze"
+          ? { snoozedUntil: Date.now() + outcome.minutes * 60_000 }
+          : outcome.kind === "disable"
+            ? { enabled: false }
+            : { enabled: true };
+      const result = applyRoutineUpdate(routines, outcome.name, update);
+      if (!result.ok || result.routines === undefined) {
+        ctx.ui.notify(
+          `unknown routine "${outcome.name}" — use /flow to list routines`,
+          "warning",
+        );
+        return;
+      }
+      const merged = writeRoutines([...result.routines], base);
+      if (!merged.ok || merged.settings === undefined) {
+        ctx.ui.notify("routine change not persisted", "warning");
+        return;
+      }
+      const persisted = await persistSettingsFile(merged.settings);
+      configuredRoutines = [...result.routines];
+      const label =
+        outcome.kind === "snooze"
+          ? `snoozed for ${outcome.minutes}m`
+          : outcome.kind === "disable"
+            ? "disabled"
+            : "enabled";
+      ctx.ui.notify(
+        persisted
+          ? `routine ${outcome.name} ${label}`
+          : `routine ${outcome.name} ${label} · session only`,
+        persisted ? "info" : "warning",
+      );
+    },
+  });
+
   pi.registerTool({
     name: "workflow",
     label: "Workflow Control",
@@ -1525,6 +1754,9 @@ export default function workflow(pi: ExtensionAPI) {
     const raw = isRecord(workflow) ? workflow.mode : undefined;
     const { mode: m, warning } = validateWorkflowMode(raw);
     mode = m;
+    configuredRoutines = readRoutines(
+      isRecord(settings) ? settings : {},
+    ).routines;
     if (warning) ctx.ui.notify(warning, "warning");
     try {
       const saved = JSON.parse(

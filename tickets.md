@@ -1029,7 +1029,7 @@ Status: **Done** · Blocked-by: none · GitHub issue #26
 
 ## PI-30 — Due-routine banner and /routine command
 
-Status: **Agent Ready** · Blocked-by: PI-28, PI-29 · GitHub issue #28
+Status: **Debugger Ready** · Blocked-by: PI-28, PI-29 · GitHub issue #28
 
 **What to build.** Non-blocking banner in belowEditor surface (`routine <name> due · /run <name> to execute`). Commands: `/routine`, `/run`, `/snooze`, `/disable-routine`, `/enable-routine`. Mirror `/mode` pattern (PI-24). INV-8: only `classifyRequest` is called, never spawn/send.
 
@@ -1044,7 +1044,9 @@ Status: **Agent Ready** · Blocked-by: PI-28, PI-29 · GitHub issue #28
 - Dangerous names are redacted/rejected.
 - No command path emits spawn/send (INV-8).
 
-**Verification-command.** `node --test --experimental-strip-types extensions/workflow/routine-commands.test.ts && npm run check`
+**Verification-command.** `node --test --experimental-strip-types extensions/workflow/flow-panel.test.ts extensions/workflow/routines-scheduler.test.ts extensions/workflow/routines-settings.test.ts && npm run check`
+
+**Coder delivery (2026-08-05).** Changed: `extensions/workflow/index.ts` (routine command + banner wiring), `extensions/workflow/flow-panel.test.ts` (40 tests, 11 new). Diff SHA-256: `eb432d52b143ac66793f94bf7b2dadf441a63b1dc17f9144cc9bad6262d36991`. Gate exit 0: 110 tests, tsc clean, format:check clean. Verification-command updated from planned `routine-commands.test.ts` to actual task gate (command tests live in extended flow-panel.test.ts per /mode pattern).
 
 ## PI-31 — belowEditor section and /flow Routines tab
 
