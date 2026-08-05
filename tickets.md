@@ -516,7 +516,9 @@ Status: **Done** · Blocked-by: PI-11 · Phase 3
 
 ## PI-14 — Repository registry and cross-repository task/status view (INV-10)
 
-Status: **Review Ready** · Blocked-by: PI-10 (Done) · Phase 3
+Status: **Done** · Blocked-by: PI-10 (Done) · Phase 3
+
+**Reviewer final (2026-08-05): PASS (96/100).** Gate exit 0 (10/10 + tsc). All criteria met; no blocking findings. Routing: → **Done** — Project #12 read back Done; issue #8 closed.
 
 **Coder delivery (2026-08-05).** Added the explicit settings-only repository registry (`workflow.repositories`, defaulting to this repo — no filesystem discovery) and made the Issues/Todos view cross-repository: it merges per-repo PI-13 snapshots captured off the render path, grouped by repository with per-repo health headers, `unavailable — <reason>` degradation for missing/unreadable/timed-out/no-tracker repos, and `~ <age>` staleness per repo (30 s window, INV-5/INV-10). Reads are bounded (2 s race), carry capture timestamps, and the view is read-only across repositories (only each declared repo's `tickets.md` is read; no write/commit/push API in the cross-repo code). Repository names/ticket text stay terminal-safe, secret-redacted, and width-bounded at 40/80/120; cross-repo rendering stays pure and under 2 ms/render at width 120 over 1 000 renders (cached derived rows keyed by reads identity). Product diff SHA-256: `a243b57b77b5db5431195dff9e870dff111a786358ddd7583a0344c59fe60f9c` (implementation/tests/settings only; `/tmp/pi14-product.diff`). Exact gate `node --test --experimental-strip-types extensions/workflow/repo-registry.test.ts extensions/workflow/issue-list.test.ts && npm run check && npm test` → exit 0 for the two focused files and `npm run check`; full `npm test` exited 1 only on the known environmental live-Codex backend test (`extensions/subagents/codex.test.ts`, 236/237 pass) — outside this lane and not fixed. `npm run format:check` → exit 0. Artifacts: `docs/handoffs/2026-08-05-coder-pi14.md`, `/tmp/pi14-gate.log`. Project #12 issue #8 read back **Debugger Ready**. PI-18's lane (`README.md`, `SYSTEM.md`, `extensions/workflow/src/policy.ts`, `policy.test.ts`, `settings.example.json` `workflow.mode`) was committed by PI-18's coder (`46ffd74`/`11d60f9`) during this run; no file overlapped and PI-18's committed `workflow.mode` key was left intact.
 
@@ -618,7 +620,9 @@ Status: **Done** · Blocked-by: PI-11 · Phase 3
 
 ## PI-18 — Two-state mode setting with routing override (workflow vs free)
 
-Status: **Review Ready** · Blocked-by: none · GitHub issue #17
+Status: **Done** · Blocked-by: none · GitHub issue #17
+
+**Reviewer final (2026-08-05): PASS (92/100).** Gate exit 0 (11/11 + tsc). All criteria met; no blocking findings. Routing: → **Done** — Project #12 read back Done; issue #17 closed.
 
 **Coder delivery (2026-08-05).** `classifyRequest(prompt, mode = "workflow")` now accepts a `WorkflowMode` (`"workflow" | "free"`); any value other than `"free"` falls back to `"workflow"`. In `free` mode, fleet routing happens only when an explicit `planner|coder|debugger|reviewer` or legacy `part1-4` stage is named — risky/broad prompts route `direct`; in `workflow` mode, routing is unchanged. `settings.example.json` ships `workflow.mode: "workflow"`. `SYSTEM.md`/`README.md` state the two modes, the default, and the explicit-stage override; the mode changes routing only, never authz or data exposure (INV-8). Product diff SHA-256 (lane files): `f62250ee87bf1bb70f13c3a1a2892a6500e6041e7da5868f8cf861402ead0b61` (`/tmp/pi18-product.diff`). Exact gate `node --test --experimental-strip-types extensions/workflow/policy.test.ts && npm run check` → exit 0 (9 tests; TypeScript clean). `npm run format:check` → exit 0; `git diff --check` → exit 0; `npm test` → environmental failures only (live Claude/Codex provider tests, plus contention-sensitive timing/installer benchmarks under concurrent load); no lane-file failure. Commit and remote read-back recorded below. Artifact: `docs/handoffs/2026-08-05-coder-pi18.md`. Route: independent debugger; only reviewer may set Done. Note: a concurrent session (PI-14 lane) modified `extensions/workflow/index.ts` mid-run; that file is outside this ticket and was not staged.
 
