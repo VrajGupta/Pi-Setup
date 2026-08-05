@@ -294,6 +294,18 @@ test("the module imports no fs, subprocess, or network APIs", () => {
   assert.doesNotMatch(source, /\b(fetch|XMLHttpRequest|WebSocket)\s*\(/);
 });
 
+test("the shipped index.ts footer wrapper performs no render-path I/O", () => {
+  const source = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
+  // The wrapper may read files at setup time, but the render path itself must
+  // stay free of fs/subprocess/network calls (INV-3). Restrict the scan to the
+  // footer render/update region and forbid calls inside the render closure.
+  assert.doesNotMatch(source, /\b(fetch|XMLHttpRequest|WebSocket)\s*\(/);
+  assert.doesNotMatch(source, /from\s+["']node:(child_process|http|https|net)/);
+  const renderRegion = source.slice(source.indexOf("setFooter"), source.length);
+  assert.doesNotMatch(renderRegion, /node:(fs|child_process|http|https|net)/);
+  assert.doesNotMatch(renderRegion, /\b(fetch|XMLHttpRequest|WebSocket)\s*\(/);
+});
+
 test("unknown stages are omitted, duplicate stages remain distinct, and input order is preserved", () => {
   const agents = [
     agent({ id: "reviewer", stage: "reviewer", modelLabel: "model-reviewer" }),
