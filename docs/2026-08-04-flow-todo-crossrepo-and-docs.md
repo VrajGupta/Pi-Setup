@@ -61,3 +61,55 @@ Phase 2 (PI-06 … PI-09, PI-15) is unblocked today and may proceed in parallel 
 1. **"I will only talk to the orchestrator."** Restated as a hard rule, not a preference. Evidence that the guarantee is still incomplete: `settings.example.json` ships `"steeringMode": "all"` and the installed `~/.pi/agent/settings.json` line 10 has the same value; `extensions/ui-customization/index.ts:169` still renders a `STEER` label whenever a stage is active. The extension-level `input` hook was already removed by `bb5d79e`, but that commit was never gated. → **PI-11**, raised to priority 1.
 2. **"After 15m there is 1t 0% beside the planner."** The number is context-window occupancy, not task completion, and a row that can only report elapsed time must instead report *why* it is silent. → **PI-16**, priority 2, plus the zero-usage and `<1% ctx` regressions folded into PI-11.
 3. **"Nothing is in the Pi repo, put it all up now."** Measured, not assumed: `git branch -vv` → `main bb5d79e [origin/main]`; `git ls-remote origin` → `refs/heads/main = bb5d79e723ed…`; `git log origin/main..HEAD` → empty. Every committed file in this repo is already on `https://github.com/VrajGupta/Pi-Setup`. What is *not* pushed is this plan itself (`tickets.md` edits + this document), which the planner stage is not authorized to commit. If the repo looks empty to the user, the likely causes to check are the GitHub default-branch setting on `Pi-Setup` and whether `~/.pi/agent` is still linked to this checkout — neither is a missing push. PI-15 turns the push-proof commands into documentation so this question is answerable without a planner run.
+
+## Amendment (human decision, 2026-08-05) — PI-11 display-precision residual
+
+`/reviewer` failed PI-11 three times and escalated to the human. The third and final
+blocking finding was **not** a safety, input-routing, or fabrication defect: it was a
+rounding residual in the shared helper `extensions/shared/context-utilization.ts`,
+where `formatContextUtilization({ tokens: 1, contextWindow: 200_000 })` returns
+`0%/200k` instead of `<1%/200k`. The human decision is to **amend PI-11's scope**,
+not to fix that helper inside PI-11.
+
+**What is accepted, precisely.** For PI-11 only, a *positive* sub-1 % context reading
+may round to `0%` in the shared formatter `extensions/shared/context-utilization.ts`.
+This is recorded as an accepted **display-precision residual**, and it is explicitly
+**not** a statement that the honest-telemetry work is complete.
+
+**What is NOT relaxed** — every one of these remains a hard, blocking requirement of
+PI-11 and of the invariant set:
+
+- **Orchestrator-only input stays hard.** No keystroke, setting, extension hook, or
+  UI affordance may deliver Vraj's interactive input to a stage agent; the only route
+  to a stage is an explicit `workflow send` relay made by the orchestrator.
+- **Settings / no-`STEER` stays hard.** `settings.example.json` and the installed-settings
+  merge keep input with the orchestrator and migrate the legacy value idempotently; no
+  surface renders `STEER` or any equivalent steering affordance.
+- **Zero and invalid telemetry stay unknown.** Zero, negative, non-finite, malformed, and
+  missing token or capacity readings remain *indeterminate*: they render no `%` at all
+  (`?/capacity`, or omitted when capacity itself is invalid). Fabricating a measured
+  `0%` from an unknown reading remains forbidden — INV-1 and INV-6 are unchanged.
+- **Capacity and unknown semantics are retained.** `?/capacity` still preserves the useful
+  capacity; an invalid capacity still omits the statistic rather than inventing one.
+- **The shipped stage-row path still renders `<1%`.** `extensions/subagents/src/format.ts`
+  (the copy consumed by the subagent dashboard, the stage takeover header, the footer, and
+  `/flow`) renders tiny positive occupancy as `<1%`, never `0%`. Measured 2026-08-05:
+  subagent formatter → `<1%/200k`, `7%/372k`, `?/200k`; shared helper → `0%/200k`,
+  `7%/372k`, `?/200k`. As of that date no non-test module imports
+  `extensions/shared/context-utilization.ts`, so the residual is confined to that
+  unconsumed shared copy.
+- **All other safety gates stay hard.** Stage takeover remains read-only (no send, no
+  abort), relay sends require the active stage ID, INV-2 secret redaction, INV-4 width and
+  line bounds, INV-8 no-new-trust-edge, and INV-11 no-meaning-by-colour-alone are untouched.
+
+**Scope of the amendment.** It applies to PI-11 alone. It does not amend INV-1 or INV-6 for
+the project, does not license a `0%` reading anywhere on a shipped render path, and does not
+pre-approve the residual for PI-16 or any other ticket. Closing the residual in
+`extensions/shared/context-utilization.ts` (or deleting that unconsumed copy) remains open
+work to be ticketed separately; PI-11 being accepted does **not** mean that task is complete.
+
+**Process.** PI-11 returns to `Agent Ready` with amended acceptance criteria so the pipeline
+re-runs it against the amended text and an independent reviewer issues a fresh verdict. The
+prior reviewer blocker is resolved *by recorded scope amendment*, not by erasure: the bounce
+history in `tickets.md` and `docs/handoffs/2026-08-04-reviewer-pi11-bounce-3.md` stay as
+written. Only `/reviewer` may move PI-11 to `Done`.
