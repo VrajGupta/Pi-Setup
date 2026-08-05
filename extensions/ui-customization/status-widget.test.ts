@@ -168,6 +168,26 @@ test("overflow line format is exactly '+N more · /flow'", () => {
   assert.ok(test2[49].includes("+52 more · /flow"));
 });
 
+test("a throwing input getter degrades to bounded fallback, never throws (INV-6)", () => {
+  const throwingInput = {
+    width: 80,
+    maxLines: 40,
+    get inputLines(): readonly string[] {
+      throw new Error("boom");
+    },
+  };
+  assert.deepEqual(renderStatusWidget(throwingInput), []);
+
+  const throwingWidth = {
+    get width(): number {
+      throw new Error("boom");
+    },
+    maxLines: 40,
+    inputLines: ["line 1"],
+  };
+  assert.deepEqual(renderStatusWidget(throwingWidth), []);
+});
+
 test("input lines are converted to strings and truncated", () => {
   const lines = [
     "plain string",
