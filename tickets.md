@@ -720,7 +720,9 @@ Status: **Planned** · Blocked-by: PI-20 · GitHub issue #19
 
 ## PI-22 — Fixed-interval off-render tracker poll (INV-13)
 
-Status: **Planned** · Blocked-by: none · GitHub issue #20
+Status: **Debugger Ready** · Blocked-by: none · GitHub issue #20
+
+**Coder delivery (2026-08-05).** Added `extensions/workflow/tracker-poll.ts` (single-flight fixed-interval off-render poll, interval clamped to [2000, 300000] default 10000, timeout preserves prior snapshot with reason, stop clears timer) plus deterministic fake-timer tests covering interval clamping, single-flight (fixed a module defect where the read timeout cleared in-flight state and allowed overlapping reads), failed-read reason preservation, and stop behavior. Exact gate `node --test --experimental-strip-types extensions/workflow/tracker-poll.test.ts extensions/workflow/issue-list.test.ts && npm run check` → exit 0 (12 tests; tsc clean); `npm run format:check` exit 0.
 
 **What to build.** `extensions/workflow/tracker-poll.ts`: `startTrackerPoll({ intervalMs, read, now, setTimer })` returning `{ getSnapshot(), stop() }`. Fixed interval read once from `workflow.trackerPollMs` (default 10000, clamped `[2000, 300000]`), single-flight (a tick during an in-flight read is skipped, not queued), bounded read timeout, each completed read stored with `capturedAt` and an optional reason, timer `unref`'d and cleared on `session_shutdown`. Timers are injected so tests use a fake clock and never a real sleep. Consumes `extensions/shared/ticket-snapshot.ts` as a read-only dependency (INV-3, INV-10).
 
