@@ -302,7 +302,7 @@ The `git diff --quiet` clause is the INV-8 guard: it compares the ticket branch 
 
 ## PI-10 — `/flow` issue todo list with live ticket statuses
 
-Status: **Planned** · Blocked-by: PI-12, PI-13 · Phase 3 · *Amended 2026-08-04 (addendum plan): adds repository, assignee, and honest ETA columns.*
+Status: **Agent Ready** · Blocked-by: PI-12 (Done), PI-13 (Done) · Phase 3 · *Amended 2026-08-04 (addendum plan): adds repository, assignee, and honest ETA columns.*
 
 **What to build.** Add an Issues/Todos view to `/flow` that renders the snapshot
 produced by PI-13 as one row per ticket: repository · ticket ID · title ·
