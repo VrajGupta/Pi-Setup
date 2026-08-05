@@ -7,6 +7,8 @@ import {
   layoutColumns,
   renderStatusWidget,
   type StatusWidgetAgent,
+  type StatusWidgetIssueRecord,
+  type StatusWidgetSnapshotView,
   type StatusWidgetState,
 } from "./status-widget.ts";
 
@@ -15,6 +17,31 @@ function state(overrides: Partial<StatusWidgetState> = {}): StatusWidgetState {
     width: 80,
     maxLines: 40,
     inputLines: [],
+    ...overrides,
+  };
+}
+
+function issue(
+  overrides: Partial<StatusWidgetIssueRecord> = {},
+): StatusWidgetIssueRecord {
+  return {
+    id: "PI-23",
+    title: "issue rows in the widget",
+    status: "planned",
+    assignee: "planner",
+    blockedBy: [],
+    blocking: "unblocked",
+    ...overrides,
+  };
+}
+
+function snapshot(
+  records: readonly StatusWidgetIssueRecord[],
+  overrides: Partial<StatusWidgetSnapshotView> = {},
+): StatusWidgetSnapshotView {
+  return {
+    capturedAt: 100_000,
+    records,
     ...overrides,
   };
 }
@@ -776,4 +803,310 @@ test("INV-1: no 0% appears anywhere in output", () => {
   assert.ok(all.includes("? ctx"));
   assert.ok(all.includes("<1% ctx"));
   assert.ok(all.includes("7% ctx"));
+});
+
+// ── PI-23: issue rows ───────────────────────────────────
+
+test("PI-23: N issue records render N rows after the issues rule", () => {
+  const result = renderStatusWidget(
+    state({
+      ticketSnapshot: snapshot([
+        issue({ id: "PI-20", status: "done", assignee: "reviewer" }),
+        issue({
+          id: "PI-21",
+          status: "agent-ready",
+          assignee: "coder",
+          title: "rich mode/route/stage rows",
+        }),
+        issue({
+          id: "PI-23",
+          status: "coding",
+          assignee: "coder",
+          title: "issue rows in the widget",
+        }),
+        issue({ id: "PI-22", status: "done", assignee: "reviewer" }),
+      ]),
+      now: 100_000,
+    }),
+  );
+  // 3 base + issues rule + 2 displayed rows (done excluded) = 6
+  assert.equal(result.length, 6);
+  assert.match(result[3], /issues · 2 active · 2 done/);
+  // Rows ordered: agent-ready before coding; done excluded
+  const idx21 = result.findIndex((l) => l.includes("PI-21"));
+  const idx23 = result.findIndex((l) => l.includes("PI-23"));
+  assert.ok(idx21 >= 0 && idx23 >= 0, "both active rows present");
+  assert.ok(idx21 < idx23, "agent-ready sorts before coding");
+  assert.ok(
+    result.find((l) => l.includes("PI-20")) === undefined,
+    "done excluded",
+  );
+  assert.ok(
+    result.find((l) => l.includes("PI-22")) === undefined,
+    "done excluded",
+  );
+});
+
+test("PI-23: each row shows id, short status token, assignee, title, blocker summary", () => {
+  const result = renderStatusWidget(
+    state({
+      width: 100,
+      ticketSnapshot: snapshot([
+        issue({
+          id: "PI-21",
+          status: "agent-ready",
+          assignee: "coder",
+          title: "rich mode/route/stage rows",
+          blockedBy: [{ id: "PI-20", satisfied: true }],
+          blocking: "unblocked",
+        }),
+        issue({
+          id: "PI-23",
+          status: "planned",
+          assignee: "planner",
+          title: "issue rows in the widget",
+          blockedBy: [{ id: "PI-21", satisfied: false }],
+          blocking: "blocked",
+        }),
+      ]),
+      now: 100_000,
+    }),
+  );
+  const row21 = result.find((l) => l.includes("PI-21"));
+  const row23 = result.find((l) => l.includes("PI-23"));
+  assert.ok(row21, "PI-21 row present");
+  assert.ok(row23, "PI-23 row present");
+  assert.ok(row21!.includes("ready"), "short status token ready");
+  assert.ok(row21!.includes("coder"), "assignee coder");
+  assert.ok(row21!.includes("rich mode/route/stage rows"), "title");
+  assert.ok(row21!.includes("PI-20 ✓"), "satisfied blocker glyph ✓");
+  assert.ok(row23!.includes("planned"), "status planned");
+  assert.ok(row23!.includes("planner"), "assignee planner");
+  assert.ok(row23!.includes("PI-21 ·"), "unsatisfied blocker glyph ·");
+});
+
+test("PI-23: no blockers renders 'blk none'", () => {
+  const result = renderStatusWidget(
+    state({
+      ticketSnapshot: snapshot([
+        issue({ blockedBy: [], blocking: "unblocked" }),
+      ]),
+      now: 100_000,
+    }),
+  );
+  const row = result.find((l) => l.includes("PI-23"));
+  assert.ok(row && row.includes("blk none"));
+});
+
+test("PI-23: stale snapshot renders ~ + age in the issues rule", () => {
+  // capturedAt 50_000, now 90_000 → 40s > 30s stale window
+  const stale = renderStatusWidget(
+    state({
+      ticketSnapshot: snapshot([issue()], { capturedAt: 50_000 }),
+      now: 90_000,
+    }),
+  );
+  assert.match(stale[3], /~40s/);
+
+  // Fresh: capturedAt 70_000, now 90_000 → 20s <= 30s
+  const fresh = renderStatusWidget(
+    state({
+      ticketSnapshot: snapshot([issue()], { capturedAt: 70_000 }),
+      now: 90_000,
+    }),
+  );
+  assert.doesNotMatch(fresh[3], /~/);
+});
+
+test("PI-23: absent or reason-carrying snapshot renders unavailable — <reason>", () => {
+  // No snapshot provided → no issues section (surface stays minimal).
+  const absent = renderStatusWidget(
+    state({ ticketSnapshot: undefined, now: 100_000 }),
+  );
+  assert.equal(absent.length, 3); // base only
+  assert.equal(
+    absent.find((l) => l.includes("issues")),
+    undefined,
+  );
+
+  const timedOut = renderStatusWidget(
+    state({
+      ticketSnapshot: snapshot([], { reason: "timeout" }),
+      now: 100_000,
+    }),
+  );
+  assert.ok(timedOut[3].includes("issues unavailable — timeout"));
+
+  const empty = renderStatusWidget(
+    state({ ticketSnapshot: snapshot([]), now: 100_000 }),
+  );
+  // Empty records still show the rule (0 active · 0 done)
+  assert.equal(empty.length, 4);
+  assert.match(empty[3], /issues · 0 active · 0 done/);
+});
+
+test("PI-23: a 200-ticket snapshot respects maxLines with correct overflow", () => {
+  const records = Array.from({ length: 200 }, (_, i) =>
+    issue({ id: `PI-${i + 1}`, status: "coding" }),
+  );
+  const result = renderStatusWidget(
+    state({
+      ticketSnapshot: snapshot(records),
+      maxLines: 40,
+      now: 100_000,
+    }),
+  );
+  // 3 base + 1 rule + 200 rows = 204 > 40 → 40 lines with overflow
+  assert.equal(result.length, 40);
+  assert.ok(result[39].includes("more · /flow"));
+});
+
+test("PI-23: at width 50 rows collapse to id + status + blocker summary", () => {
+  const result = renderStatusWidget(
+    state({
+      width: 50,
+      ticketSnapshot: snapshot([
+        issue({
+          id: "PI-23",
+          status: "coding",
+          title: "a very long title that should be dropped in collapsed mode",
+          assignee: "coder",
+          blockedBy: [{ id: "PI-21", satisfied: false }],
+          blocking: "blocked",
+        }),
+      ]),
+      now: 100_000,
+    }),
+  );
+  const row = result.find((l) => l.includes("PI-23"));
+  assert.ok(row, "row present");
+  assert.ok(row!.includes("coding"), "status present");
+  assert.ok(row!.includes("blk PI-21 ·"), "blocker summary present");
+  assert.ok(!row!.includes("collapsed mode"), "title dropped");
+  assert.ok(visibleWidth(row!) <= 50);
+});
+
+test("PI-23: width bounds hold with issue rows at 40, 80, 120, 200", () => {
+  const records = [
+    issue({
+      id: "PI-21",
+      status: "coding",
+      assignee: "coder",
+      title:
+        "rich mode/route/stage rows with a very long title that needs truncation",
+      blockedBy: [{ id: "PI-20", satisfied: true }],
+      blocking: "unblocked",
+    }),
+    issue({
+      id: "PI-23",
+      status: "planned",
+      assignee: "planner",
+      title: "issue rows in the belowEditor surface widget",
+    }),
+  ];
+  for (const width of [40, 80, 120, 200]) {
+    const result = renderStatusWidget(
+      state({ ticketSnapshot: snapshot(records), width, now: 100_000 }),
+    );
+    for (const line of result) {
+      assert.ok(
+        visibleWidth(line) <= width,
+        `width ${width}: "${line}" has visible width ${visibleWidth(line)}`,
+      );
+    }
+  }
+});
+
+test("PI-23: deterministic rendering is byte-identical for same input", () => {
+  const s = state({
+    ticketSnapshot: snapshot([
+      issue({ id: "PI-21", status: "coding" }),
+      issue({ id: "PI-23", status: "planned" }),
+    ]),
+    now: 100_000,
+  });
+  assert.deepEqual(renderStatusWidget(s), renderStatusWidget(s));
+});
+
+test("PI-23: title redaction strips secrets and control chars (INV-2)", () => {
+  const result = renderStatusWidget(
+    state({
+      ticketSnapshot: snapshot([
+        issue({ title: "fix auth api_key=super-secret-key-value 123" }),
+      ]),
+      now: 100_000,
+    }),
+  );
+  const all = result.join(" ");
+  assert.ok(!all.includes("super-secret-key-value"), "secret redacted");
+  assert.ok(all.includes("[REDACTED]"));
+
+  const ctl = renderStatusWidget(
+    state({
+      ticketSnapshot: snapshot([
+        issue({ title: "safe\u001b[31mred\u001b[0mtitle" }),
+      ]),
+      now: 100_000,
+    }),
+  );
+  assert.ok(!ctl.join(" ").includes("\u001b[31m"));
+  assert.ok(ctl.join(" ").includes("saferedtitle"));
+});
+
+test("PI-23: throwing snapshot getter returns bounded base lines (INV-6)", () => {
+  const throwing = {
+    width: 80,
+    maxLines: 40,
+    inputLines: [],
+    get ticketSnapshot(): StatusWidgetSnapshotView | undefined {
+      throw new Error("boom");
+    },
+  } satisfies StatusWidgetState;
+  const result = renderStatusWidget(throwing);
+  assert.equal(result.length, 3);
+  assert.match(result[0], /flow/);
+  assert.match(result[1], /mode.*route/);
+  assert.match(result[2], /planner.*coder.*debugger.*reviewer/);
+});
+
+test("PI-23: issue rows cannot throw on malformed record fields", () => {
+  const result = renderStatusWidget(
+    state({
+      ticketSnapshot: {
+        capturedAt: 100_000,
+        records: [
+          {
+            id: Symbol("bad") as never,
+            title: "title",
+            status: "coding",
+            blockedBy: null as never,
+            blocking: "blocked",
+          },
+        ],
+      },
+      now: 100_000,
+    }),
+  );
+  assert.ok(Array.isArray(result));
+  assert.ok(result.length >= 4);
+});
+
+test("PI-23: 1000 renders with 200 issue rows at width 200 complete under 2000ms", () => {
+  const records = Array.from({ length: 200 }, (_, i) =>
+    issue({ id: `PI-${i + 1}`, status: "coding" }),
+  );
+  const s = state({
+    ticketSnapshot: snapshot(records),
+    width: 200,
+    now: 100_000,
+  });
+  const start = Date.now();
+  for (let i = 0; i < 1000; i++) {
+    renderStatusWidget(s);
+  }
+  const elapsed = Date.now() - start;
+  assert.ok(
+    elapsed < 2000,
+    `1000 renders took ${elapsed}ms, expected < 2000ms`,
+  );
 });

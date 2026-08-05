@@ -26,6 +26,24 @@ export interface StatusWidgetAgent {
   readonly context: StatusWidgetContext;
 }
 
+export interface StatusWidgetIssueRecord {
+  readonly id: string;
+  readonly title: string;
+  readonly status: string;
+  readonly assignee?: string;
+  readonly blockedBy: readonly {
+    readonly id: string;
+    readonly satisfied: boolean;
+  }[];
+  readonly blocking: string;
+}
+
+export interface StatusWidgetSnapshotView {
+  readonly capturedAt: number;
+  readonly records: readonly StatusWidgetIssueRecord[];
+  readonly reason?: string;
+}
+
 export interface StatusWidgetState {
   width: number;
   maxLines: unknown;
@@ -36,6 +54,7 @@ export interface StatusWidgetState {
   workflowStatus?: unknown;
   now?: number;
   agents?: readonly StatusWidgetAgent[];
+  ticketSnapshot?: StatusWidgetSnapshotView;
 }
 
 // ── helpers ──────────────────────────────────────────────
@@ -269,6 +288,165 @@ function agentRows(
   );
 }
 
+// ── issue rows ───────────────────────────────────────────
+
+const STATUS_LABEL: Readonly<Record<string, string>> = {
+  "agent-ready": "ready",
+  "debugger-ready": "dbg-ready",
+  "review-ready": "rev-ready",
+  unknown: "?",
+};
+
+const PIPELINE_ORDER: readonly string[] = [
+  "agent-ready",
+  "coding",
+  "debugger-ready",
+  "debugging",
+  "review-ready",
+  "reviewing",
+  "planned",
+];
+
+const DONE_STATUSES: readonly string[] = [
+  "done",
+  "dropped",
+  "canceled",
+  "duplicate",
+];
+
+function issueStatusLabel(status: string): string {
+  return STATUS_LABEL[status] ?? status;
+}
+
+function isDisplayedStatus(status: string): boolean {
+  return PIPELINE_ORDER.includes(status);
+}
+
+function isDoneStatus(status: string): boolean {
+  return DONE_STATUSES.includes(status);
+}
+
+function statusOrder(status: string): number {
+  const idx = PIPELINE_ORDER.indexOf(status);
+  return idx >= 0 ? idx : PIPELINE_ORDER.length;
+}
+
+function blockerSummary(
+  blockedBy: readonly { readonly id: string; readonly satisfied: boolean }[],
+  blocking: string,
+): string {
+  if (blockedBy.length === 0) return "blk none";
+  if (blocking === "blocked (cycle)") return "blk cycle";
+  const parts = blockedBy.map((b) => `${b.id} ${b.satisfied ? "✓" : "·"}`);
+  return `blk ${parts.join(" ")}`;
+}
+
+function issueRuleLine(
+  records: readonly StatusWidgetIssueRecord[],
+  capturedAt: number,
+  now: number,
+  width: number,
+): string {
+  const active = records.filter((r) => isDisplayedStatus(r.status)).length;
+  const done = records.filter((r) => isDoneStatus(r.status)).length;
+  const stale =
+    isFiniteNumber(now) &&
+    isFiniteNumber(capturedAt) &&
+    now - capturedAt > STALE_AFTER_MS;
+  const age = stale
+    ? ` · ~${formatElapsed(Math.max(0, now - capturedAt))}`
+    : "";
+  const head = `─ issues · ${active} active · ${done} done${age} ─`;
+  const fill = "─".repeat(Math.max(0, width - visibleWidth(head)));
+  return safeTruncate(head + fill, width);
+}
+
+function issueRows(
+  records: readonly StatusWidgetIssueRecord[],
+  width: number,
+): string[] {
+  if (records.length === 0) return [];
+  const collapsed = width < 60;
+
+  const displayed = records
+    .filter((r) => isDisplayedStatus(r.status))
+    .sort((a, b) => {
+      const order = statusOrder(a.status) - statusOrder(b.status);
+      if (order !== 0) return order;
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    });
+
+  if (displayed.length === 0) return [];
+
+  const cellData = displayed.map((r) => ({
+    id: r.id,
+    status: issueStatusLabel(r.status),
+    assignee: r.assignee ?? "—",
+    blk: blockerSummary(r.blockedBy, r.blocking),
+    title: safeToken(r.title, ""),
+  }));
+
+  const idW = Math.max(...cellData.map((c) => visibleWidth(c.id)));
+  const statusW = Math.max(...cellData.map((c) => visibleWidth(c.status)));
+  const blkW = Math.max(...cellData.map((c) => visibleWidth(c.blk)));
+  const gutter = 2;
+
+  if (collapsed) {
+    const rows = cellData.map((c) => [c.id, c.status, c.blk]);
+    return layoutColumns(
+      rows as readonly (readonly (string | null)[])[],
+      [],
+      width,
+    );
+  }
+
+  const assigneeW = Math.max(...cellData.map((c) => visibleWidth(c.assignee)));
+  const titleW = Math.max(
+    3,
+    width -
+      (idW + gutter + statusW + gutter + assigneeW + gutter + blkW + gutter),
+  );
+
+  const rows = cellData.map((c) => [
+    c.id,
+    c.status,
+    c.assignee,
+    safeTruncate(c.title, titleW),
+    c.blk,
+  ]);
+  return layoutColumns(
+    rows as readonly (readonly (string | null)[])[],
+    [],
+    width,
+  );
+}
+
+function issueSection(
+  snapshot: StatusWidgetSnapshotView | undefined,
+  now: number,
+  width: number,
+): string[] {
+  try {
+    // No snapshot provided → omit the issues section entirely (keeps the
+    // surface minimal until a snapshot source is wired in).
+    if (!snapshot) return [];
+    if (snapshot.reason) {
+      return [
+        safeTruncate(
+          `issues unavailable — ${safeToken(snapshot.reason, "?")}`,
+          width,
+        ),
+      ];
+    }
+    const records = Array.isArray(snapshot.records) ? snapshot.records : [];
+    const rule = issueRuleLine(records, snapshot.capturedAt, now, width);
+    const rows = issueRows(records, width);
+    return [rule, ...rows];
+  } catch {
+    return [safeTruncate("issues unavailable — render error", width)];
+  }
+}
+
 // ── base lines (fallback) ───────────────────────────────
 
 function baseLines(width: number) {
@@ -320,8 +498,16 @@ export function renderStatusWidget(state: StatusWidgetState): string[] {
       railLine(state.activeStage, state.workflowStatus, width),
       ...agentRows(agents, now, width),
     ];
+    let snapshot: StatusWidgetSnapshotView | undefined;
+    try {
+      snapshot = state.ticketSnapshot;
+    } catch {
+      snapshot = undefined;
+    }
+    const issues = issueSection(snapshot, now, width);
     const lines = [
       ...base.map((line) => safeTruncate(safeString(line), width)),
+      ...issues,
       ...inputLines.map((line) => safeTruncate(safeToken(line, ""), width)),
     ];
 

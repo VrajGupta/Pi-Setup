@@ -31,6 +31,7 @@ import {
   renderStatusWidget,
   type StatusWidgetAgent,
   type StatusWidgetContext,
+  type StatusWidgetSnapshotView,
   type StatusWidgetState,
 } from "./status-widget.ts";
 
@@ -150,6 +151,7 @@ export default function uiCustomization(pi: ExtensionAPI) {
   // so a quiet bus shows rows as stale (~) instead of falsely fresh.
   let agentsAt = 0;
   let activity: Activity = "idle";
+  let ticketSnapshot: StatusWidgetSnapshotView | undefined;
   let activeTui: { requestRender(force?: boolean): void } | undefined;
   let currentContext: ExtensionContext | undefined;
 
@@ -343,6 +345,7 @@ export default function uiCustomization(pi: ExtensionAPI) {
               workflowStatus: workflow.status,
               now,
               agents: stageAgents,
+              ticketSnapshot,
             });
           },
           invalidate() {},
