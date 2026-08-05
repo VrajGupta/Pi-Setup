@@ -836,3 +836,9 @@ Status: **Planned** · Blocked-by: PI-23, PI-25 · GitHub issue #24
 - The full suite, the type check, and the format check all exit 0.
 
 **Verification-command.** `npm test && npm run check && npm run format:check`
+
+## PI-27 — Routines: periodic scheduled prompts/tasks (like Claude Code routines)
+
+Status: **Planned** · Blocked-by: PI-26 · GitHub issue #25
+
+Planner will grill and lock: cadence model (interval vs cron), where routine definitions live, fleet dispatch from a routine, suppression rules, surface in belowEditor + /flow. See issue #25 for the acceptance sketch.
