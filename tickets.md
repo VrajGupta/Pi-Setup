@@ -516,7 +516,7 @@ Status: **Done** · Blocked-by: PI-11 · Phase 3
 
 ## PI-14 — Repository registry and cross-repository task/status view (INV-10)
 
-Status: **Planned** · Blocked-by: PI-10 · Phase 3
+Status: **Agent Ready** · Blocked-by: PI-10 (Done) · Phase 3
 
 **What to build.** A declared repository registry (`workflow.repositories` in settings, defaulting to this repo only — **no filesystem discovery**) plus a cross-repository mode of the Issues/Todos view that merges PI-13 snapshots from each registered repository, grouped by repository, with per-repository health.
 
@@ -606,7 +606,7 @@ Status: **Done** · Blocked-by: PI-11 · Phase 3
 
 ## PI-18 — Two-state mode setting with routing override (workflow vs free)
 
-Status: **Planned** · Blocked-by: none · GitHub issue #17
+Status: **Agent Ready** · Blocked-by: none · GitHub issue #17
 
 **What to build.** Add `workflow.mode` (`"workflow" | "free"`) to `settings.example.json` (default `"workflow"`) and honor it in `classifyRequest` (`extensions/workflow/src/policy.ts`). In `free` mode, `classifyRequest` never returns `mode:"fleet"` unless an explicit stage is named; all other requests route `direct`. In `workflow` mode, behavior is unchanged. Docs (`SYSTEM.md`, `README.md`) describe both modes and the override rule.
 
