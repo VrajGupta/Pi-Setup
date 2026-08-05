@@ -166,11 +166,30 @@ const LEGACY_STAGE_ALIASES: Record<string, StageName> = {
   part4: "reviewer",
 };
 
-function explicitStage(text: string) {
+function explicitStage(text: string, freeMode = false) {
+  if (freeMode) {
+    for (const pattern of [
+      /^\s*\/(?:part\s*([1-4])(?![\w-])|(planner|coder|debugger|reviewer)(?![\w-]))/i,
+      /^\s*(?:please\s+)?(?:run|start|use|ask|route|send|delegate|invoke|call|select|choose)\s+(?:the\s+)?(?:stage\s+)?\/?(?:part\s*([1-4])(?![\w-])|(planner|coder|debugger|reviewer)(?![\w-]))/i,
+      /^\s*(?:please\s+)?(?:part\s*([1-4])(?![\w-])|(planner|coder|debugger|reviewer)(?![\w-]))(?:\s+(?:please|fix|review|run|start|use|build|implement|check|against|for)\b|[.!]?\s*$)/i,
+    ]) {
+      const match = text.match(pattern);
+      if (match) {
+        if (match[1]) return LEGACY_STAGE_ALIASES[`part${match[1]}`];
+        return match[2].toLowerCase() as StageName;
+      }
+    }
+    return null;
+  }
+
   const legacy = text.match(/\bpart\s*([1-4])\b/i);
   if (legacy) return LEGACY_STAGE_ALIASES[`part${legacy[1]}`];
   const named = text.match(/\/?\b(planner|coder|debugger|reviewer)\b/i);
   return named ? (named[1].toLowerCase() as StageName) : null;
+}
+
+function normalizeWorkflowMode(value: unknown) {
+  return value === "free" || value === "workflow" ? value : "workflow";
 }
 
 function findSkills(text: string) {
@@ -189,17 +208,18 @@ function findSkills(text: string) {
  */
 export function classifyRequest(
   prompt: string,
-  mode: WorkflowMode = "workflow",
+  mode: unknown = "workflow",
 ): RouteDecision {
   const text = prompt.toLowerCase();
-  const stage = explicitStage(text);
+  const routingMode = normalizeWorkflowMode(mode);
+  const stage = explicitStage(text, routingMode === "free");
   const risk = hasTerm(text, RISK_TERMS);
   const broad = hasTerm(text, BROAD_TERMS);
   const asksForExplanation = /^(why|what|how do i|explain|show me|list)\b/.test(
     text,
   );
   const fleet =
-    mode === "free"
+    routingMode === "free"
       ? Boolean(stage)
       : Boolean(stage) || risk || (broad && !asksForExplanation);
 
@@ -230,7 +250,7 @@ export function classifyRequest(
     stage: null,
     confidence: asksForExplanation ? "high" : "medium",
     reason:
-      mode === "free" && !stage
+      routingMode === "free" && !stage
         ? "free mode: no explicit stage named"
         : asksForExplanation
           ? "explanatory or read-only request"

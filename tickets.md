@@ -608,9 +608,16 @@ Status: **Done** · Blocked-by: PI-11 · Phase 3
 
 ## PI-18 — Two-state mode setting with routing override (workflow vs free)
 
-Status: **Debugger Ready** · Blocked-by: none · GitHub issue #17
+Status: **Review Ready** · Blocked-by: none · GitHub issue #17
 
 **Coder delivery (2026-08-05).** `classifyRequest(prompt, mode = "workflow")` now accepts a `WorkflowMode` (`"workflow" | "free"`); any value other than `"free"` falls back to `"workflow"`. In `free` mode, fleet routing happens only when an explicit `planner|coder|debugger|reviewer` or legacy `part1-4` stage is named — risky/broad prompts route `direct`; in `workflow` mode, routing is unchanged. `settings.example.json` ships `workflow.mode: "workflow"`. `SYSTEM.md`/`README.md` state the two modes, the default, and the explicit-stage override; the mode changes routing only, never authz or data exposure (INV-8). Product diff SHA-256 (lane files): `f62250ee87bf1bb70f13c3a1a2892a6500e6041e7da5868f8cf861402ead0b61` (`/tmp/pi18-product.diff`). Exact gate `node --test --experimental-strip-types extensions/workflow/policy.test.ts && npm run check` → exit 0 (9 tests; TypeScript clean). `npm run format:check` → exit 0; `git diff --check` → exit 0; `npm test` → environmental failures only (live Claude/Codex provider tests, plus contention-sensitive timing/installer benchmarks under concurrent load); no lane-file failure. Commit and remote read-back recorded below. Artifact: `docs/handoffs/2026-08-05-coder-pi18.md`. Route: independent debugger; only reviewer may set Done. Note: a concurrent session (PI-14 lane) modified `extensions/workflow/index.ts` mid-run; that file is outside this ticket and was not staged.
+
+**Debugger audit (2026-08-05, OpenRouter fallback).**
+- Claim verification: `node --test --experimental-strip-types extensions/workflow/policy.test.ts && npm run check` → exit 0 (11 tests; TypeScript clean). `npm run format:check` → exit 0; `git diff --check` → exit 0. Independent probes passed for invalid/case/whitespace modes, prose and negative stage mentions, slash/legacy commands, settings/docs, and prompt-text non-disclosure (INV-8).
+- Finding: free mode previously treated any stage-name word in prose as an explicit override. Fixed test-first with a command/intent boundary; workflow-mode behavior remains unchanged.
+- Full `npm test` → exit 1 from environment contention: non-lane tracker performance/live Codex failures on one run; final rerun hit `spawn sh EAGAIN`; focused config-docs once hit `spawnSync bash EAGAIN`. Isolated installer test passed 4/4. Logs: `/tmp/pi18-npmtest-debugger-final.log`, `/tmp/pi18-npmtest-final2.log`, `/tmp/pi18-config-final2.log`, `/tmp/pi18-isolated-install-final.log`.
+- Debugger product diff SHA-256 from `46ffd741dde55437c1739734625c212cd49bd1d7`: `a50cb1bec4f777403860608ec43522566469eff13dc2fc8f140ffff0d428cd98` (`/tmp/pi18-debugger-product.diff`).
+- Project #12 issue #17 was read back `Debugging` at claim and is now `Review Ready`; only PI-18 moved. Commit/push proof and fallback model/harness: `docs/handoffs/2026-08-05-debugger-pi18.md`.
 
 **What to build.** Add `workflow.mode` (`"workflow" | "free"`) to `settings.example.json` (default `"workflow"`) and honor it in `classifyRequest` (`extensions/workflow/src/policy.ts`). In `free` mode, `classifyRequest` never returns `mode:"fleet"` unless an explicit stage is named; all other requests route `direct`. In `workflow` mode, behavior is unchanged. Docs (`SYSTEM.md`, `README.md`) describe both modes and the override rule.
 
