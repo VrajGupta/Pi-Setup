@@ -39,11 +39,19 @@ test("parses this tracker into frozen records without I/O or input mutation", ()
   assert.equal(Object.isFrozen(snapshot.records), true);
   assert.ok(snapshot.records.every((record) => Object.isFrozen(record)));
   assert.ok(
-    snapshot.records.every((record) =>
-      record.blockedBy.every((blocker) => Object.isFrozen(blocker)),
+    snapshot.records.every(
+      (record) =>
+        Object.isFrozen(record.blockedBy) &&
+        record.blockedBy.every((blocker) => Object.isFrozen(blocker)),
     ),
   );
+  assert.ok(snapshot.records.every((record) => Object.isFrozen(record.eta)));
   assert.equal(Reflect.set(snapshot.records, 0, snapshot.records[0]), false);
+  assert.equal(Reflect.set(snapshot.records[0]!, "title", "mutated"), false);
+  assert.equal(
+    Reflect.set(snapshot.records[0]!.eta, "kind", "estimated"),
+    false,
+  );
 
   const moduleSource = readFileSync(
     new URL("./ticket-snapshot.ts", import.meta.url),
@@ -108,6 +116,81 @@ test("resolves blockers without recursion and marks cycles", () => {
   assert.equal(snapshot.records[1]?.blocking, "blocked");
   assert.equal(snapshot.records[2]?.blocking, "blocked (cycle)");
   assert.equal(snapshot.records[3]?.blocking, "blocked (cycle)");
+
+  const deepCycle = Array.from({ length: 12_000 }, (_, index) => {
+    const id = `PI-${index + 10}`;
+    const blocker = index === 11_999 ? "PI-10" : `PI-${index + 11}`;
+    return ticket(id, "Coding", ` · Blocked-by: ${blocker}`);
+  }).join("\n");
+  const deepSnapshot = parseTicketSnapshot(deepCycle, capture);
+  assert.equal(deepSnapshot.records.length, 12_000);
+  assert.equal(deepSnapshot.records[0]?.blocking, "blocked (cycle)");
+  assert.equal(deepSnapshot.records.at(-1)?.blocking, "blocked (cycle)");
+});
+
+test("ignores ticket-shaped headings and fields inside fenced code", () => {
+  const snapshot = parseTicketSnapshot(
+    [
+      "```markdown",
+      "## PI-99 — fake ticket",
+      "",
+      "Status: **Done** · Blocked-by: none",
+      "```",
+      ticket("PI-01", "Coding", " · Blocked-by: PI-99"),
+    ].join("\n"),
+    capture,
+  );
+
+  assert.deepEqual(snapshot.records, [
+    {
+      repo: "VrajGupta/Pi-Setup",
+      id: "PI-01",
+      title: "PI-01 title",
+      status: "coding",
+      blockedBy: [{ id: "PI-99", satisfied: false }],
+      blocking: "blocked",
+      assignee: "coder",
+      eta: { kind: "unknown" },
+    },
+  ]);
+});
+
+test("does not parse metadata-shaped prose from a ticket title", () => {
+  const snapshot = parseTicketSnapshot(
+    "## PI-01 — title · Blocked-by: PI-99\n\nStatus: **Coding**\n",
+    capture,
+  );
+
+  assert.deepEqual(snapshot.records[0]?.blockedBy, []);
+  assert.equal(snapshot.records[0]?.blocking, "unblocked");
+});
+
+test("fails closed when duplicate ticket IDs make blocker ownership ambiguous", () => {
+  const snapshot = parseTicketSnapshot(
+    [
+      ticket("PI-01", "Done"),
+      ticket("PI-01", "Coding", " · Blocked-by: PI-01"),
+      ticket("PI-02", "Coding", " · Blocked-by: PI-01"),
+    ].join("\n"),
+    capture,
+  );
+
+  assert.equal(snapshot.records.length, 3);
+  assert.equal(snapshot.records[0]?.blocking, "unblocked");
+  assert.equal(snapshot.records[1]?.blocking, "blocked");
+  assert.deepEqual(snapshot.records[2]?.blockedBy, [
+    { id: "PI-01", satisfied: false },
+  ]);
+
+  const eta = parseTicketSnapshot(
+    [
+      ticket("PI-10", "Done", "\nMeasured-stage-duration-ms: 100"),
+      ticket("PI-10", "Done", "\nMeasured-stage-duration-ms: 200"),
+      ticket("PI-11", "Done", "\nMeasured-stage-duration-ms: 300"),
+    ].join("\n"),
+    capture,
+  ).records[0]?.eta;
+  assert.deepEqual(eta, { kind: "unknown" });
 });
 
 test("uses only explicit measured completed-stage durations for ETA", () => {
@@ -130,6 +213,16 @@ test("uses only explicit measured completed-stage durations for ETA", () => {
     capture,
   ).records[3]?.eta;
   assert.deepEqual(unknown, { kind: "unknown" });
+
+  const invalidSamples = [
+    ticket("PI-05", "Done", "\n\nMeasured-stage-duration-ms: -1"),
+    ticket("PI-06", "Done", "\n\nMeasured-stage-duration-ms: NaN"),
+    ticket("PI-07", "Done", "\n\nMeasured-stage-duration-ms: 9007199254740992"),
+  ].join("\n");
+  assert.deepEqual(
+    parseTicketSnapshot(invalidSamples, capture).records[0]?.eta,
+    { kind: "unknown" },
+  );
 });
 
 test("parses a 10,000-line tracker in under 100ms", () => {

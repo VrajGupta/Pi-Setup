@@ -21,7 +21,7 @@ import {
   Scope,
   Stream,
 } from "effect";
-import type { StageName } from "../../shared/workflow-state.ts";
+import { STAGE_NAMES, type StageName } from "../../shared/workflow-state.ts";
 import { redactSecrets } from "../../summaries/src/transcript.ts";
 import type { SubagentBackend, SubagentSession } from "./backend.ts";
 import { BackendRegistry } from "./backend.ts";
@@ -98,6 +98,7 @@ interface MutableSnapshot {
 
 interface Entry {
   snapshot: MutableSnapshot;
+  readonly stage?: StageName;
   session: SubagentSession;
   scope: Scope.Closeable;
   pump?: Fiber.Fiber<void>;
@@ -210,6 +211,9 @@ const makeManager = Effect.gen(function* () {
   let disposed = false;
   let onSettled:
     ((snap: SubagentSnapshot, consumed: boolean) => void) | undefined;
+
+  const isStageName = (value: unknown): value is StageName =>
+    typeof value === "string" && STAGE_NAMES.includes(value as StageName);
 
   const notify = (id?: string) => {
     const waiters = changeWaiters;
@@ -446,6 +450,9 @@ const makeManager = Effect.gen(function* () {
               message: "Subagent manager is shutting down.",
             });
           }
+          if (task.stage !== undefined && !isStageName(task.stage)) {
+            return new SpawnError({ message: "Invalid workflow stage." });
+          }
           if (runningCount() + reserved >= MAX_RUNNING) {
             return new ConcurrencyLimitError({
               message: `Max ${MAX_RUNNING} subagents can run concurrently. Wait for one to finish before spawning another.`,
@@ -482,6 +489,7 @@ const makeManager = Effect.gen(function* () {
         }
 
         const origin = task.origin ?? "model";
+        const stage = isStageName(task.stage) ? task.stage : undefined;
         const id =
           origin === "btw" ? `btw-${++btwCounter}` : `sa-${++modelCounter}`;
         const meta = yield* session.meta;
@@ -494,7 +502,7 @@ const makeManager = Effect.gen(function* () {
             prompt: task.prompt,
             cwd: task.cwd,
             status: "running",
-            ...(task.stage === undefined ? {} : { stage: task.stage }),
+            ...(stage === undefined ? {} : { stage }),
             createdAt: Date.now(),
             meta,
             usage: { contextWindow: meta.contextWindow },
@@ -504,6 +512,7 @@ const makeManager = Effect.gen(function* () {
             finalText: "",
             turns: 0,
           },
+          stage,
           session,
           scope,
           liveToolMap: new Map(),
@@ -674,7 +683,7 @@ const makeManager = Effect.gen(function* () {
   const sendStage = (id: string, stage: StageName, text: string) =>
     Effect.suspend((): Effect.Effect<void, SendError> => {
       const entry = entries.get(id);
-      if (!entry || entry.snapshot.stage !== stage) {
+      if (!entry || !isStageName(stage) || entry.stage !== stage) {
         return new SendError({
           message:
             "Stage view destination no longer matches the selected stage.",

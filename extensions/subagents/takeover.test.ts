@@ -139,7 +139,14 @@ async function openForTest(snap: SubagentSnapshot) {
 }
 
 test("opened stage takeover sends only through its identified input and bounds errors", async () => {
-  const harness = await openForTest(snapshot("debugger"));
+  const harness = await openForTest({
+    ...snapshot("debugger"),
+    errorText: "Authorization: Bearer STAGE_RUNTIME_SECRET\u001b[31m",
+    liveAssistant: {
+      thinking: "",
+      text: "Authorization: Bearer STAGE_LIVE_SECRET\u001b[32m",
+    },
+  });
   try {
     harness.bindings.add("clear:app.clear");
     harness.component.handleInput?.("clear");
@@ -160,14 +167,78 @@ test("opened stage takeover sends only through its identified input and bounds e
     const lines = harness.component.render(40);
     const output = lines.join("\n");
     assert.match(output, /Send to debugger \(sa-1\)/);
-    assert.doesNotMatch(output, /STAGE_SEND_SECRET|\u001b\[31m/);
+    assert.doesNotMatch(
+      output,
+      /STAGE_SEND|STAGE_RUNTIME|STAGE_LIVE|\u001b\[31m|\u001b\[32m/,
+    );
     assert.ok(lines.every((line) => visibleWidth(line) <= 40));
+    for (const width of [1, 20, 40, 80]) {
+      assert.doesNotThrow(() => harness.component.render(width));
+      assert.ok(
+        harness.component
+          .render(width)
+          .every((line) => visibleWidth(line) <= Math.max(1, width)),
+      );
+    }
 
     harness.bindings.add("escape:app.interrupt");
     harness.component.handleInput?.("escape");
     assert.equal(harness.closed, true);
+    internals.input.onSubmit?.("after close");
+    assert.deepEqual(harness.stageSends, [
+      { id: "sa-1", stage: "debugger", text: "direct answer" },
+    ]);
   } finally {
     harness.component.dispose?.();
+  }
+});
+
+test("dashboard cannot abort a workflow stage", async () => {
+  const stage = snapshot("debugger");
+  let component: TakeoverComponent | undefined;
+  let aborts = 0;
+  const tui = {
+    requestRender: () => {},
+    terminal: { rows: 30 },
+  } as unknown as TUI;
+  const theme = {
+    fg: (_color: string, text: string) => text,
+    bold: (text: string) => text,
+  } as unknown as Theme;
+  const keybindings = {
+    getKeys: () => [],
+    matches: () => false,
+  } as unknown as KeybindingsManager;
+  const view = {
+    size: () => 1,
+    list: () => [stage],
+    subscribe: () => () => {},
+    requestAbort: () => {
+      aborts++;
+    },
+  } as unknown as SubagentReadModel;
+  const context = {
+    ui: {
+      custom: async (factory: unknown) => {
+        if (typeof factory !== "function") throw new Error("missing factory");
+        component = (factory as DashboardFactory)(
+          tui,
+          theme,
+          keybindings,
+          () => {},
+        );
+        return null;
+      },
+    },
+  } as unknown as ExtensionCommandContext;
+
+  await openSubagentPicker(context, view);
+  try {
+    component?.handleInput?.("x");
+    assert.equal(aborts, 0);
+    assert.doesNotMatch(component?.render(80).join("\n") ?? "", /x abort/);
+  } finally {
+    component?.dispose?.();
   }
 });
 

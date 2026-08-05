@@ -12,6 +12,7 @@ import { Effect, Layer, ManagedRuntime } from "effect";
 import { BackendRegistry, type SubagentBackend } from "./src/backend.ts";
 import { piBackend } from "./src/backends/pi.ts";
 import { makeStubBackend } from "./src/backends/stub.ts";
+import type { StageName } from "../shared/workflow-state.ts";
 import type { BackendName, ParentContext, SpawnTask } from "./src/domain.ts";
 import {
   SubagentManager,
@@ -318,6 +319,45 @@ test("stage sends require the opened stage identity and redact displayed text", 
     );
     await assert.rejects(
       runTool(runtime, manager.sendStage(helper.id, "debugger", "not a stage")),
+      /destination no longer matches/,
+    );
+    for (const id of ["", "sa-forged", `${stage.id}\u0000`]) {
+      await assert.rejects(
+        runTool(runtime, manager.sendStage(id, "debugger", "forged id")),
+        /destination no longer matches/,
+      );
+    }
+    await assert.rejects(
+      runTool(
+        runtime,
+        manager.sendStage(
+          stage.id,
+          "not-a-stage" as unknown as StageName,
+          "malformed stage",
+        ),
+      ),
+      /destination no longer matches/,
+    );
+    await assert.rejects(
+      runTool(
+        runtime,
+        manager.spawn("codex", {
+          ...task("malformed stage"),
+          stage: "not-a-stage" as unknown as StageName,
+        }),
+      ),
+      /Invalid workflow stage/,
+    );
+
+    const exposedStage = manager.view.get(stage.id);
+    assert.ok(exposedStage);
+    Object.defineProperty(exposedStage, "stage", {
+      configurable: true,
+      value: "planner",
+      writable: true,
+    });
+    await assert.rejects(
+      runTool(runtime, manager.sendStage(stage.id, "planner", "forged stage")),
       /destination no longer matches/,
     );
 

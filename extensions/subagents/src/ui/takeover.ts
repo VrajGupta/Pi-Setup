@@ -47,6 +47,88 @@ function statusWord(snap: SubagentSnapshot, theme: Theme): string {
   }
 }
 
+function safeDisplayText(text: string) {
+  return redactSecrets(sanitizeText(text));
+}
+
+function safeDisplayLine(text: string) {
+  return safeDisplayText(text).replace(/[\r\n]+/g, " ");
+}
+
+function safeDisplaySnapshot(snap: SubagentSnapshot) {
+  return {
+    ...snap,
+    id: safeDisplayLine(snap.id),
+    title: safeDisplayLine(snap.title),
+    prompt: safeDisplayLine(snap.prompt),
+    cwd: safeDisplayLine(snap.cwd),
+    errorText: snap.errorText
+      ? safeDisplayLine(snap.errorText)
+      : snap.errorText,
+    meta: {
+      ...snap.meta,
+      modelLabel: snap.meta.modelLabel
+        ? safeDisplayLine(snap.meta.modelLabel)
+        : snap.meta.modelLabel,
+      sessionFilePath: snap.meta.sessionFilePath
+        ? safeDisplayLine(snap.meta.sessionFilePath)
+        : snap.meta.sessionFilePath,
+      nativeSessionId: snap.meta.nativeSessionId
+        ? safeDisplayLine(snap.meta.nativeSessionId)
+        : snap.meta.nativeSessionId,
+    },
+    transcript: snap.transcript.map((item) => {
+      if (item.kind === "user") {
+        return { ...item, text: safeDisplayText(item.text) };
+      }
+      if (item.kind === "assistant") {
+        return {
+          ...item,
+          parts: item.parts.map((part) =>
+            part.type === "toolCall"
+              ? {
+                  ...part,
+                  name: safeDisplayLine(part.name),
+                  argsPreview: part.argsPreview
+                    ? safeDisplayText(part.argsPreview)
+                    : part.argsPreview,
+                }
+              : { ...part, text: safeDisplayText(part.text) },
+          ),
+        };
+      }
+      return {
+        ...item,
+        name: safeDisplayLine(item.name),
+        outputPreview: item.outputPreview
+          ? safeDisplayText(item.outputPreview)
+          : item.outputPreview,
+      };
+    }),
+    liveAssistant: snap.liveAssistant
+      ? {
+          text: safeDisplayText(snap.liveAssistant.text),
+          thinking: safeDisplayText(snap.liveAssistant.thinking),
+        }
+      : snap.liveAssistant,
+    liveTools: snap.liveTools.map((tool) => ({
+      ...tool,
+      name: safeDisplayLine(tool.name),
+      argsPreview: tool.argsPreview
+        ? safeDisplayText(tool.argsPreview)
+        : tool.argsPreview,
+      outputPreview: tool.outputPreview
+        ? safeDisplayText(tool.outputPreview)
+        : tool.outputPreview,
+    })),
+    queued: snap.queued.map((message) => ({
+      ...message,
+      text: safeDisplayText(message.text),
+    })),
+    finalText: safeDisplayText(snap.finalText),
+  };
+}
+
 // --- Entry points --------------------------------------------------------------
 
 export interface TakeoverOptions {
@@ -203,7 +285,9 @@ class SubagentDashboard implements Component {
     }
     if (data === "x") {
       const snap = subs[this.selection.index];
-      if (snap && snap.status === "running") this.view.requestAbort(snap.id);
+      if (snap && snap.status === "running" && snap.stage === undefined) {
+        this.view.requestAbort(snap.id);
+      }
       return;
     }
   }
@@ -280,11 +364,13 @@ class SubagentDashboard implements Component {
     );
 
     // Hints
+    const selected = subs[this.selection.index];
+    const abortHint = selected?.stage === undefined ? " · x abort" : "";
     lines.push(
       truncateToWidth(
         theme.fg(
           "dim",
-          `  ${configuredKeys(this.keybindings, "tui.select.up")}/${configuredKeys(this.keybindings, "tui.select.down")}/jk select · ${configuredKeys(this.keybindings, "tui.select.confirm")} take over · x abort · ${configuredKeys(this.keybindings, "tui.select.cancel")} close`,
+          `  ${configuredKeys(this.keybindings, "tui.select.up")}/${configuredKeys(this.keybindings, "tui.select.down")}/jk select · ${configuredKeys(this.keybindings, "tui.select.confirm")} take over${abortHint} · ${configuredKeys(this.keybindings, "tui.select.cancel")} close`,
         ),
         width,
       ),
@@ -319,16 +405,16 @@ class SubagentDashboard implements Component {
       // Left: marker, status square, title, dim id
       const marker = isSelected ? theme.fg("accent", "❯") : " ";
       const title = isSelected
-        ? theme.fg("accent", snap.title)
-        : theme.fg("text", snap.title);
-      const left = ` ${marker} ${statusGlyph(snap, theme)} ${title} ${theme.fg("dim", snap.id)}`;
+        ? theme.fg("accent", safeDisplayLine(snap.title))
+        : theme.fg("text", safeDisplayLine(snap.title));
+      const left = ` ${marker} ${statusGlyph(snap, theme)} ${title} ${theme.fg("dim", safeDisplayLine(snap.id))}`;
 
       // Right: backend · model · context utilization · elapsed · status
       const utilization = formatContextUtilization(snap.usage);
       const dot = theme.fg("dim", " · ");
       const rightParts = [
         theme.fg("muted", snap.backend),
-        theme.fg("muted", snap.meta.modelLabel ?? "?"),
+        theme.fg("muted", safeDisplayLine(snap.meta.modelLabel ?? "?")),
         ...(utilization ? [theme.fg("muted", utilization)] : []),
         theme.fg("muted", formatElapsed(snap)),
         statusWord(snap, theme),
@@ -409,6 +495,7 @@ class TakeoverView implements Component, Focusable {
     // Elapsed time in the header ticks along at 1Hz.
     this.ticker = setInterval(() => this.tui.requestRender(), 1000);
     this.input.onSubmit = (value: string) => {
+      if (this.closed) return;
       const text = value.trim();
       const snap = this.snap();
       if (!text || !snap) return;
@@ -416,7 +503,8 @@ class TakeoverView implements Component, Focusable {
       this.sendError = undefined;
       if (snap.stage) {
         this.view.requestStageSend(this.id, snap.stage, text, (message) => {
-          this.sendError = sanitizeText(redactSecrets(message)).slice(
+          if (this.closed) return;
+          this.sendError = safeDisplayText(message).slice(
             0,
             TAKEOVER_ERROR_MAX_LENGTH,
           );
@@ -463,6 +551,7 @@ class TakeoverView implements Component, Focusable {
   }
 
   handleInput(data: string): void {
+    if (this.closed) return;
     const snap = this.snap();
     const isStageTakeover = snap?.stage !== undefined;
     if (this.keybindings.matches(data, "app.clear")) {
@@ -518,14 +607,16 @@ class TakeoverView implements Component, Focusable {
     const theme = this.theme;
     const border = theme.fg("borderAccent", "─".repeat(Math.max(1, width)));
     const lines: string[] = [];
-    const snap = this.snap();
+    const rawSnap = this.snap();
 
-    if (!snap) {
+    if (!rawSnap) {
       lines.push(border);
       lines.push(theme.fg("dim", `${this.id} is no longer tracked`));
       lines.push(border);
       return lines;
     }
+
+    const snap = safeDisplaySnapshot(rawSnap);
 
     lines.push(border);
     const utilization = formatContextUtilization(snap.usage);
@@ -588,7 +679,9 @@ class TakeoverView implements Component, Focusable {
     lines.push(...body.slice(0, viewport));
 
     lines.push(border);
-    lines.push(...this.input.render(width));
+    lines.push(
+      ...this.input.render(width).map((line) => truncateToWidth(line, width)),
+    );
     lines.push(
       truncateToWidth(
         theme.fg(

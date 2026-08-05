@@ -92,6 +92,39 @@ function freeze<T>(value: T): Readonly<T> {
   return Object.freeze(value);
 }
 
+function maskFencedCode(markdown: string) {
+  let fenced = false;
+  let fenceChar = "";
+  let fenceLength = 0;
+
+  return markdown
+    .split("\n")
+    .map((line) => {
+      const marker = line.match(/^\s*(`{3,}|~{3,})/)?.[1];
+      const closing = line.match(/^\s*(`{3,}|~{3,})\s*$/)?.[1];
+      if (fenced) {
+        if (
+          closing &&
+          closing[0] === fenceChar &&
+          closing.length >= fenceLength
+        ) {
+          fenced = false;
+          fenceChar = "";
+          fenceLength = 0;
+        }
+        return line.replace(/[^\r]/g, " ");
+      }
+      if (marker) {
+        fenced = true;
+        fenceChar = marker[0]!;
+        fenceLength = marker.length;
+        return line.replace(/[^\r]/g, " ");
+      }
+      return line;
+    })
+    .join("\n");
+}
+
 function statusFrom(section: string): TicketStatus {
   const text = section.match(/^Status:\s*\*\*([^*]+)\*\*(?:\s*(?:·|$))/m)?.[1];
   return text
@@ -114,7 +147,10 @@ function assigneeFrom(text: string | undefined, status: TicketStatus) {
 
 function field(section: string, name: string): string | undefined {
   const match = section.match(
-    new RegExp(`(?:^|\\n|·\\s*)${name}:\\s*\\**([^\\n*·]+)`, "i"),
+    new RegExp(
+      `(?:^|\\n|^Status:[^\\n]*·\\s*)${name}:\\s*\\**([^\\n*·]+)`,
+      "im",
+    ),
   );
   return match?.[1]?.trim();
 }
@@ -143,8 +179,10 @@ function parseVerificationCommand(section: string): string | undefined {
   return section.match(/\*\*Verification-command\.\*\*\s*`([^`\n]+)`/i)?.[1];
 }
 
-function cycleIds(records: readonly ParsedTicket[]): ReadonlySet<string> {
-  const byId = new Map(records.map((record) => [record.id, record]));
+function cycleIds(
+  records: readonly ParsedTicket[],
+  byId: ReadonlyMap<string, ParsedTicket>,
+): ReadonlySet<string> {
   const state = new Map<string, "visiting" | "done">();
   const cycles = new Set<string>();
 
@@ -182,6 +220,18 @@ function cycleIds(records: readonly ParsedTicket[]): ReadonlySet<string> {
   return cycles;
 }
 
+function uniqueRecordsById(records: readonly ParsedTicket[]) {
+  const counts = new Map<string, number>();
+  for (const record of records) {
+    counts.set(record.id, (counts.get(record.id) ?? 0) + 1);
+  }
+  return new Map(
+    records
+      .filter((record) => counts.get(record.id) === 1)
+      .map((record) => [record.id, record]),
+  );
+}
+
 function etaFrom(records: readonly ParsedTicket[]): TicketEta {
   const samples = records.flatMap((record) =>
     record.status === "done" && record.measuredStageDurationMs
@@ -206,7 +256,10 @@ export function parseTicketSnapshot(
   if (!tracker.trim())
     return freeze({ ...base, records: freeze([]), reason: "empty tracker" });
 
-  const headings = [...tracker.matchAll(/^## (PI-\d+) — (.+?)\s*$/gm)];
+  const searchableTracker = maskFencedCode(tracker);
+  const headings = [
+    ...searchableTracker.matchAll(/^## (PI-\d+) — (.+?)\s*$/gm),
+  ];
   if (headings.length === 0) {
     return freeze({
       ...base,
@@ -216,7 +269,7 @@ export function parseTicketSnapshot(
   }
 
   const parsed = headings.map((heading, index) => {
-    const section = tracker.slice(
+    const section = searchableTracker.slice(
       heading.index,
       headings[index + 1]?.index ?? tracker.length,
     );
@@ -240,9 +293,9 @@ export function parseTicketSnapshot(
       ...(duration === undefined ? {} : { measuredStageDurationMs: duration }),
     } satisfies ParsedTicket;
   });
-  const byId = new Map(parsed.map((record) => [record.id, record]));
-  const cycles = cycleIds(parsed);
-  const eta = etaFrom(parsed);
+  const byId = uniqueRecordsById(parsed);
+  const cycles = cycleIds(parsed, byId);
+  const eta = etaFrom([...byId.values()]);
   const records = freeze(
     parsed.map((record) => {
       const blockedBy = freeze(
