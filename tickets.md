@@ -961,9 +961,9 @@ Parallel entry points: **PI-28** and **PI-29**.
 
 ## PI-28 — Scheduler engine (off-render, injectable timers, per-routine isolation)
 
-Status: **Agent Ready** · Blocked-by: none · GitHub issue #27
+Status: **Debugger Ready** · Blocked-by: none · GitHub issue #27
 
-**What to build.** `extensions/workflow/routine-scheduler.ts`: off-render, fixed-interval, single-flight-per-routine scheduler with injectable timers. `startRoutineScheduler({ routines, now, setTimer, clearTimer, onDue })` returning `{ getDueRoutines(), stop() }`. Tick interval is the gcd of all routine intervals, clamped [5000, 60000], default 10000. Per-routine isolation (INV-15, INV-16). No filesystem I/O (INV-3).
+**What to build.** `extensions/workflow/routines-scheduler.ts`: off-render, fixed-interval, single-flight-per-routine scheduler with injectable timers. `startRoutineScheduler({ routines, now, setTimer, clearTimer, onDue })` returning `{ getDueRoutineNames(), getSnapshot(), stop() }`. Tick interval is the gcd of all routine intervals, clamped [5000, 60000], default 10000. Per-routine isolation (INV-15, INV-16). No filesystem I/O (INV-3).
 
 **Acceptance criteria.**
 
@@ -975,7 +975,13 @@ Status: **Agent Ready** · Blocked-by: none · GitHub issue #27
 - After `stop()`, advancing 10 intervals fires zero checks.
 - Every timer is `unref`'d.
 
-**Verification-command.** `node --test --experimental-strip-types extensions/workflow/routine-scheduler.test.ts && npm run check`
+**Verification-command.** `node --test --experimental-strip-types extensions/workflow/routines-scheduler.test.ts && npm run check`
+
+**Coder delivery (2026-08-05).**
+- Changed: `extensions/workflow/routines-scheduler.ts` (new), `extensions/workflow/routines-scheduler.test.ts` (new)
+- Diff SHA-256: `76a478b4bc3a19e15a7c6db0c3b84f553db5650fc702d27c5ad5709be2962805`
+- Gate: `node --test --experimental-strip-types extensions/workflow/routines-scheduler.test.ts && npm run check && npm run format:check` → exit 0 (13 tests; tsc clean; format clean)
+- Handoff: `docs/handoffs/2026-08-05-coder-pi28.md`
 
 ## PI-29 — Definitions in settings (read/write workflow.routines)
 
