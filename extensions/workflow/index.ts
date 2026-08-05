@@ -1047,6 +1047,34 @@ function waitingOn(state: WorkflowState) {
   return undefined;
 }
 
+export type ModeCommandOutcome =
+  | { kind: "pick" }
+  | { kind: "switch"; mode: WorkflowMode; confirmation: string }
+  | { kind: "warn"; message: string };
+
+/** Pure function: given a raw /mode arg string, return the intended outcome. */
+export function normalizeModeCommand(value: string): ModeCommandOutcome {
+  const trimmed = value.trim();
+  const lowered = trimmed.toLowerCase();
+  if (!trimmed) return { kind: "pick" };
+  if (lowered !== "workflow" && lowered !== "free") {
+    return {
+      kind: "warn",
+      message: `unknown mode "${trimmed}" — use workflow or free`,
+    };
+  }
+  return {
+    kind: "switch",
+    mode: lowered as WorkflowMode,
+    confirmation: lowered === "free" ? "mode free (manual)" : "mode workflow",
+  };
+}
+
+export const MODE_COMPLETIONS = [
+  { value: "workflow", label: "workflow" },
+  { value: "free", label: "free" },
+];
+
 function isFlowInput(value: unknown): value is FlowInput {
   if (!value || typeof value !== "object") return false;
   const input = value as Record<string, unknown>;
@@ -1358,18 +1386,31 @@ export default function workflow(pi: ExtensionAPI) {
 
   pi.registerCommand("mode", {
     description: "Set workflow routing mode (workflow | free)",
+    getArgumentCompletions: () => MODE_COMPLETIONS,
     handler: async (args, ctx) => {
-      const value = typeof args === "string" ? args.trim().toLowerCase() : "";
-      if (value !== "workflow" && value !== "free") {
-        ctx.ui.notify(
-          `/mode expects workflow or free; current mode: ${mode}`,
-          "error",
-        );
+      const outcome = normalizeModeCommand(
+        typeof args === "string" ? args : "",
+      );
+      if (outcome.kind === "pick") {
+        const choice = await ctx.ui.select("Routing mode", [
+          "workflow",
+          "free",
+        ]);
+        if (!choice) return;
+        const picked = normalizeModeCommand(choice);
+        if (picked.kind !== "switch") return;
+        mode = picked.mode;
+        setState({ mode, lastEvent: `mode: ${picked.mode}` });
+        ctx.ui.notify(picked.confirmation, "info");
         return;
       }
-      mode = value;
-      setState({ mode, lastEvent: `mode: ${mode}` });
-      ctx.ui.notify(`routing mode: ${mode}`, "info");
+      if (outcome.kind === "warn") {
+        ctx.ui.notify(outcome.message, "warning");
+        return;
+      }
+      mode = outcome.mode;
+      setState({ mode, lastEvent: `mode: ${outcome.mode}` });
+      ctx.ui.notify(outcome.confirmation, "info");
     },
   });
 

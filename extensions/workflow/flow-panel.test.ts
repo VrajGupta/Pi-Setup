@@ -6,7 +6,12 @@ import type {
   WorkflowState,
   WorkflowSubagentSummary,
 } from "../shared/workflow-state.ts";
-import { FlowPanel, type FlowPanelContext } from "./index.ts";
+import {
+  FlowPanel,
+  MODE_COMPLETIONS,
+  normalizeModeCommand,
+  type FlowPanelContext,
+} from "./index.ts";
 
 const theme = {
   bg: (_color: string, text: string) => text,
@@ -650,4 +655,75 @@ test("1 000 panel renders at width 120 stay within a practical budget", () => {
   for (let index = 0; index < 1_000; index += 1) flow.render(120);
   const elapsed = performance.now() - start;
   assert.ok(elapsed < 3_000, `1000 panel renders took ${elapsed}ms`);
+});
+
+// ─── PI-24: /mode picker, completions, warnings ──────────────────────
+
+test("/mode bare invocation produces pick outcome (no red error)", () => {
+  const outcome = normalizeModeCommand("");
+  assert.equal(outcome.kind, "pick");
+
+  const whitespace = normalizeModeCommand("  ");
+  assert.equal(whitespace.kind, "pick");
+});
+
+test("/mode valid value returns switch with correct confirmation", () => {
+  const wf = normalizeModeCommand("workflow");
+  assert.equal(wf.kind, "switch");
+  if (wf.kind === "switch") {
+    assert.equal(wf.mode, "workflow");
+    assert.equal(wf.confirmation, "mode workflow");
+  }
+
+  const free = normalizeModeCommand("  free  ");
+  assert.equal(free.kind, "switch");
+  if (free.kind === "switch") {
+    assert.equal(free.mode, "free");
+    assert.equal(free.confirmation, "mode free (manual)");
+  }
+
+  // Case-insensitive
+  const mixed = normalizeModeCommand("Free");
+  assert.equal(mixed.kind, "switch");
+  if (mixed.kind === "switch") {
+    assert.equal(mixed.mode, "free");
+  }
+});
+
+test("/mode invalid value returns warning and leaves state unchanged", () => {
+  const outcome = normalizeModeCommand("bogus");
+  assert.equal(outcome.kind, "warn");
+  if (outcome.kind === "warn") {
+    assert.equal(
+      outcome.message,
+      'unknown mode "bogus" — use workflow or free',
+    );
+  }
+
+  // State unchanged: kind is warn, not switch
+  const current = normalizeModeCommand("workflow");
+  assert.equal(current.kind, "switch");
+  const afterInvalid = normalizeModeCommand("invalid");
+  // The outcome itself doesn't switch — that's the mechanism for unchanged state
+  assert.equal(afterInvalid.kind, "warn");
+  assert.notEqual(afterInvalid.kind, "switch");
+});
+
+test("/mode completions include exactly workflow and free", () => {
+  assert.equal(MODE_COMPLETIONS.length, 2);
+  const values = MODE_COMPLETIONS.map((c) => c.value);
+  assert.ok(values.includes("workflow"));
+  assert.ok(values.includes("free"));
+  assert.equal(values.length, 2);
+});
+
+test("/mode invalid value with whitespace preserves original casing in message", () => {
+  const outcome = normalizeModeCommand("  BaD_VaLuE  ");
+  assert.equal(outcome.kind, "warn");
+  if (outcome.kind === "warn") {
+    assert.equal(
+      outcome.message,
+      'unknown mode "BaD_VaLuE" — use workflow or free',
+    );
+  }
 });

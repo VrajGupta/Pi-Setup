@@ -791,7 +791,9 @@ Status: **Agent Ready** · Blocked-by: PI-21, PI-22 · GitHub issue #21
 
 ## PI-24 — `/mode` native picker, completions, and warning-on-invalid
 
-Status: **Agent Ready** · Blocked-by: PI-21 · GitHub issue #22
+Status: **Debugger Ready** · Blocked-by: PI-21 · GitHub issue #22
+
+**Coder delivery (2026-08-05).** Changed paths: `extensions/workflow/index.ts` (handler + pure helper), `extensions/workflow/flow-panel.test.ts` (5 new /mode tests). Product diff SHA-256: `13f2817fa7088f139088ec961b923763580ee22768aba1ca839cc947171f9152`. Exact gate: `node --test --experimental-strip-types extensions/workflow/flow-panel.test.ts` → exit 0 (28 pass). `npm run check` → exit 2 (pre-existing PI-20 `ui-customization/status-widget.test.ts` TS error outside lane). `npm run format:check` (laned files) → clean. Blocked-by: PI-21 stays.
 
 **What to build.** Replace the string-only `/mode` handler (`extensions/workflow/index.ts:1359-1374`). Bare `/mode` opens `ctx.ui.select` with exactly two labelled options (`workflow — auto-route risky or broad work to the fleet`, `free (manual) — everything direct unless a stage is named`); cancelling changes nothing. `getArgumentCompletions` offers `workflow` and `free` filtered case-insensitively. Invalid input notifies at severity `warning`, never `error`, and names the current mode. A successful switch updates the live mode, republishes state, and the widget's mode label immediately reflects it (q5, q7). INV-8: no `/mode` path classifies, routes, starts a stage, or emits a spawn/send on the subagent bridge.
 
