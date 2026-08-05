@@ -1,4 +1,12 @@
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { truncateToWidth } from "@earendil-works/pi-tui";
+
+const DEFAULT_MAX_LINES = 40;
+const DEFAULT_WIDTH = 80;
+const BASE_LINES = [
+  "─ flow ─",
+  "mode ? · route ?",
+  "· planner → · coder → · debugger → · reviewer",
+] as const;
 
 export interface StatusWidgetState {
   width: number;
@@ -12,18 +20,18 @@ function normalizeWidth(width: unknown) {
 }
 
 function normalizeMaxLines(value: unknown) {
-  // Missing/undefined: use default 40
-  if (value === undefined) return 40;
+  if (value === undefined) return DEFAULT_MAX_LINES;
+  if (typeof value !== "number") return DEFAULT_MAX_LINES;
+  if (!Number.isFinite(value)) return 8;
+  return Math.max(8, Math.min(200, Math.floor(value)));
+}
 
-  // For any other supplied value (including NaN, non-numbers), clamp to [8, 200]
-  // NaN: Math.floor(NaN) = NaN, Math.max(8, Math.min(200, NaN)) = 8
-  // Non-number: coerce to number first
-  const n =
-    typeof value === "number" ? Math.floor(value) : Math.floor(Number(value));
-
-  // Clamp to valid range, treating NaN as 8
-  if (!Number.isFinite(n)) return 8;
-  return Math.max(8, Math.min(200, n));
+function safeString(value: unknown) {
+  try {
+    return String(value);
+  } catch {
+    return "?";
+  }
 }
 
 function safeTruncate(text: string, width: number) {
@@ -34,43 +42,56 @@ function safeTruncate(text: string, width: number) {
   }
 }
 
+function renderBaseLines(width: number) {
+  return BASE_LINES.map((line) => safeTruncate(line, width));
+}
+
 /**
  * Render the belowEditor status widget with deterministic bounds.
  *
- * Given N input lines, returns exactly min(N, maxLines) lines. When N > maxLines,
- * the last line is the overflow line "+N more · /flow" where N is the count of
- * suppressed lines.
- *
- * Every returned line has visible width <= the requested width via truncateToWidth.
- * This is a pure function with no I/O, no timers, and no promises.
+ * Empty input renders the three host lines. Non-empty input is rendered as-is
+ * until the runaway ceiling is reached; the final line then reports every
+ * suppressed row. The render path is pure: no filesystem, network,
+ * subprocess, timer, or promise work occurs here.
  */
 export function renderStatusWidget(state: StatusWidgetState): string[] {
+  if (!state || typeof state !== "object") return [];
+
+  let width: number;
   try {
-    const width = normalizeWidth(state.width);
-    const maxLines = normalizeMaxLines(state.maxLines);
-    const inputLines = Array.isArray(state.inputLines) ? state.inputLines : [];
+    width = normalizeWidth(state.width);
+  } catch {
+    return renderBaseLines(DEFAULT_WIDTH);
+  }
+  if (width <= 0) return [];
 
-    if (width <= 0) return [];
+  let maxLines: number;
+  try {
+    maxLines = normalizeMaxLines(state.maxLines);
+  } catch {
+    return renderBaseLines(width);
+  }
 
-    const inputCount = inputLines.length;
-    if (inputCount === 0) return [];
+  let inputLines: unknown;
+  try {
+    inputLines = state.inputLines;
+  } catch {
+    return renderBaseLines(width);
+  }
+  if (!Array.isArray(inputLines)) return [];
 
-    // If input fits within maxLines, return all lines truncated to width
-    if (inputCount <= maxLines) {
-      return inputLines.map((line) => safeTruncate(String(line), width));
-    }
+  try {
+    const lines = inputLines.length === 0 ? BASE_LINES : inputLines;
+    if (lines.length <= maxLines)
+      return lines.map((line) => safeTruncate(safeString(line), width));
 
-    // Input exceeds maxLines: return (maxLines - 1) input lines plus overflow line
-    const outputLines = inputLines.slice(0, maxLines - 1);
-    const suppressedCount = inputCount - (maxLines - 1);
-    const overflowLine = `+${suppressedCount} more · /flow`;
-
+    const visibleLines = lines.slice(0, maxLines - 1);
+    const suppressedCount = lines.length - visibleLines.length;
     return [
-      ...outputLines.map((line) => safeTruncate(String(line), width)),
-      safeTruncate(overflowLine, width),
+      ...visibleLines.map((line) => safeTruncate(safeString(line), width)),
+      safeTruncate(`+${suppressedCount} more · /flow`, width),
     ];
   } catch {
-    // INV-6: gracefully degrade on any error
-    return [];
+    return renderBaseLines(width);
   }
 }

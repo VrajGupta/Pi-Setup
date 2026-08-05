@@ -293,7 +293,7 @@ export default function uiCustomization(pi: ExtensionAPI) {
     // Register the belowEditor status widget (PI-20).
     // The widget is initialized with empty input lines for now; later tickets will
     // populate it with mode, route, stage, and issue rows.
-    ctx.ui.setWidget(
+    ctx.ui.setWidget?.(
       "vraj-status",
       (_tui, _theme) => {
         return {
@@ -354,7 +354,7 @@ export default function uiCustomization(pi: ExtensionAPI) {
     if (ctx.mode === "tui") {
       ctx.ui.setHeader(undefined);
       ctx.ui.setFooter(undefined);
-      ctx.ui.setWidget("vraj-status", undefined);
+      ctx.ui.setWidget?.("vraj-status", undefined);
     }
   });
 }
