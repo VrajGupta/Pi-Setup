@@ -195,31 +195,17 @@ test("Codex non-positive or non-finite occupancy stays unknown through stage row
       at: 10_000,
     });
     assert.equal(reading.kind, "indeterminate");
-    const row = renderFooter({
+    const lines = renderFooter({
       width: 120,
       theme,
-      now: 10_000,
       cwdLabel: "~/repo",
       runtime: "pi/model",
       rail: "flow",
-      routeStatus: "running",
       usage: "",
       pr: "",
-      agents: [
-        {
-          id: "stage-1",
-          title: "debugger",
-          status: "running",
-          backend: "codex",
-          stage: "debugger",
-          startedAt: 1_000,
-          turns: 1,
-        },
-      ],
       statuses: [],
-      readingFor: () => reading,
-    })[3];
-    assert.ok(row);
-    assert.doesNotMatch(row, /%/);
+    });
+    assert.equal(lines.length, 3);
+    assert.doesNotMatch(lines.join(" "), /%/);
   }
 });

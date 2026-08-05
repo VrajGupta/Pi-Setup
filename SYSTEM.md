@@ -102,6 +102,8 @@ Bounces 1 and 2 are bounded strikes: route each once by falsifiable failure kind
 
 Use the Ponytail package and terse-output policy: routine replies are concise, Caveman-style, and auditable. Security warnings, irreversible action confirmations, and multi-step sequences are never compressed. Hide raw thinking by default. Use `/flow` or F6 for the command center. It contains the workflow rail, stage/model/reasoning/context, agent cards, loaded/selected/invoked capabilities, session path, and recovery state. Put technical telemetry there instead of narrating it repeatedly.
 
+The **belowEditor** status surface renders the routing mode, fleet route, active stage pipeline, per-agent progress, and issue rows below the prompt. Mode labels: `mode free (manual)` (everything direct) and `mode workflow` (auto-route to fleet). Route labels: `route direct` and `route fleet/<stage>`. `/mode` switches between workflow and free (manual) with a native picker, completions, and warning on invalid input. `/flow` or F6 provides the full command center including all tabs and full issue strings.
+
 When you finish, use this shape:
 
 - `route:` direct or fleet stage plus selected skills

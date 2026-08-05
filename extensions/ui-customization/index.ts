@@ -16,7 +16,6 @@ import {
   type GitInfoState,
   type ModelInfoState,
 } from "../shared/dashboard-state.ts";
-import { buildReading } from "../shared/stage-progress.ts";
 import {
   SUBAGENT_STATE_CHANNEL,
   WORKFLOW_STATE_CHANNEL,
@@ -79,50 +78,6 @@ function stageLabel(
   if (status === "complete" || (activeIndex >= 0 && index < activeIndex))
     return theme.fg("success", `✓ ${stage}`);
   return theme.fg("dim", `· ${stage}`);
-}
-
-function activityGlyph(activity: Activity) {
-  if (activity === "working") return "·";
-  if (activity === "done") return "✓";
-  if (activity === "error") return "×";
-  return "○";
-}
-
-function stageReason(
-  agent: WorkflowSubagentSummary,
-  workflow: WorkflowState,
-  agentsAt: number,
-  now: number,
-) {
-  const event = workflow.lastEvent;
-  if (agent.status === "error") {
-    // Only label a provider cause when the event is actually provider-shaped;
-    // a generic error must render reason unknown, never a fabricated cause.
-    return /\b(provider|authorization|timeout|rate limit|quota|spend|unavailable)\b|\b5\d\d\b/i.test(
-      event,
-    )
-      ? `provider error: ${event}`
-      : "reason unknown";
-  }
-  if (agent.stage === workflow.activeStage) {
-    if (workflow.status === "needs-input") return "waiting on question";
-    if (workflow.status === "needs-helper") return "waiting on helper";
-    if (workflow.status === "blocked") {
-      if (/\b(quota|spend|rate limit|limit reached)\b/i.test(event))
-        return "quota limit";
-      if (
-        /\b(provider|authorization|timeout|unavailable)\b|\b5\d\d\b/i.test(
-          event,
-        )
-      )
-        return `provider error: ${event}`;
-    }
-  }
-  if (!Number.isFinite(agentsAt) || now - agentsAt > 30_000)
-    return "stale bridge";
-  return agent.stage === workflow.activeStage && workflow.status === "running"
-    ? "working"
-    : "reason unknown";
 }
 
 function titleFor(
@@ -202,17 +157,10 @@ export default function uiCustomization(pi: ExtensionAPI) {
       return {
         invalidate() {},
         render(width: number) {
-          const now = Date.now();
           const model = modelInfo.provider
             ? `${modelInfo.provider}/${modelInfo.modelId}`
             : modelInfo.modelId;
-          const runtime = `${model} · ${modelInfo.thinking} · ${activityGlyph(activity)} ${workflow.activeStage ?? "direct"}`;
-          const route = workflow.route
-            ? `${workflow.route.mode}${workflow.route.stage ? `/${workflow.route.stage}` : ""}`
-            : "direct";
-          const running = agents.filter(
-            (agent) => agent.status === "running",
-          ).length;
+          const runtime = `${model} · ${modelInfo.thinking}`;
           const flow = STAGES.map((stage) =>
             stageLabel(stage, workflow.activeStage, workflow.status, theme),
           ).join(theme.fg("dim", "  →  "));
@@ -245,53 +193,27 @@ export default function uiCustomization(pi: ExtensionAPI) {
             statuses = Array.from(footerData.getExtensionStatuses().values());
           } catch {
             // INV-6: a broken extension-status getter degrades the footer to
-            // the base lines rather than rendering partial agent/status rows.
+            // the base lines rather than rendering partial statuses.
             return renderFooter({
               width,
               theme,
-              now,
               cwdLabel: formatDirectory(ctx.cwd),
               runtime,
               rail: `${theme.fg("accent", "flow")} ${flow}`,
-              routeStatus: `${route} · ${workflow.status} · ${running} running · ${agents.length} tracked`,
               usage,
               pr,
-              agents: [],
               statuses: [],
-              readingFor: () =>
-                buildReading({
-                  source: "context",
-                  done: undefined,
-                  total: undefined,
-                  at: agentsAt,
-                  elapsedMs: now - agentsAt,
-                  turns: 0,
-                }),
-              reasonFor: () => "reason unknown",
             });
           }
           return renderFooter({
             width,
             theme,
-            now,
             cwdLabel: formatDirectory(ctx.cwd),
             runtime,
             rail: `${theme.fg("accent", "flow")} ${flow}`,
-            routeStatus: `${route} · ${workflow.status} · ${running} running · ${agents.length} tracked`,
             usage,
             pr,
-            agents,
             statuses,
-            readingFor: (agent) =>
-              buildReading({
-                source: "context",
-                done: agent.contextTokens,
-                total: agent.contextWindow,
-                at: agentsAt,
-                elapsedMs: now - agent.startedAt,
-                turns: agent.turns,
-              }),
-            reasonFor: (agent) => stageReason(agent, workflow, agentsAt, now),
           });
         },
       };

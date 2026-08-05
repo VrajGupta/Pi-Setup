@@ -48,6 +48,14 @@ These match `STAGE_PROFILES` in `extensions/workflow/src/policy.ts`, which is th
 
 A stage child cannot spawn children. It may return a validated `helper_request`; the Sol coordinator brokers sibling helpers and sends bounded results back.
 
+## Status surface
+
+The primary status and control surface is the **belowEditor** widget — a live panel rendered below the prompt that shows the current routing mode, fleet route, active stage pipeline, per-agent progress, and active issue rows. The footer handles telemetry (cwd, runtime/model, usage, git/PR) and the workflow rail only; rich status lives below the prompt.
+
+Mode labels are `mode free (manual)` (everything direct unless a stage is named) and `mode workflow` (auto-route risky or broad work to the fleet). Route labels are `route direct` and `route fleet/<stage>`. Use `/mode` to switch between `workflow` and `free (manual)` — bare `/mode` opens a native picker; partial input triggers completions; invalid input shows a warning, never an error. Use `/flow` or **F6** for the full command center (all tabs, full issue strings, capabilities, session details).
+
+The current mode persists across restarts via `workflow.mode` in settings. The tracker poll interval (`workflow.trackerPollMs`, default 10000) and the surface runaway ceiling (`workflow.statusWidget.maxLines`, default 40) are configurable in `settings.example.json`.
+
 ## Checks
 
 ```sh

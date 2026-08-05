@@ -909,7 +909,7 @@ Findings fixed test-first:
 
 ## PI-26 — Footer dedup, docs, and bounds/perf regression
 
-Status: **Agent Ready** · Blocked-by: PI-23, PI-25 · GitHub issue #24
+Status: **Debugger Ready** · Blocked-by: PI-23, PI-25 · GitHub issue #24
 
 **What to build.** Deduplicate the footer against the new surface (q1): rich status lives below the prompt; the footer keeps telemetry (cwd, runtime/model, usage, git/PR) and the workflow rail, with its 7-line cap unchanged. Document the surface, the exact mode and route labels, the `/mode` picker and completions, mode persistence, and the poll interval in `README.md` and `SYSTEM.md`; add `workflow.trackerPollMs` and `workflow.statusWidget.maxLines` to `settings.example.json`. Lock the INV-14 render budget and the amended INV-4 bounds in the suite.
 
@@ -923,6 +923,13 @@ Status: **Agent Ready** · Blocked-by: PI-23, PI-25 · GitHub issue #24
 - The full suite, the type check, and the format check all exit 0.
 
 **Verification-command.** `npm test && npm run check && npm run format:check`
+
+**Coder delivery (2026-08-05).**
+- Changed: `extensions/ui-customization/footer.ts`, `extensions/ui-customization/index.ts`, `extensions/ui-customization/footer.test.ts`, `extensions/subagents/context-usage.test.ts`, `settings.example.json`, `README.md`, `SYSTEM.md`
+- Product diff SHA-256: `ce525f44fbeccec5da65f9ee51f3605934416bad6ea36b51d13d184d4f2bee51` (staged `/tmp/pi26-product.diff`)
+- Gate: `node --test --experimental-strip-types extensions/ui-customization/status-widget.test.ts extensions/ui-customization/footer.test.ts` → exit 0 (77 tests, 0 fail)
+- `npm run check` → exit 0 (tsc clean)
+- `npm run format:check` → exit 0 (all lane files clean)
 
 ## PI-27 — Routines: periodic scheduled prompts/tasks (like Claude Code routines)
 
