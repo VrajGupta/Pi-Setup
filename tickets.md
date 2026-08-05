@@ -30,6 +30,7 @@ Status: **Done** · Blocked-by: none · Phase 1
 **What to build.** Extend `WorkflowSubagentSummary` in `extensions/shared/workflow-state.ts` with `stage?: StageName` and `startedAt: number` (epoch ms), extend `isWorkflowSubagentSummary` to validate them, tag agents spawned by `startStage` in `extensions/workflow/index.ts` with their stage, and pass both fields through `summarize` in `extensions/subagents/index.ts`.
 
 **Acceptance criteria.**
+
 - `isWorkflowSubagentSummary` returns `false` when `startedAt` is missing or is not a number.
 - `isWorkflowSubagentSummary` returns `false` when `stage` is present but is not one of `planner|coder|debugger|reviewer`.
 - `isWorkflowSubagentSummary` returns `true` for a summary with no `stage` (a non-stage helper agent).
@@ -39,6 +40,7 @@ Status: **Done** · Blocked-by: none · Phase 1
 **Verification-command.** `node --test --experimental-strip-types extensions/shared/workflow-state.test.ts extensions/workflow/policy.test.ts && npm run check`
 
 **Review (reviewer, 2026-08-04).**
+
 - Verdict: **PASS** (score: 94/100, diagnostic only)
 - Bounce: 0 of 3
 - Gate: `node --test --experimental-strip-types extensions/shared/workflow-state.test.ts extensions/workflow/policy.test.ts && npm run check` → exit 0 (13 tests pass; tsc clean)
@@ -46,8 +48,8 @@ Status: **Done** · Blocked-by: none · Phase 1
 - Advisory: Verification-command does not run `extensions/subagents/manager.test.ts`; stage/helper propagation is covered there and was re-run green (exit 0) during review. Full workflow→event-bus→subagents extension round trip remains unharnessed.
 - Routing: → **Done** — all five acceptance criteria met in code; INV-6 boundary on non-finite `startedAt` held; no blocking rubric defects.
 
-
 **Debugger audit (2026-08-04).**
+
 - Baseline four-net result: the exact gate was green before the audit; no failing tests or static errors. The original tests covered validator acceptance/rejection but did not cover non-finite timestamps, runtime manager propagation, or the helper summary shape.
 - Fixed INV-1/INV-6 boundary weakness: `isWorkflowSubagentSummary` now rejects `NaN`, `Infinity`, and `-Infinity` timestamps in addition to missing/non-number values.
 - Fixed helper-vs-stage identity weakness: helper snapshots and summaries omit the `stage` property entirely; workflow stage snapshots and summaries retain the valid stage. Added a real manager-runtime regression test for both paths.
@@ -64,6 +66,7 @@ Status: **Done** · Blocked-by: PI-01 · Phase 1
 **What to build.** A pure module `extensions/shared/stage-progress.ts` exporting a `ProgressReading` discriminated union — `{kind:"measured", percent, done, total, source, at}` or `{kind:"indeterminate", elapsedMs, turns, at}` — plus a builder that accepts only explicit numerator/denominator pairs from the three allowed in-process sources: `context`, `questions`, `stage`. No rendering, no I/O, no tracker.
 
 **Acceptance criteria.**
+
 - Building with a `total` of `0`, `null`, `undefined`, or `NaN` returns `kind:"indeterminate"`, never a percent.
 - Building with a `source` outside `context|questions|stage` throws — in particular a `"tickets"` source throws, since tracker-derived percent is out of scope.
 - A measured reading clamps `percent` to `0..100` and preserves the exact `done`/`total` it was built from.
@@ -73,6 +76,7 @@ Status: **Done** · Blocked-by: PI-01 · Phase 1
 **Verification-command.** `node --test --experimental-strip-types extensions/shared/stage-progress.test.ts && npm run check`
 
 **Review (reviewer, 2026-08-04).**
+
 - Verdict: **PASS** (score: 96/100, diagnostic only)
 - Bounce: 0 of 3
 - Gate: `node --test --experimental-strip-types extensions/shared/stage-progress.test.ts && npm run check` → exit 0 (13 tests pass; tsc clean)
@@ -81,6 +85,7 @@ Status: **Done** · Blocked-by: PI-01 · Phase 1
 - Routing: → **Done** — all five acceptance criteria met; INV-1/INV-5/INV-6 held on this pure module; pure/no-I/O and no-false-progress confirmed from diff + independent probes.
 
 **Debugger audit (2026-08-04).**
+
 - Claim path: `Debugger Ready` → `Debugging` → `Review Ready`; local-file tracker mode, no GitHub Project, no remote, no push claim.
 - Baseline four-net result: the exact gate was green before the audit; no failing tests or static errors. The original tests did not directly cover non-finite `done`, malformed runtime containers, malformed timestamps/counters, future clocks, invalid stale inputs, or immutability.
 - Red-team defects found: finite numerators/denominators paired with non-finite `at` produced measured readings; malformed inputs could throw or pass NaN/negative counters through; `isStale` could treat malformed readings or a NaN clock as fresh; readings were mutable.
@@ -106,6 +111,7 @@ Status: **Done** · Blocked-by: PI-02 · Phase 1
 **What to build.** Extract the footer body of `extensions/ui-customization/index.ts` into a pure `renderFooter(state) => string[]` function and add adaptive stage rows: the existing 3 base lines, plus one row per tracked planner–reviewer agent — `<glyph> <stage> <backend>/<model> · <elapsed> · <turns>t · <progress>` — where `<progress>` is a percent only for a measured reading and is omitted otherwise.
 
 **Acceptance criteria.**
+
 - With no tracked agents the footer renders exactly 3 lines (plus any extension status lines, unchanged from today).
 - With 2 tracked stage agents the footer renders exactly 5 lines; with 4 it renders exactly 7; a 5th stage agent adds no 6th row.
 - Non-stage helper agents produce no footer row.
@@ -119,6 +125,7 @@ Status: **Done** · Blocked-by: PI-02 · Phase 1
 **Verification-command.** `node --test --experimental-strip-types extensions/ui-customization/footer.test.ts && npm run check && npm test`
 
 **Review (reviewer, 2026-08-04).**
+
 - Verdict: **PASS** (score: 95/100, diagnostic only)
 - Bounce: 0 of 3
 - Gate: `node --test --experimental-strip-types extensions/ui-customization/footer.test.ts && npm run check && npm test` → exit 0 (21 footer tests; tsc clean; 149 node:test + 22 vitest)
@@ -135,6 +142,7 @@ Status: **Done** · Blocked-by: PI-04 · Phase 1
 **What to build.** Bring `FlowPanel` in `extensions/workflow/index.ts` in line with the footer: the Agents tab lists stage rows first (using the same progress readings), the Overview tab states the route reason in one plain sentence, and the panel shows what it is waiting on when status is `needs-input`, `needs-helper`, or `blocked`.
 
 **Acceptance criteria.**
+
 - The Agents tab orders planner→reviewer stage agents before helper agents.
 - With no agents tracked, the Agents tab renders the literal line ` none tracked` and does not throw.
 - Overview renders a `waiting on` line whenever status is `needs-input`, `needs-helper`, or `blocked`, and omits that line otherwise.
@@ -145,6 +153,7 @@ Status: **Done** · Blocked-by: PI-04 · Phase 1
 **Verification-command.** `node --test --experimental-strip-types extensions/workflow/flow-panel.test.ts extensions/workflow/policy.test.ts && npm run check`
 
 **Debugger audit (2026-08-04).**
+
 - Claim path: local-file tracker `Debugger Ready` → `Debugging` → `Review Ready`; only PI-05 moved. No GitHub Project and no git remote. Phase 2 and PI-06 were not started.
 - Actual profiles: PI-05 maker handoff records Pi · `openai-codex/gpt-5.6-terra` · xhigh; this debugger ran in the Codex debugger session. The repository pin is GPT-5.6 Luna/max, while this runtime exposes the model as GPT-5/Codex rather than a versioned Luna identifier; no helper was spawned or silently substituted.
 - Baseline four-net result: the locked gate was green before the audit (12 targeted tests; `tsc` clean), with weak coverage for malformed agent data, unknown stages, terminal/control injection, narrow/non-finite widths, getter failures, stale timestamps, input transitions, and panel performance.
@@ -154,12 +163,14 @@ Status: **Done** · Blocked-by: PI-04 · Phase 1
 - Honest follow-up: none identified within PI-05. Full production workflow → subagents event-bus round trip remains outside this ticket's harness, as noted by prior stages.
 
 **Reviewer verdict (2026-08-04): FAIL (72/100, diagnostic only) · Bounce 1 of 3.**
+
 - Exact gate passed: 21/21 targeted tests and `tsc --noEmit`, both exit 0, at tested HEAD `a55db618883455ee6e44fdb0eb5332e93e2882e8`.
 - Blocking correctness finding: `extensions/workflow/index.ts:118-132` redacts only the first whitespace/comma/semicolon-delimited value after `Authorization` or `Cookie`. A blocked route/event containing `Authorization: Digest username="vraj", response="auth-secret"; Cookie: session=event-secret; csrf=event-csrf` renders `auth-secret` and `event-csrf` in `/flow`, violating INV-2.
 - Test gap: `extensions/workflow/flow-panel.test.ts:220-245` covers one `api_key` and one URL but does not exercise complete authorization/cookie header redaction; the independent probe observed all three supplied trailing values in rendered output.
 - Route: **Debugger Ready** for a test-first redaction correction. Full `npm test` also exited 1 only because two live Claude backend tests hit the account spend limit; this is outside PI-05 and did not affect the exact gate.
 
 **Reviewer re-review (2026-08-04): FAIL (68/100, diagnostic only) · Bounce 2 of 3.**
+
 - Tested HEAD: `004517f0f8b9238dc819a4c40bef94a93081bd00`.
 - Exact gate passed: 22/22 targeted tests and `tsc --noEmit`, exit 0. `npm run format:check` and `git diff --check` each exited 0.
 - Blocking correctness finding (INV-2/INV-6): `extensions/workflow/index.ts:109-134` fails closed only for balanced quoted composite headers. Trigger: `Authorization: Digest response="malformed-auth-secret Cookie: session=malformed-cookie-secret`. Result: `/flow` renders `malformed-auth-secret` in both `waiting on` and `event` rows; the independent production-path assertion exited 1.
@@ -169,12 +180,14 @@ Status: **Done** · Blocked-by: PI-04 · Phase 1
 - Route: **Debugger Ready** for fail-closed malformed authorization/cookie redaction plus a production-path regression test.
 
 **Debugger audit (2026-08-04, bounce 2/3).**
+
 - Baseline exact gate was green: 22 targeted tests passed and `tsc --noEmit` passed. The four-net audit found the reviewer-reported malformed-header leak and its missing regression coverage; no other in-scope failure or static error was found.
 - TDD fix: added a production-path regression for unbalanced Authorization/Cookie values in both orders, a subsequent sensitive header, neighboring ordinary text, and the existing balanced cases. Replaced quote-aware composite matching with an opaque-span matcher that does not parse or validate quotes/delimiters, preserves line boundaries for neighboring headers, and renders only `Authorization: [REDACTED]` / `Cookie: [REDACTED]`.
 - Evidence: `node --test --experimental-strip-types extensions/workflow/flow-panel.test.ts extensions/workflow/policy.test.ts && npm run check` → pass (23 tests; `tsc` clean); `npm run format:check` → pass; `git diff --check` → pass. `npm test` → 164/166 passed; the only failures were the known live Claude monthly spend-limit tests.
 - Handoff: `docs/handoffs/2026-08-04-debugger-pi05-bounce-2.md`. No unfixed follow-up within PI-05. Routing: → **Review Ready** for independent review.
 
 **Reviewer final review (2026-08-04): FAIL (62/100, diagnostic only) · Bounce 3 of 3 — HUMAN ESCALATION.**
+
 - Tested HEAD: `7c133094bec8ec171b6b32eba1c256e08790c051`.
 - Exact gate passed: 23/23 targeted tests and `tsc --noEmit`, exit 0. `npm run format:check` and `git diff --check` each exited 0.
 - Blocking correctness finding (INV-2): `extensions/workflow/index.ts:110-111,122-150` stops sensitive-header redaction at every line boundary. Trigger: a folded value such as `Authorization: Digest username="ordinary",\n response="SYNTHETIC_FOLDED_AUTH_VALUE"` or `Cookie: session=ordinary;\n csrf=SYNTHETIC_FOLDED_COOKIE_VALUE`. Result: the continuation value appears in `/flow` route, `waiting on`, and event rows; the independent production `FlowPanel.render` probe reported `LEAK` for both cases.
@@ -183,6 +196,7 @@ Status: **Done** · Blocked-by: PI-04 · Phase 1
 - Routing: → **Human escalation** — third failed review found a new substantive INV-2 failure. PI-05 remains **Reviewing** pending a human decision; it is not bounced into another automatic loop.
 
 **Debugger recovery (2026-08-04, human-authorized after bounce 3/3).**
+
 - Added production-path regressions for folded Authorization and Cookie values whose continuation lines begin with a space, preserving ordinary neighboring lines and headers.
 - Extended the opaque sensitive-header matcher across only indented continuation lines, stopping at the next non-indented line or another sensitive header; no quote or delimiter parsing was added.
 - Red test reproduced the two synthetic continuation leaks; the fixed targeted gate passed with 24 tests and clean TypeScript. The direct `FlowPanel.render` probe also passed folded, balanced, malformed, neighboring, terminal-control, URL, width, and indeterminate-progress checks.
@@ -190,6 +204,7 @@ Status: **Done** · Blocked-by: PI-04 · Phase 1
 - Handoff: `docs/handoffs/2026-08-04-debugger-pi05-bounce-3-recovery.md`. Routing: → **Review Ready** for independent review.
 
 **Reviewer recovery review (2026-08-04): PASS (96/100, diagnostic only) · after human-authorized bounce-3 recovery.**
+
 - Tested HEAD: `40e6a2b5747f547b1c0e0b286a7cc3463044837f`.
 - Exact gate passed: 24/24 targeted tests and `tsc --noEmit`, exit 0. `npm run format:check` and `git diff --check` each exited 0.
 - Independent production `FlowPanel.render` probe passed balanced, malformed/unbalanced, semicolon-separated, quoted, folded space/tab continuation, adjacent sensitive-header, URL, ANSI/control-text, ordinary-neighbor, and width checks without exposing synthetic markers.
@@ -206,6 +221,7 @@ Status: **Planned** · Blocked-by: PI-04 · Phase 2
 **What to build.** Make the already-installed Ponytail package a declared, pinned part of this configuration and give Pi a Caveman-equivalent terse-output policy: record the package in `settings.example.json`, document both in `README.md` and `SYSTEM.md`, add a `skills/terse-output/SKILL.md` porting the Caveman rules (including its safety exception for security warnings, irreversible actions, and multi-step sequences), and make `install.sh` merge rather than overwrite the user's existing `packages` list.
 
 **Acceptance criteria.**
+
 - `settings.example.json` lists `git:github.com/DietrichGebert/ponytail` in `packages`.
 - Running the installer against a settings file that already contains a user package leaves that package present and adds the Ponytail entry exactly once (no duplicate on a second run).
 - `skills/terse-output/SKILL.md` exists and states the exception cases verbatim: security warnings, irreversible action confirmations, and multi-step sequences are never compressed.
@@ -224,11 +240,12 @@ Status: **Agent Ready** · Blocked-by: PI-06 (Done) · Phase 2 · GitHub issue #
 
 **Scope decision (human-authorized narrowing, 2026-08-04, after bounce 3/3 escalation).** PI-07's credential criterion was originally absolute ("no credential of any syntax"). Three bounces plus one authorized recovery pass showed the absolute was being chased with an expanding syntax blacklist that does not converge. The human decision is: **narrow PI-07 to the supported credential-redaction boundary already implemented; do not attempt another redaction implementation now.**
 
-*Supported boundary — PI-07 guarantees redaction for:* (1) named credential assignments (`api_key`, `access_key`, `access_token`, `aws_access_key_id`, `authorization`, `cookie`, `credential`, `password`, `passwd`, `private_key`, `secret`, `token`, `*_url`, `*_uri`), including quoted values with whitespace/escaped quotes and failing closed on malformed quoting; (2) `Authorization:`/`Cookie:` headers including folded continuations, plus `Bearer`/`Basic` tokens; (3) recognized secret token formats (`sk-…`, `gh[pousr]_…`, JWT); (4) hierarchical or slash-prefixed credential URIs (`postgres://user:pw@host`, `rediss://`, `mongodb+srv://`, `http(s)://`, `jdbc:oracle:thin:user/pw@host:1521:app`, malformed one-slash variants), with every `scheme://` and `scheme:/` URL replaced by `[URL]` (also covers INV-8's provider base URL); (5) query-string credentials (`api_key=`, `access_token=`, `key=`, `secret=`, `token=`).
+_Supported boundary — PI-07 guarantees redaction for:_ (1) named credential assignments (`api_key`, `access_key`, `access_token`, `aws_access_key_id`, `authorization`, `cookie`, `credential`, `password`, `passwd`, `private_key`, `secret`, `token`, `*_url`, `*_uri`), including quoted values with whitespace/escaped quotes and failing closed on malformed quoting; (2) `Authorization:`/`Cookie:` headers including folded continuations, plus `Bearer`/`Basic` tokens; (3) recognized secret token formats (`sk-…`, `gh[pousr]_…`, JWT); (4) hierarchical or slash-prefixed credential URIs (`postgres://user:pw@host`, `rediss://`, `mongodb+srv://`, `http(s)://`, `jdbc:oracle:thin:user/pw@host:1521:app`, malformed one-slash variants), with every `scheme://` and `scheme:/` URL replaced by `[URL]` (also covers INV-8's provider base URL); (5) query-string credentials (`api_key=`, `access_token=`, `key=`, `secret=`, `token=`).
 
-*Explicit exclusion — outside PI-07's guarantee and tests:* **opaque/rootless URIs whose userinfo is colon-delimited with no `//` root and no `/` separator**, canonically `sip:user:password@example.test`, and the same shape in other rootless schemes (SIP/SIPS, colon-delimited JDBC userinfo variants). `scheme:a:b@c` is syntactically indistinguishable from ordinary prose, so it is not redacted by pattern here. PI-07 does not claim it, does not test it, and a reviewer must not bounce PI-07 for it. **This narrows PI-07 only, not INV-2** — the residual gap is a documented accepted risk recorded under INV-2 in `docs/2026-08-04-flow-ui-and-token-savings.md`. A fail-closed structured-boundary redesign would be a new ticket and is deliberately not attempted now. **Security warning preserved:** never paste raw `.env` files, credential URIs, or provider secrets into prompts; redaction is defense in depth, not permission to be careless.
+_Explicit exclusion — outside PI-07's guarantee and tests:_ **opaque/rootless URIs whose userinfo is colon-delimited with no `//` root and no `/` separator**, canonically `sip:user:password@example.test`, and the same shape in other rootless schemes (SIP/SIPS, colon-delimited JDBC userinfo variants). `scheme:a:b@c` is syntactically indistinguishable from ordinary prose, so it is not redacted by pattern here. PI-07 does not claim it, does not test it, and a reviewer must not bounce PI-07 for it. **This narrows PI-07 only, not INV-2** — the residual gap is a documented accepted risk recorded under INV-2 in `docs/2026-08-04-flow-ui-and-token-savings.md`. A fail-closed structured-boundary redesign would be a new ticket and is deliberately not attempted now. **Security warning preserved:** never paste raw `.env` files, credential URIs, or provider secrets into prompts; redaction is defense in depth, not permission to be careless.
 
 **Acceptance criteria.**
+
 - Two assemblies with different route decisions produce a byte-identical stable prefix.
 - The volatile suffix is the only region that differs, and it appears after the entire stable prefix.
 - Changing the user's task text does not change the stable prefix.
@@ -240,9 +257,10 @@ Status: **Agent Ready** · Blocked-by: PI-06 (Done) · Phase 2 · GitHub issue #
 
 **Verification-command.** `node --test --experimental-strip-types extensions/workflow/prompt-assembly.test.ts extensions/workflow/policy.test.ts && npm run check`
 
-*(Verification-command unchanged by this repair: criteria 5–7 all live in `prompt-assembly.test.ts` and `tsc --noEmit` runs via `npm run check`.)*
+_(Verification-command unchanged by this repair: criteria 5–7 all live in `prompt-assembly.test.ts` and `tsc --noEmit` runs via `npm run check`.)_
 
 **Bounce history and human decision (preserved evidence — do not erase).**
+
 1. Bounce 1 (reviewer): `AWS_ACCESS_KEY_ID=` assignment leaked through the production seam → key matcher + production-seam regression added.
 2. Bounce 2 (reviewer): credential-bearing non-HTTP `.env` URLs (`postgres://…`) leaked → `*_URL`/`*_URI` and slash-prefixed URI redaction added.
 3. Bounce 3 of 3 (reviewer, budget exhausted): opaque/rootless `jdbc:oracle:thin:user/pw@host` leaked; reviewer reported non-convergence of an absolute boundary enforced by a syntax blacklist and escalated for a human choice (fail-closed structured boundary vs. narrowed criterion).
@@ -260,6 +278,7 @@ Status: **Done** · Blocked-by: PI-07 · Phase 2
 **What to build.** Replace the bash+python `install.sh` path with a cross-platform Node installer (`scripts/install.mjs`, invoked by both `install.sh` and a new `install.ps1`) that resolves the agent dir, links or copies resources, and merges settings; make every path join platform-safe; confirm the notification branch degrades cleanly on Windows; and document the Windows setup in `SETUP.md`.
 
 **Acceptance criteria.**
+
 - `node scripts/install.mjs --dry-run --agent-dir <tmp>` exits 0 on the current platform and reports every resource it would link or copy, without modifying the real `~/.pi/agent`.
 - Running the installer twice against the same temp agent dir is idempotent: the second run produces the same final settings content as the first.
 - When symlink creation fails (simulated), the installer falls back to copying and reports which resources were copied, exiting 0.
@@ -270,6 +289,7 @@ Status: **Done** · Blocked-by: PI-07 · Phase 2
 **Verification-command.** `node --test --experimental-strip-types extensions/shared/*.test.ts && node scripts/install.mjs --dry-run --agent-dir "$(mktemp -d)" && npm run check && npm test`
 
 **Review (reviewer, 2026-08-04).**
+
 - Verdict: **PASS** (score: 96/100, diagnostic only) · Bounce: 0 of 3.
 - Tested commit: `4cfc409a49b4a36adb95b60aef178bfd51a5a38c` over base `8a2d3da45e39ed96e5634b77d904b9e3de36f117`.
 - Exact gate passed: 41 targeted tests, dry-run, TypeScript check, 204 Node tests, and 22 Vitest tests; exit 0.
@@ -286,6 +306,7 @@ Status: **Planned** · Blocked-by: PI-06 · Phase 2 · May run in parallel with 
 **What to build.** A written evaluation at `docs/2026-08-04-proxy-evaluation.md` of routing Pi through a compressing proxy — OmniRoute's RTK + Caveman compression (source already on this machine at `~/.hermes/node/lib/node_modules/omniroute`), and Headroom **if and only if** a real artifact or primary source for it can be identified. This ticket produces a recommendation and changes no configuration.
 
 **Acceptance criteria.**
+
 - `docs/2026-08-04-proxy-evaluation.md` exists and contains, for each candidate: what it compresses, where in the request it sits, the measured or vendor-claimed savings **with the claim's source cited**, and whether the claim was independently reproduced or not.
 - The document states, for each candidate, its effect on provider-side prompt caching, and says plainly when that effect is unknown rather than guessing.
 - The document lists exactly what the third party would see (system prompt, file contents, tool output, credentials) and names the resulting trust edge, including the fact that `agentrouter.org` already sits on the Anthropic route today.
@@ -302,7 +323,7 @@ The `git diff --quiet` clause is the INV-8 guard: it compares the ticket branch 
 
 ## PI-10 — `/flow` issue todo list with live ticket statuses
 
-Status: **Done** · Blocked-by: PI-12 (Done), PI-13 (Done) · Phase 3 · *Amended 2026-08-04 (addendum plan): adds repository, assignee, and honest ETA columns.*
+Status: **Done** · Blocked-by: PI-12 (Done), PI-13 (Done) · Phase 3 · _Amended 2026-08-04 (addendum plan): adds repository, assignee, and honest ETA columns._
 
 **Reviewer final (2026-08-05): PASS (94/100).** Gate exit 0 (26/26; tsc clean). All criteria met; no blocking findings. Routing: → **Done** — Project #12 read back Done; issue #7 closed.
 
@@ -317,6 +338,7 @@ read-only: status changes remain explicit workflow actions, and every tracker
 read happens off the render path.
 
 **Acceptance criteria.**
+
 - Every ticket in the snapshot appears exactly once, with repository, ID, title, assignee, status, blockers, and ETA fields present (a field with no value renders an explicit placeholder such as `—` or `eta unknown`, never blank-by-omission).
 - The assignee is the owning pipeline role (`planner|coder|debugger|reviewer`) derived from status, or the ticket's explicit `Assignee:` field when present; no other role vocabulary appears.
 - Blockers render as the blocking ticket IDs plus whether each is satisfied; a ticket whose chain is satisfied is visibly distinguishable from one that is still blocked.
@@ -333,13 +355,14 @@ read happens off the render path.
 
 ## PI-11 — Retro-gate the orchestrator-only + honest-telemetry continuation (`bb5d79e`)
 
-Status: **Done** · Blocked-by: none · Phase 3 · Priority 1 · *Amended 2026-08-05 (human decision): the shared-formatter sub-1% rounding residual is accepted display precision for this ticket; all safety, input-routing, and unknown-telemetry requirements stay hard. See the amendment section in `docs/2026-08-04-flow-todo-crossrepo-and-docs.md`.*
+Status: **Done** · Blocked-by: none · Phase 3 · Priority 1 · _Amended 2026-08-05 (human decision): the shared-formatter sub-1% rounding residual is accepted display precision for this ticket; all safety, input-routing, and unknown-telemetry requirements stay hard. See the amendment section in `docs/2026-08-04-flow-todo-crossrepo-and-docs.md`._
 
 **Why this exists.** Commit `bb5d79e` ("fix: keep user messages with orchestrator") is the current HEAD and the current `origin/main`. It removed the workflow `input` steering hook and `canSteerStage`, changed stage-row progress to `<1% ctx`, and made zero Claude usage report unknown — but it has no ticket, no debugger audit, and no reviewer verdict. **The commit is preserved. No reset, rebase, revert, or force-push is authorized.** This ticket retro-gates it forward-only and closes the remaining gaps the user re-reported on 2026-08-04: the Pi `steeringMode` setting and the header `STEER` affordance still imply direct stage steering.
 
 **What to build.** On top of `bb5d79e`: set `steeringMode` in `settings.example.json` to the value that keeps interactive input with the orchestrator (verify the accepted values against the installed Pi runtime before choosing; if no such value exists, document that and keep the extension-level guarantee as the enforcement point); remove the remaining `STEER` label semantics from `extensions/ui-customization/index.ts:169`; add the regression tests that `bb5d79e` did not ship; and state the orchestrator-only rule in `SYSTEM.md`/`README.md` as a hard rule rather than a preference.
 
 **Acceptance criteria.**
+
 - No code path delivers interactive user input to a stage agent: a test asserts the workflow extension registers no `input` handler that returns `{action:"handled"}`, and that the only route to a stage is an explicit `workflow send` tool call made by the orchestrator.
 - `settings.example.json` no longer ships `"steeringMode": "all"`; the shipped value keeps user input with the orchestrator, and the chosen value is justified in a comment or in `SETUP.md` against the runtime's accepted values.
 - The installed-settings merge in the installer updates an existing `"steeringMode": "all"` to the new value instead of leaving the old one (idempotent on a second run).
@@ -439,11 +462,12 @@ Status: **Done** · Blocked-by: PI-11 · Phase 3 · Priority 2
 
 **Debugger audit (2026-08-05, acting debugger — pinned stage harness unavailable).** Independent red-team pass: baseline gate exit 0 (41 focused; tsc clean; full 214+22). Probes against production seams: closed reason vocabulary with `reason unknown` fallback; stale row renders `~` + reason (never bare pair); indeterminate reading renders no `%` on the stage row; throwing `reasonFor`/reading getter still yields the 3 base lines; `Authorization: Bearer …` in a provider-error reason renders `[REDACTED]`; lines fit widths 20/60/80/200. No new defect found; coder tests already cover the closed set, stale prefix, redaction, throwing getters, and width bounds. No PI-13/PI-17 lane file changed. Artifact: `docs/handoffs/2026-08-05-debugger-pi16.md`. Project #12 issue #3 read back **Review Ready**. Only the independent reviewer may set Done.
 
-**Why this exists.** The user observed a planner row reading roughly `15m · 1t · 0%` — fifteen minutes of wall clock, one turn, and a number that reads as "no progress". Elapsed time alone is not a status. A row that cannot say anything useful must say *why*.
+**Why this exists.** The user observed a planner row reading roughly `15m · 1t · 0%` — fifteen minutes of wall clock, one turn, and a number that reads as "no progress". Elapsed time alone is not a status. A row that cannot say anything useful must say _why_.
 
 **What to build.** Add a bounded `reason` field to the stage row in both the footer and `/flow`, derived only from data already tracked in-process (last status change, last turn timestamp, tool in flight, waiting on question/helper, provider error, spend/quota limit, stale bridge). No new I/O on the render path.
 
 **Acceptance criteria.**
+
 - A stage row whose last update is older than the 30 s staleness window renders the `~` prefix **and** a reason token (for example `~ waiting on provider`), never a bare elapsed/turn pair.
 - The reason vocabulary is a closed, tested set; an unrecognised internal state renders exactly `reason unknown`, never a fabricated cause.
 - A row with no measured reading renders no `%` character at all (INV-1) and still renders its reason.
@@ -473,6 +497,7 @@ Debugger product diff SHA-256: `3e7fd263b28b19e4d16b1a850ef1f86d1927e576ab40ef0e
 **What to build.** `extensions/ui-customization/index.ts:151-186` renders route, workflow status, active stage, and `N running · N tracked` in the header while the footer renders the same rail. Move every piece of still-wanted status into the persistent footer and remove the header status block, keeping the identity line (π + cwd) wherever the user still needs it.
 
 **Acceptance criteria.**
+
 - The header no longer renders route, workflow status, active stage, or agent counts; a test asserts those tokens are absent from header output.
 - Every status token removed from the header is present in footer output for the same state, or is explicitly listed in the ticket's notes as intentionally dropped with a reason — nothing disappears silently.
 - The footer still renders exactly 3 base lines with no tracked agents, 5 with 2 stage agents, and 7 with 4 or more (INV-4); the added header content does not push it past 7 lines.
@@ -501,6 +526,7 @@ Status: **Done** · Blocked-by: PI-11 · Phase 3
 **What to build.** A pure module `extensions/shared/ticket-snapshot.ts` that parses tracker markdown text (passed in as a string — the module does no I/O) into frozen `TicketRecord`s — `{repo, id, title, status, blockedBy[], assignee, verificationCommand?, updatedAt?}` — resolves blocker satisfaction, and computes an ETA per ticket under INV-9. A separate thin caller performs the file read off the render path and stamps the snapshot with a capture time.
 
 **Acceptance criteria.**
+
 - Parsing the repo's own `tickets.md` yields one record per `## PI-NN` heading, with status, title, and `Blocked-by` list extracted, and `Dropped` tickets marked dropped rather than pending.
 - Unknown, missing, or malformed status text yields `status:"unknown"` rather than a guess or a throw; a truncated or empty document yields an empty snapshot plus a reason string.
 - `assignee` resolves to the owning role (`planner|coder|debugger|reviewer`) from status, or the explicit `Assignee:` field when present; no other vocabulary can be produced.
@@ -535,6 +561,7 @@ Status: **Done** · Blocked-by: PI-10 (Done) · Phase 3
 **What to build.** A declared repository registry (`workflow.repositories` in settings, defaulting to this repo only — **no filesystem discovery**) plus a cross-repository mode of the Issues/Todos view that merges PI-13 snapshots from each registered repository, grouped by repository, with per-repository health.
 
 **Acceptance criteria.**
+
 - The registry comes only from explicit settings; a test asserts no directory scan or glob of the user's home or work directories occurs.
 - With no registry configured, the view shows this repository only and says so, rather than appearing empty.
 - Tickets are grouped by repository, and no ticket can render under a repository it did not come from (asserted with two fixtures that share ticket IDs).
@@ -557,6 +584,7 @@ Status: **Done** · Reviewer PASS (final review, bounce 3/3) · Blocked-by: PI-0
 **What to build.** Extend `SETUP.md` with an install → verify → rollback lifecycle, a narrowly scoped installer provenance manifest, and a short "proving a push landed" section.
 
 **Acceptance criteria.**
+
 - `SETUP.md` documents the install command for macOS/Linux and for Windows (PowerShell), consistent with the PI-08 installer.
 - `SETUP.md` documents exactly where backups are written, how to list them, and a copy-pasteable rollback procedure that restores the previous `~/.pi/agent` state; the procedure is verified by running install → rollback against a temp agent dir and asserting the directory content matches the pre-install state byte-for-byte.
 - The rollback section states what rollback does **not** restore (for example `auth.json`, `models.json`, and session data) rather than implying a total restore.
@@ -569,6 +597,7 @@ Status: **Done** · Reviewer PASS (final review, bounce 3/3) · Blocked-by: PI-0
 (The leading `test -f` is load-bearing: `node --test` silently ignores a missing file path and exits 0, so without it the gate is green before any work is done. Verified red today: exit 1.)
 
 **Debugger audit — reviewer bounce 1 (2026-08-05).**
+
 - Baseline exact gate was green: 9 tests passed and TypeScript was clean. Static checks had no errors.
 - Blocking invariant defect confirmed: consuming a saved entry erased the knowledge that the resource originally existed, so an interrupted retry could delete the restored target. The prior test covered only a fully completed repeat.
 - Fixed test-first at the documented rollback seam: an atomic `.rollback-manifest` directory records `present`/`absent` before any move. A consumed `present` entry with an existing target is treated as already restored; a missing target fails closed. The PowerShell procedure mirrors the same manifest and retry semantics.
@@ -576,18 +605,21 @@ Status: **Done** · Reviewer PASS (final review, bounce 3/3) · Blocked-by: PI-0
 - No `extensions/` changes, secrets, fixed sleeps, or other ticket changes. Handoff: `docs/handoffs/2026-08-05-debugger-pi15-bounce-1.md`.
 
 **Reviewer re-review (2026-08-05): FAIL (72/100, diagnostic only) · Bounce 2 of 3.**
+
 - Exact gate passed: 9 tests and `tsc --noEmit`, exit 0. Formatting and diff checks passed; PowerShell was unavailable and inspected statically.
 - Blocking correctness finding: `scripts/install.mjs:205-208` leaves an already-correct managed symlink unchanged and writes no backup entry, while `SETUP.md:54-60,77-78` classifies every missing backup entry as originally absent. Trigger: install with `~/.pi/agent/extensions` already linked to this checkout, then run the documented rollback. Result: rollback deletes that originally present symlink; the independent production-seam probe exited 1 with `extensions_exists_after_rollback=false`.
 - The interrupted-retry regression is deterministic and passes; originally absent removal, path rejection, non-restored state, scope, no-sleep, and secret-shape checks passed.
 - Routing: → **Debugger Ready** for a test-first distinction between installer-unchanged and originally absent resources, mirrored in POSIX and PowerShell. Review: `docs/handoffs/2026-08-05-reviewer-pi15-bounce-2.md`.
 
 **Debugger audit — reviewer bounce 2 (2026-08-05).**
+
 - Reproduced the independent production-seam probe: an existing `extensions` symlink to this checkout was deleted by rollback because the installer wrote no backup entry and the rollback inferred `absent`; the probe reported `extensionsExistsAfterRollback=false`.
 - Scope amendment: `scripts/install.mjs` now atomically writes `.rollback-manifest` before resource moves, recording `present`, `unchanged`, or `absent` for every managed resource. Rollback refuses missing provenance, preserves `unchanged`, removes only explicit `absent`, and keeps the interrupted `present` retry fail-closed semantics. POSIX and PowerShell consume the same state names.
 - The focused fixture uses the unchanged `extensions` symlink, interrupted `skills` move, and truly absent `themes` resource in one deterministic production-seam test; it verifies byte restoration, retry safety, and non-restored state without fixed sleeps.
 - No settings/auth/session restoration, secrets, provider changes, or `extensions/` changes. Handoff: `docs/handoffs/2026-08-05-debugger-pi15-bounce-2.md`.
 
 **Reviewer final review (2026-08-05): PASS (96/100, diagnostic only) · Bounce 3 of 3.**
+
 - Reviewed product commit `fe580e5a8987653671fa98af6a347aef62182a65` against base `84cbb0528bb34faf21be7058f42e0447c0e34ea9`; product diff SHA-256 `fc22e72435a6a613a804eff37fff61ab7bf4045b35be3029144a5ead4465a378`.
 - Exact gate passed: 9 tests and `tsc --noEmit`, exit 0. Project format, focused Prettier, diff check, `sh -n install.sh`, PowerShell static parity, scope, fixed-delay, and secret-shape checks passed.
 - Prior findings are closed at the production seam: interrupted rollback retries preserve the restored original; `unchanged` provenance preserves the installer-unchanged `extensions` symlink; explicit `absent` provenance removes the truly absent `themes` resource.
@@ -608,6 +640,7 @@ Status: **Done** · Blocked-by: PI-11 · Phase 3
 **What to build.** Keep the main chat permanently orchestrator-only, while allowing deliberate direct conversation only after the user explicitly opens a stage's subagent view. The stage view must expose a clear input affordance and never capture ambient main-chat input.
 
 **Acceptance criteria.**
+
 - Main-chat interactive input is never delivered to a stage; only the explicit stage-view send action may target the selected stage.
 - The opened stage view clearly identifies the destination and supports send, cancel, and bounded error handling; no hidden or automatic forwarding exists.
 - Opening, closing, scrolling, or typing outside the explicit stage input cannot mutate a stage run.
@@ -627,6 +660,7 @@ Status: **Done** · Blocked-by: none · GitHub issue #17
 **Coder delivery (2026-08-05).** `classifyRequest(prompt, mode = "workflow")` now accepts a `WorkflowMode` (`"workflow" | "free"`); any value other than `"free"` falls back to `"workflow"`. In `free` mode, fleet routing happens only when an explicit `planner|coder|debugger|reviewer` or legacy `part1-4` stage is named — risky/broad prompts route `direct`; in `workflow` mode, routing is unchanged. `settings.example.json` ships `workflow.mode: "workflow"`. `SYSTEM.md`/`README.md` state the two modes, the default, and the explicit-stage override; the mode changes routing only, never authz or data exposure (INV-8). Product diff SHA-256 (lane files): `f62250ee87bf1bb70f13c3a1a2892a6500e6041e7da5868f8cf861402ead0b61` (`/tmp/pi18-product.diff`). Exact gate `node --test --experimental-strip-types extensions/workflow/policy.test.ts && npm run check` → exit 0 (9 tests; TypeScript clean). `npm run format:check` → exit 0; `git diff --check` → exit 0; `npm test` → environmental failures only (live Claude/Codex provider tests, plus contention-sensitive timing/installer benchmarks under concurrent load); no lane-file failure. Commit and remote read-back recorded below. Artifact: `docs/handoffs/2026-08-05-coder-pi18.md`. Route: independent debugger; only reviewer may set Done. Note: a concurrent session (PI-14 lane) modified `extensions/workflow/index.ts` mid-run; that file is outside this ticket and was not staged.
 
 **Debugger audit (2026-08-05, OpenRouter fallback).**
+
 - Claim verification: `node --test --experimental-strip-types extensions/workflow/policy.test.ts && npm run check` → exit 0 (11 tests; TypeScript clean). `npm run format:check` → exit 0; `git diff --check` → exit 0. Independent probes passed for invalid/case/whitespace modes, prose and negative stage mentions, slash/legacy commands, settings/docs, and prompt-text non-disclosure (INV-8).
 - Finding: free mode previously treated any stage-name word in prose as an explicit override. Fixed test-first with a command/intent boundary; workflow-mode behavior remains unchanged.
 - Full `npm test` → exit 1 from environment contention: non-lane tracker performance/live Codex failures on one run; final rerun hit `spawn sh EAGAIN`; focused config-docs once hit `spawnSync bash EAGAIN`. Isolated installer test passed 4/4. Logs: `/tmp/pi18-npmtest-debugger-final.log`, `/tmp/pi18-npmtest-final2.log`, `/tmp/pi18-config-final2.log`, `/tmp/pi18-isolated-install-final.log`.
@@ -636,6 +670,7 @@ Status: **Done** · Blocked-by: none · GitHub issue #17
 **What to build.** Add `workflow.mode` (`"workflow" | "free"`) to `settings.example.json` (default `"workflow"`) and honor it in `classifyRequest` (`extensions/workflow/src/policy.ts`). In `free` mode, `classifyRequest` never returns `mode:"fleet"` unless an explicit stage is named; all other requests route `direct`. In `workflow` mode, behavior is unchanged. Docs (`SYSTEM.md`, `README.md`) describe both modes and the override rule.
 
 **Acceptance criteria.**
+
 - `classifyRequest` with mode `free` and a risky/broad prompt returns `mode:"direct"`.
 - `classifyRequest` with mode `free` and an explicit `planner|coder|debugger|reviewer` (or legacy `part1-4`) returns `mode:"fleet"` with that stage.
 - `classifyRequest` with mode `workflow` matches today for risky (fleet) and small (direct) prompts.
@@ -662,6 +697,7 @@ Final debugger product diff SHA-256: `3eb8755ca62b932245d4e14a6129dce40f7fd3caed
 **What to build.** A runtime switch (`/mode workflow|free`) that sets the live routing mode, plus a visible text indicator (`mode: workflow` / `mode: free`) in the footer or `/flow` rail.
 
 **Acceptance criteria.**
+
 - Switching from `workflow` to `free` updates the live mode; the indicator reads `mode: free`.
 - The indicator is ASCII/text, not colour-only (INV-11).
 - With no switch, the indicator matches the configured default (`workflow`).
@@ -696,6 +732,7 @@ Status: **Done** · Blocked-by: none · GitHub issue #18
 - Out-of-lane `extensions/workflow/tracker-poll.ts`, `extensions/workflow/tracker-poll.test.ts`, `settings.example.json`, and their tracker record changes appeared during the shared-tree run. They were re-read, not edited, reverted, stashed, or staged.
 
 **Verification evidence.**
+
 - Exact gate `node --test --experimental-strip-types extensions/ui-customization/status-widget.test.ts && npm run check` → **exit 0**: 17 tests and TypeScript clean. Final log: `/tmp/pi20-current-gate.log` (reproducible from clean commit `9748cc3` in `/tmp/pi20-final-gate.log`).
 - `npm run format:check` → **exit 0**. Final log: `/tmp/pi20-current-format.log`; clean-commit log: `/tmp/pi20-final-format.log`.
 - Header/footer regression: `node --test --experimental-strip-types extensions/ui-customization/footer.test.ts extensions/ui-customization/header.test.ts` → **exit 0**. Log: `/tmp/pi20-final-ui-regression.log`.
@@ -707,6 +744,7 @@ The ticket is **Review Ready**, not Done. Only the independent reviewer may set 
 **What to build.** A pure render module `extensions/ui-customization/status-widget.ts` exporting `renderStatusWidget(state, width): string[]`, registered from `extensions/ui-customization/index.ts` as `ctx.ui.setWidget("vraj-status", factory, { placement: "belowEditor" })`. This ticket builds the host and the bounds only: skeleton lines plus width/line/overflow machinery and failure behaviour. Per q2 there is no fixed small line cap; the line count is a deterministic function of input counts with a hard runaway ceiling `maxLines` (default 40, from `workflow.statusWidget.maxLines`, clamped `[8, 200]`) and an explicit `+N more · /flow` overflow line. Reuse `columns`, `truncateToWidth`, `visibleWidth`, `theme.fg`; no new dependency; render does no I/O (INV-3).
 
 **Acceptance criteria.**
+
 - At widths 20, 80, and 200 every returned line satisfies `visibleWidth(line) <= width`.
 - Rendering the same state twice returns identical arrays (deterministic line count).
 - An input exceeding the ceiling returns exactly `maxLines` lines whose final line is `+N more · /flow` with the correct suppressed count.
@@ -725,6 +763,7 @@ Status: **Done** · Blocked-by: PI-20 · GitHub issue #19
 **What to build.** The rich mode/route/stage content: section rule, a `columns()` line with the mode label left and the route label right, the stage rail, and one row per tracked stage agent (glyph, stage, `backend/model`, elapsed, turns, `% ctx`). Labels are exactly `mode workflow` / `mode free (manual)` and `route direct` / `route fleet/<stage>` (q7). A pure `layoutColumns` helper computes each numeric column width once per render from the widest cell measured with `visibleWidth`, and right-aligns every numeric cell (tabular numbers). Telemetry stays measured-only: unknown renders `?` with no `%`, sub-1 % positive renders `<1%`, stale readings carry `~` plus age. Width degradation: `< 100` drops `backend/model`; `< 60` collapses the rail to the active stage.
 
 **Acceptance criteria.**
+
 - Mode cell renders exactly `mode workflow` or exactly `mode free (manual)`.
 - Route cell renders exactly `route direct` with no active stage and exactly `route fleet/coder` with an active coder stage.
 - Elapsed cells for `9s` and `12m30s` have equal `visibleWidth`; likewise the turns and `% ctx` cells.
@@ -736,7 +775,7 @@ Status: **Done** · Blocked-by: PI-20 · GitHub issue #19
 
 **Coder delivery (2026-08-05).** Added mode/route row builders, a stage rail with active/complete/pending glyphs, and per-agent rows with tabular-column alignment to the belowEditor widget. Mode labels `mode workflow` / `mode free (manual)`; route labels `route direct` / `route fleet/<stage>`; rail shows `◉` active, `✓` complete, `·` pending; agent rows export `layoutColumns` for right-aligned numeric cells. Width degradation: `< 100` drops backend/model, `< 60` collapses rail to active stage. INV-1: unmeasured context renders `? ctx`, sub-1% renders `<1% ctx`, no `0%`. INV-2: secret tokens redacted, control chars stripped. INV-5: stale readings show `~` plus age. INV-11: all four glyphs `✓◉·×` distinguishable without colour. INV-6: throwing getters degrade to bounded base lines. PI-20's maxLines ceiling and overflow line preserved. 38 targeted tests pass; `tsc --noEmit` clean; `npm run format:check` clean. Product diff SHA-256: `0ddbf383589c288044a51ea406660a614d27a43dd6ba5d10a9789678490ff20f`. Full `npm test`: 286/290 pass; 4 environmental failures (live Claude/Codex backends, 10k-line tracker timing) outside this lane. Artifact: `docs/handoffs/2026-08-05-coder-pi21.md`. Route: **Debugger Ready** — independent debugger; only reviewer may set Done.
 
-**Debugger delivery (2026-08-05).** Red-teamed mode/route/stage rendering, secret redaction, INV-6/INV-11/INV-2/INV-3 boundaries, and PI-20 regression. Fixed: `normalizeMaxLines` treated NaN and Infinity both as minimum 8 — NaN is non-numeric per specs (→ 40), Infinity clamps to 200 (max); `routeLabel` used unsafe `String(r.stage)` that throws on Symbol values, degrading whole widget to base lines — now uses `safeToken` directly; `inputLines` were not redacted through `safeToken` (INV-2 gap). Added 3 regression tests covering NaN/Infinity maxLines, Symbol route stage, and input-lines secret redaction. Reduced perf test flakiness (100→20 input lines). 41 targeted tests pass; `tsc --noEmit` clean; `npm run format:check` clean. Product diff SHA-256 (code): `1bf9f9effb415f9b4bac643084444e9cfe588038dbfd5f9cd60323e1057a1b56`. Commit: `0e59da3`. Remote: `0e59da3` (fetched read-back). Gate: `node --test --experimental-strip-types extensions/ui-customization/status-widget.test.ts && npm run check` → exit 0 (41 tests; tsc clean). Full `npm test`: 289/293 pass; 3 live-provider failures outside this lane. 
+**Debugger delivery (2026-08-05).** Red-teamed mode/route/stage rendering, secret redaction, INV-6/INV-11/INV-2/INV-3 boundaries, and PI-20 regression. Fixed: `normalizeMaxLines` treated NaN and Infinity both as minimum 8 — NaN is non-numeric per specs (→ 40), Infinity clamps to 200 (max); `routeLabel` used unsafe `String(r.stage)` that throws on Symbol values, degrading whole widget to base lines — now uses `safeToken` directly; `inputLines` were not redacted through `safeToken` (INV-2 gap). Added 3 regression tests covering NaN/Infinity maxLines, Symbol route stage, and input-lines secret redaction. Reduced perf test flakiness (100→20 input lines). 41 targeted tests pass; `tsc --noEmit` clean; `npm run format:check` clean. Product diff SHA-256 (code): `1bf9f9effb415f9b4bac643084444e9cfe588038dbfd5f9cd60323e1057a1b56`. Commit: `0e59da3`. Remote: `0e59da3` (fetched read-back). Gate: `node --test --experimental-strip-types extensions/ui-customization/status-widget.test.ts && npm run check` → exit 0 (41 tests; tsc clean). Full `npm test`: 289/293 pass; 3 live-provider failures outside this lane.
 Artifact: `docs/handoffs/2026-08-05-debugger-pi21.md`. Route: **Review Ready** — independent reviewer; only reviewer may set Done.
 
 ---
@@ -750,6 +789,7 @@ Status: **Done** · Blocked-by: none · GitHub issue #20
 **Coder delivery (2026-08-05).** Added `extensions/workflow/tracker-poll.ts` (single-flight fixed-interval off-render poll, interval clamped to [2000, 300000] default 10000, timeout preserves prior snapshot with reason, stop clears timer) plus deterministic fake-timer tests covering interval clamping, single-flight (fixed a module defect where the read timeout cleared in-flight state and allowed overlapping reads), failed-read reason preservation, and stop behavior. Exact gate `node --test --experimental-strip-types extensions/workflow/tracker-poll.test.ts extensions/workflow/issue-list.test.ts && npm run check` → exit 0 (12 tests; tsc clean); `npm run format:check` exit 0.
 
 **Debugger audit (2026-08-05).**
+
 - Baseline exact gate was green, but the rewritten tests did not prove timeout semantics, synchronous read throws, malformed results, complete interval clamping, timer cancellation, unref behavior, or poll read-only purity.
 - Red-team fixes were test-first: timeout keeps the previous `capturedAt` and reason `timeout` without clearing in-flight; a slow read cannot overlap a later tick; thrown, rejected, malformed, and empty-error reads degrade to non-empty reasons; reasoned or foreign-repository results cannot replace the prior repository records; all interval inputs clamp to [2000, 300000] with default 10000; `stop()` cancels the recurring and active timeout timers; both timer classes are unref'd; poll source has no write/commit/push or filesystem/network path.
 - Added deterministic fake-timer coverage for 18 targeted tests, including 10 slow intervals, 5 settled fixed intervals, settings.example `workflow.trackerPollMs`, timeout snapshot preservation, per-repository isolation, and timer cleanup. `extensions/workflow/issue-list.test.ts` remains the existing staleness/unavailable/purity coverage and was not changed.
@@ -761,6 +801,7 @@ Status: **Done** · Blocked-by: none · GitHub issue #20
 **What to build.** `extensions/workflow/tracker-poll.ts`: `startTrackerPoll({ intervalMs, read, now, setTimer })` returning `{ getSnapshot(), stop() }`. Fixed interval read once from `workflow.trackerPollMs` (default 10000, clamped `[2000, 300000]`), single-flight (a tick during an in-flight read is skipped, not queued), bounded read timeout, each completed read stored with `capturedAt` and an optional reason, timer `unref`'d and cleared on `session_shutdown`. Timers are injected so tests use a fake clock and never a real sleep. Consumes `extensions/shared/ticket-snapshot.ts` as a read-only dependency (INV-3, INV-10).
 
 **Acceptance criteria.**
+
 - Interval 2000 with the fake clock advanced 10000 ms invokes `read` exactly 5 times.
 - With a never-settling read, advancing 10 intervals invokes `read` exactly once.
 - A rejecting read preserves the previous snapshot and its `capturedAt`, records a non-empty reason, and never propagates the rejection.
@@ -780,6 +821,7 @@ Status: **Debugger Ready** · Blocked-by: PI-21 (Done), PI-22 (Done) · GitHub i
 **What to build.** Named issue rows in the surface (q3): a counts-and-staleness section rule (`─ issues · 4 active · 12 done · ~ 12s ─…`) and one row per active-window ticket in the order named id → status word → assignee role → truncated title → blocker summary, each blocker rendered as its id plus a satisfied/unsatisfied glyph. Active statuses sort before `planned`; `done`/`dropped`/`canceled`/`duplicate` are excluded from rows and summarised in the rule. Truncation with `…`, full values reachable in `/flow` → Issues. At `width < 60` a row collapses to `PI-nn status blk-summary`. Missing or failed snapshots render `issues unavailable — <reason>` (INV-5, INV-10).
 
 **Acceptance criteria.**
+
 - A row contains, in order, the named id, status word, assignee role, title, and blocker summary.
 - An over-long title truncates with `…` and the row still satisfies `visibleWidth(line) <= width`.
 - Rows are ordered active-before-planned; no done/dropped/canceled/duplicate ticket appears as a row, and the rule reports their count.
@@ -793,13 +835,16 @@ Status: **Debugger Ready** · Blocked-by: PI-21 (Done), PI-22 (Done) · GitHub i
 
 ## PI-24 — `/mode` native picker, completions, and warning-on-invalid
 
-Status: **Debugger Ready** · Blocked-by: PI-21 · GitHub issue #22
+Status: **Review Ready** · Blocked-by: PI-21 · GitHub issue #22
 
 **Coder delivery (2026-08-05).** Changed paths: `extensions/workflow/index.ts` (handler + pure helper), `extensions/workflow/flow-panel.test.ts` (5 new /mode tests). Product diff SHA-256: `13f2817fa7088f139088ec961b923763580ee22768aba1ca839cc947171f9152`. Exact gate: `node --test --experimental-strip-types extensions/workflow/flow-panel.test.ts` → exit 0 (28 pass). `npm run check` → exit 2 (pre-existing PI-20 `ui-customization/status-widget.test.ts` TS error outside lane). `npm run format:check` (laned files) → clean. Commit `2462229a0cee38114a405cda0616da1d0b63e7bb`; remote `origin/main` read-back same SHA. Blocked-by: PI-21 stays.
+
+**Debugger delivery (2026-08-05).** Findings fixed test-first: (1) `getArgumentCompletions` ignored its prefix and always returned both values — now filters case-insensitively (`""` → both, `"f"`/`"FR"` → only `free`), closing the q5 completion acceptance criteria; (2) `policy.test.ts` had two failures introduced by the new `ctx.ui.select` picker (source assertion and mock context) — updated the orchestrator-only assertion to exempt the picker and the mode-command wire test to cover bare→picker-cancel, invalid→warning, valid→confirmation. Product diff SHA-256: `5ab17f6d15907195496bbdc88f4f276d1b83b2f09ed7c6ba4cd4cd81ed531099` (`/tmp/pi24-debugger-product.diff`). Exact gate `node --test --experimental-strip-types extensions/workflow/flow-panel.test.ts && npm run check` → exit 0 (29 tests; TypeScript clean). `npm run format:check` (laned files) → exit 0; `git diff --check` → exit 0. Commit `REPLACE_ME`; remote `origin/main` read-back `REPLACE_ME_REMOTE`. Handoff: `docs/handoffs/2026-08-05-debugger-pi24.md`. Blocked-by: PI-21 stays; only the independent reviewer may set Done.
 
 **What to build.** Replace the string-only `/mode` handler (`extensions/workflow/index.ts:1359-1374`). Bare `/mode` opens `ctx.ui.select` with exactly two labelled options (`workflow — auto-route risky or broad work to the fleet`, `free (manual) — everything direct unless a stage is named`); cancelling changes nothing. `getArgumentCompletions` offers `workflow` and `free` filtered case-insensitively. Invalid input notifies at severity `warning`, never `error`, and names the current mode. A successful switch updates the live mode, republishes state, and the widget's mode label immediately reflects it (q5, q7). INV-8: no `/mode` path classifies, routes, starts a stage, or emits a spawn/send on the subagent bridge.
 
 **Acceptance criteria.**
+
 - Empty-argument `/mode` opens the picker with exactly two options; cancelling leaves the live mode unchanged and emits no state change.
 - Choosing `free` yields a widget mode cell of exactly `mode free (manual)`; choosing `workflow` yields exactly `mode workflow`.
 - `getArgumentCompletions("")` returns both values; `("f")` and `("FR")` each return only `free`.
@@ -817,6 +862,7 @@ Status: **Planned** · Blocked-by: PI-24 · GitHub issue #23
 **What to build.** `extensions/workflow/settings-mode.ts` exporting `persistWorkflowMode(mode, io)`: read → merge → temp-write → rename, setting `workflow.mode` only, creating the `workflow` object when absent, preserving every other key, emitting stable 2-space JSON with a trailing newline. A failed read/parse/write/rename never loses the live switch: the mode still changes, the label gains `· session only`, and the user is notified at `warning`. INV-2: only the mode is read, written, logged, or rendered by this path. Session start continues to seed the live mode from `workflow.mode` so a switch survives restart (q6).
 
 **Acceptance criteria.**
+
 - Switching to `free` writes `workflow.mode: "free"` and leaves every other parsed key and value unchanged.
 - A settings file with no `workflow` object gains one containing only `mode`.
 - The write is atomic (temp path then rename); no path truncates the target in place.
@@ -835,6 +881,7 @@ Status: **Planned** · Blocked-by: PI-23, PI-25 · GitHub issue #24
 **What to build.** Deduplicate the footer against the new surface (q1): rich status lives below the prompt; the footer keeps telemetry (cwd, runtime/model, usage, git/PR) and the workflow rail, with its 7-line cap unchanged. Document the surface, the exact mode and route labels, the `/mode` picker and completions, mode persistence, and the poll interval in `README.md` and `SYSTEM.md`; add `workflow.trackerPollMs` and `workflow.statusWidget.maxLines` to `settings.example.json`. Lock the INV-14 render budget and the amended INV-4 bounds in the suite.
 
 **Acceptance criteria.**
+
 - No status token rendered by the belowEditor surface (mode label, route label, stage rows, issue rows) is also rendered by `renderFooter` for the same state; the footer still renders cwd, runtime, usage, git/PR, and the rail.
 - `renderFooter` still returns at most 7 lines for every tested state.
 - `settings.example.json` contains `workflow.trackerPollMs` (10000) and `workflow.statusWidget.maxLines` (40), and the existing config-docs check passes over them.

@@ -29,7 +29,8 @@ test("routes high-risk work into planner", () => {
 test("main-chat input remains orchestrator-only while workflow relay checks identity", () => {
   const source = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
   assert.doesNotMatch(source, /pi\.on\(\s*["']input["']/);
-  assert.doesNotMatch(source, /ctx\.ui\.(input|select)\(/);
+  // /mode handler uses ctx.ui.select for the mode picker, not for routing user input
+  assert.doesNotMatch(source, /ctx\.ui\.input\(/);
   assert.doesNotMatch(source, /canSteerStage/);
   assert.match(
     source,
@@ -230,6 +231,9 @@ test("the mode command validates, changes only live state, and wires every route
       notify(message: string, type?: string) {
         notifications.push([message, type]);
       },
+      select() {
+        return undefined; // cancelling, no mode change
+      },
     },
   };
   const route = async () => {
@@ -247,17 +251,27 @@ test("the mode command validates, changes only live state, and wires every route
   };
 
   assert.equal(await route(), "fleet");
-  for (const invalid of ["", "   ", "free-mode", undefined]) {
+  // Bare mode → picker → cancelled → no notification, mode unchanged
+  for (const invalid of ["", "   ", undefined]) {
+    const prev = notifications.length;
     await command(invalid as unknown as string, commandContext);
-    assert.equal(notifications.at(-1)?.[1], "error");
+    assert.equal(notifications.length, prev);
+    assert.equal(await route(), "fleet");
+  }
+  // Invalid value → warning notification, mode unchanged
+  {
+    const prev = notifications.length;
+    await command("free-mode", commandContext);
+    assert.equal(notifications.length, prev + 1);
+    assert.equal(notifications.at(-1)?.[1], "warning");
     assert.equal(await route(), "fleet");
   }
   await command(" FREE ", commandContext);
   assert.equal(await route(), "direct");
-  assert.match(notifications.at(-1)?.[0] ?? "", /routing mode: free/);
+  assert.match(notifications.at(-1)?.[0] ?? "", /mode free \(manual\)/);
   await command("WORKFLOW", commandContext);
   assert.equal(await route(), "fleet");
-  assert.match(notifications.at(-1)?.[0] ?? "", /routing mode: workflow/);
+  assert.match(notifications.at(-1)?.[0] ?? "", /mode workflow/);
   assert.equal(emitted.includes("vraj:subagent-bridge"), false);
 
   const source = readFileSync(new URL("./index.ts", import.meta.url), "utf8");

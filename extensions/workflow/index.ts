@@ -1386,7 +1386,11 @@ export default function workflow(pi: ExtensionAPI) {
 
   pi.registerCommand("mode", {
     description: "Set workflow routing mode (workflow | free)",
-    getArgumentCompletions: () => MODE_COMPLETIONS,
+    getArgumentCompletions: (prefix: string) => {
+      if (!prefix) return MODE_COMPLETIONS;
+      const lower = prefix.toLowerCase();
+      return MODE_COMPLETIONS.filter((item) => item.value.startsWith(lower));
+    },
     handler: async (args, ctx) => {
       const outcome = normalizeModeCommand(
         typeof args === "string" ? args : "",

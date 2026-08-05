@@ -717,6 +717,24 @@ test("/mode completions include exactly workflow and free", () => {
   assert.equal(values.length, 2);
 });
 
+test("/mode completions filter by prefix, case-insensitive", () => {
+  // Mirrors getArgumentCompletions in index.ts
+  const filter = (prefix: string) => {
+    if (!prefix) return MODE_COMPLETIONS;
+    const lower = prefix.toLowerCase();
+    return MODE_COMPLETIONS.filter((item) => item.value.startsWith(lower));
+  };
+
+  assert.equal(filter("").length, 2);
+  assert.equal(filter("f").length, 1);
+  assert.equal(filter("f")[0].value, "free");
+  assert.equal(filter("FR").length, 1);
+  assert.equal(filter("FR")[0].value, "free");
+  assert.equal(filter("w").length, 1);
+  assert.equal(filter("w")[0].value, "workflow");
+  assert.equal(filter("x").length, 0);
+});
+
 test("/mode invalid value with whitespace preserves original casing in message", () => {
   const outcome = normalizeModeCommand("  BaD_VaLuE  ");
   assert.equal(outcome.kind, "warn");
