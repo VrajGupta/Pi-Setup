@@ -237,3 +237,14 @@ test("parses a 10,000-line tracker in under 100ms", () => {
   assert.equal(snapshot.records.length, 2_000);
   assert.ok(performance.now() - start < 100);
 });
+
+test("a ticket missing status never inherits from a following malformed heading", () => {
+  const source =
+    "## PI-01 — valid ticket missing status\n\n## PI-02 -- malformed heading\n\nStatus: **Done**\n";
+  const snapshot = parseTicketSnapshot(source, capture);
+  const pi01 = snapshot.records.find(({ id }) => id === "PI-01");
+  assert.equal(pi01?.status, "unknown");
+  assert.equal(pi01?.assignee, undefined);
+  const pi02 = snapshot.records.find(({ id }) => id === "PI-02");
+  assert.equal(pi02, undefined);
+});

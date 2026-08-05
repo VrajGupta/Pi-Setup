@@ -267,12 +267,22 @@ export function parseTicketSnapshot(
       reason: "no complete ticket headings",
     });
   }
+  // A malformed or truncated heading must still end the previous ticket's
+  // section; otherwise a missing-status ticket inherits metadata from the
+  // malformed heading's following lines. Any ATX heading closes a section.
+  const sectionBreaks = [...searchableTracker.matchAll(/^#{1,6}\s+/gm)].map(
+    (match) => match.index ?? 0,
+  );
 
-  const parsed = headings.map((heading, index) => {
-    const section = searchableTracker.slice(
-      heading.index,
-      headings[index + 1]?.index ?? tracker.length,
+  const parsed = headings.map((heading) => {
+    const followingBreaks = sectionBreaks.filter(
+      (offset) => offset > heading.index,
     );
+    const end =
+      followingBreaks.length > 0
+        ? Math.min(...followingBreaks)
+        : tracker.length;
+    const section = searchableTracker.slice(heading.index, end);
     const status = statusFrom(section);
     const explicitAssignee = field(section, "Assignee")?.replace(
       /^\*+|\*+$/g,
