@@ -224,7 +224,31 @@ export default function uiCustomization(pi: ExtensionAPI) {
           try {
             statuses = Array.from(footerData.getExtensionStatuses().values());
           } catch {
-            // INV-6: a broken extension status must not take down the footer.
+            // INV-6: a broken extension-status getter degrades the footer to
+            // the base lines rather than rendering partial agent/status rows.
+            return renderFooter({
+              width,
+              theme,
+              now,
+              cwdLabel: formatDirectory(ctx.cwd),
+              runtime,
+              rail: `${theme.fg("accent", "flow")} ${flow}`,
+              routeStatus: `${route} · ${workflow.status} · ${running} running · ${agents.length} tracked`,
+              usage,
+              pr,
+              agents: [],
+              statuses: [],
+              readingFor: () =>
+                buildReading({
+                  source: "context",
+                  done: undefined,
+                  total: undefined,
+                  at: agentsAt,
+                  elapsedMs: now - agentsAt,
+                  turns: 0,
+                }),
+              reasonFor: () => "reason unknown",
+            });
           }
           return renderFooter({
             width,

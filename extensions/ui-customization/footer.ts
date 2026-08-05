@@ -20,7 +20,7 @@ const REASONS = [
 ] as const;
 const SENSITIVE_HEADER_PATTERN = /\b(Authorization|Cookie)\s*:\s*.*/gi;
 const SECRET_ASSIGNMENT_PATTERN =
-  /(["']?(?:api[_-]?key|access[_-]?key|access[_-]?token|authorization|cookie|credential|password|passwd|private[_-]?key|secret|token)["']?\s*[:=]\s*)(?:"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|[^\s,;}]+)/gi;
+  /(["']?(?:api[_-]?key|access[_-]?key|access[_-]?token|authorization|cookie|credential|key|password|passwd|private[_-]?key|secret|token)["']?\s*[:=]\s*)(?:"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|[^\s,;}]+)/gi;
 
 export interface FooterTheme {
   fg(color: string, text: string): string;
@@ -277,7 +277,10 @@ export function renderFooter(state: FooterState) {
       const statuses = Array.isArray(state.statuses)
         ? statusLines(state.statuses, width)
         : [];
-      return [...base, ...rows, ...statuses];
+      // INV-4: the footer is capped at 7 lines total (3 base + ≤4 stage
+      // rows). Extension status lines only fill the remaining budget.
+      const budget = 7 - base.length - rows.length;
+      return [...base, ...rows, ...statuses.slice(0, Math.max(0, budget))];
     } catch {
       // INV-6: a bad reading or extension status must never take the footer down.
       return base;

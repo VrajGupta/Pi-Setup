@@ -91,7 +91,7 @@ test("every line fits the requested width at 20, 60, 80, and 200", () => {
           buildReading({ source: "context", done: 50, total: 100, at: 10_000 }),
       }),
     );
-    assert.equal(lines.length, 8);
+    assert.equal(lines.length, 7);
     for (const line of lines) {
       assert.ok(
         visibleWidth(line) <= width,
@@ -183,6 +183,24 @@ test("stage rows keep a closed, redacted reason when stale or indeterminate", ()
     }),
   )[3];
   assert.match(unknown, /reason unknown/);
+});
+
+test("reason redaction covers bare key= and cookie assignments (INV-2)", () => {
+  for (const text of [
+    "provider error: key=super-secret-value",
+    "provider error: Cookie=session=abc; Path=/",
+    "provider error: password=hunter2",
+  ]) {
+    const lines = renderFooter(
+      state({
+        width: 200,
+        agents: [agent({ stage: "coder" })],
+        reasonFor: () => text,
+      }),
+    ).join("\n");
+    assert.doesNotMatch(lines, /super-secret-value|abc|hunter2/);
+    assert.match(lines, /\[REDACTED\]/);
+  }
 });
 
 test("a throwing reading or reason getter still returns the 3 base lines", () => {
@@ -530,4 +548,16 @@ test("live subagent state reaches the footer as measured context progress and om
     },
   });
   assert.doesNotThrow(() => statusFailureFooter.render(80));
+  // INV-6: a throwing extension-status getter degrades to the 3 base lines.
+  assert.equal(statusFailureFooter.render(80).length, 3);
+
+  // INV-3: the shipped wrapper (index.ts) renders within budget too — the
+  // pure-footer benchmark above must not be the only perf proof.
+  const liveFooter = footerFactory({ requestRender() {} }, theme, {
+    getExtensionStatuses: () => new Map([["ext", "status"]]),
+  });
+  const start = performance.now();
+  for (let i = 0; i < 1_000; i++) liveFooter.render(200);
+  const elapsed = performance.now() - start;
+  assert.ok(elapsed < 2_000, `wrapper: 1000 renders took ${elapsed}ms`);
 });
