@@ -54,8 +54,8 @@ npm run check` → pass; 9 tests; TypeScript clean.
 - Local mirror: PI-15 is `Review Ready`.
 - Project item transition: `Debugging` → `Review Ready`; project read-back:
   `PVTI_lAHOCFvJwM4BfV__zg1N89w status=Review Ready`.
-- Final commit and push SHA are recorded below after the delivery commit:
-
-  `pending final commit and fetched/direct remote read-back`
+- Implementation commit: `15b19171906ef0860bcde21c87a6c351888c3669`.
+- The final handoff update commit and its fetched/direct remote read-back are
+  reported with the delivery evidence.
 
 - Next stage: independent reviewer.
