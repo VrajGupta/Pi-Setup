@@ -29,7 +29,7 @@ Get-ChildItem -LiteralPath (Join-Path $HOME ".pi\agent\backups") -Directory -Fil
   Sort-Object LastWriteTime -Descending
 ```
 
-Quit Pi first. Replace the placeholder with the exact backup you listed. Rollback restores the installer-managed `extensions`, `skills`, `themes`, `SYSTEM.md`, `keybindings.json`, and `node_modules` entries from that backup, and removes any of those entries that were not present before the install. Before moving anything, it creates an atomic `.rollback-manifest` directory recording whether each managed entry was originally present. If the process is interrupted after a saved entry is moved back, a retry uses that manifest: a consumed saved entry with an existing target is already restored and is left alone. A missing target in that state fails closed instead of deleting or falsely completing. A completed rollback is marked and is safe to run again.
+Quit Pi first. Replace the placeholder with the exact backup you listed. Each install writes an atomic `.rollback-manifest` inside its backup before changing resources. It records each managed entry as `present` (saved for replacement), `unchanged` (already points at this checkout and was not moved), or `absent` (not present before install). Rollback requires that provenance manifest; it refuses an older or incomplete backup instead of inferring `absent` from a missing backup child. It restores `present` entries, preserves `unchanged` entries, and removes `absent` entries. If the process is interrupted after a saved entry is moved back, a retry uses that manifest: a consumed saved entry with an existing target is already restored and is left alone. A missing target in either a consumed `present` or `unchanged` state fails closed instead of deleting or falsely completing. A completed rollback is marked and is safe to run again.
 
 ```sh
 agent_dir="$HOME/.pi/agent"
@@ -49,17 +49,8 @@ if [ -e "$backup/.rollback-complete" ]; then
 else
   manifest="$backup/.rollback-manifest"
   if [ ! -d "$manifest" ]; then
-    manifest_tmp="$backup/.rollback-manifest.tmp.$$"
-    mkdir -p "$manifest_tmp"
-    for name in extensions skills themes SYSTEM.md keybindings.json node_modules; do
-      saved="$backup/$name"
-      if [ -e "$saved" ] || [ -L "$saved" ]; then
-        : > "$manifest_tmp/$name.present"
-      else
-        : > "$manifest_tmp/$name.absent"
-      fi
-    done
-    mv "$manifest_tmp" "$manifest"
+    echo "Rollback provenance manifest missing; refusing ambiguous backup" >&2
+    exit 1
   fi
   for name in extensions skills themes SYSTEM.md keybindings.json node_modules; do
     saved="$backup/$name"
@@ -72,6 +63,13 @@ else
         :
       else
         echo "Rollback cannot resume: restored target is missing for $name" >&2
+        exit 1
+      fi
+    elif [ -e "$manifest/$name.unchanged" ]; then
+      if [ -e "$target" ] || [ -L "$target" ]; then
+        :
+      else
+        echo "Rollback cannot resume: unchanged target is missing for $name" >&2
         exit 1
       fi
     elif [ -e "$manifest/$name.absent" ]; then
@@ -96,29 +94,29 @@ $complete = Join-Path $backup ".rollback-complete"
 if (-not (Test-Path -LiteralPath $complete)) {
   $manifest = Join-Path $backup ".rollback-manifest"
   if (-not (Test-Path -LiteralPath $manifest -PathType Container)) {
-    $manifestTemp = Join-Path $backup ".rollback-manifest.tmp-$PID"
-    New-Item -ItemType Directory -Path $manifestTemp -Force | Out-Null
-    foreach ($name in "extensions", "skills", "themes", "SYSTEM.md", "keybindings.json", "node_modules") {
-      $saved = Join-Path $backup $name
-      $state = if (Test-Path -LiteralPath $saved) { "present" } else { "absent" }
-      New-Item -ItemType File -Path (Join-Path $manifestTemp "$name.$state") -Force | Out-Null
-    }
-    Move-Item -LiteralPath $manifestTemp -Destination $manifest
+    throw "Rollback provenance manifest missing; refusing ambiguous backup"
+  }
+  function Test-ManagedEntry($path) {
+    return $null -ne (Get-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue)
   }
   foreach ($name in "extensions", "skills", "themes", "SYSTEM.md", "keybindings.json", "node_modules") {
     $saved = Join-Path $backup $name
     $target = Join-Path $agentDir $name
     if (Test-Path -LiteralPath (Join-Path $manifest "$name.present")) {
-      if (Test-Path -LiteralPath $saved) {
-        if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
+      if (Test-ManagedEntry $saved) {
+        if (Test-ManagedEntry $target) { Remove-Item -LiteralPath $target -Recurse -Force }
         Move-Item -LiteralPath $saved -Destination $target
-      } elseif (Test-Path -LiteralPath $target) {
+      } elseif (Test-ManagedEntry $target) {
         # The saved entry was consumed by an interrupted retry; the target is restored.
       } else {
         throw "Rollback cannot resume: restored target is missing for $name"
       }
+    } elseif (Test-Path -LiteralPath (Join-Path $manifest "$name.unchanged")) {
+      if (-not (Test-ManagedEntry $target)) {
+        throw "Rollback cannot resume: unchanged target is missing for $name"
+      }
     } elseif (Test-Path -LiteralPath (Join-Path $manifest "$name.absent")) {
-      if (Test-Path -LiteralPath $target) {
+      if (Test-ManagedEntry $target) {
         Remove-Item -LiteralPath $target -Recurse -Force
       }
     } else {

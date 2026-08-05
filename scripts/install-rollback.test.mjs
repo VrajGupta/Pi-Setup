@@ -2,10 +2,13 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import {
   existsSync,
+  lstatSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -51,12 +54,22 @@ test("install backup can be listed and the documented rollback restores isolated
   const home = join(temporary, "home");
   const agentDir = join(home, ".pi", "agent");
   const missingResource = "themes";
+  const unchangedResource = "extensions";
+  const interruptedResource = "skills";
   const existingResources = resources.filter(
     (name) => name !== missingResource,
   );
+  const restorableResources = existingResources.filter(
+    (name) => name !== unchangedResource,
+  );
   mkdirSync(agentDir, { recursive: true });
+  symlinkSync(
+    join(root, unchangedResource),
+    join(agentDir, unchangedResource),
+    process.platform === "win32" ? "junction" : undefined,
+  );
   const originals = new Map(
-    existingResources.map((name) => [name, seedResource(agentDir, name)]),
+    restorableResources.map((name) => [name, seedResource(agentDir, name)]),
   );
   writeFileSync(join(agentDir, "settings.json"), '{"before":"settings"}\n');
   writeFileSync(join(agentDir, ".env"), "before env\n");
@@ -77,8 +90,27 @@ test("install backup can be listed and the documented rollback restores isolated
     assert.match(basename(backup), /^pi-agent-\d+-\d+(?:-\d+)?$/);
     assert.deepEqual(
       resources.filter((name) => existsSync(join(backup, name))),
-      existingResources,
+      restorableResources,
     );
+    const manifest = join(backup, ".rollback-manifest");
+    for (const name of resources) {
+      const state =
+        name === unchangedResource
+          ? "unchanged"
+          : existingResources.includes(name)
+            ? "present"
+            : "absent";
+      assert.equal(existsSync(join(manifest, `${name}.${state}`)), true);
+    }
+    const assertUnchangedResource = () => {
+      const target = join(agentDir, unchangedResource);
+      assert.equal(lstatSync(target).isSymbolicLink(), true);
+      assert.equal(
+        realpathSync(target),
+        realpathSync(join(root, unchangedResource)),
+      );
+    };
+    assertUnchangedResource();
     assert.notEqual(agentDir, join(process.env.HOME ?? "", ".pi", "agent"));
 
     const text = readFileSync(setup, "utf8");
@@ -96,7 +128,7 @@ test("install backup can be listed and the documented rollback restores isolated
     assert.match(text, /Split-Path -Parent \$backup/);
     assert.match(text, /Remove-Item -LiteralPath \$target -Recurse -Force/);
     assert.match(text, /\.rollback-manifest/);
-    assert.match(text, /\$name\.\$state/);
+    assert.match(text, /\$name\.unchanged/);
     assert.match(text, /Rollback cannot resume/);
 
     if (process.platform !== "win32") {
@@ -132,23 +164,25 @@ test("install backup can be listed and the documented rollback restores isolated
       assert.throws(() => runRollback(`${basename(backup)}/../../outside`));
       const interruptedRollback = rollbackCommand.replace(
         '      mv "$saved" "$target"\n',
-        '      mv "$saved" "$target"\n      if [ "$name" = "extensions" ]; then exit 73; fi\n',
+        `      mv "$saved" "$target"\n      if [ "$name" = "${interruptedResource}" ]; then exit 73; fi\n`,
       );
       assert.notEqual(interruptedRollback, rollbackCommand);
       assert.throws(
         () => runRollback(basename(backup), interruptedRollback),
         (error) => error.status === 73,
       );
-      assert.equal(existsSync(join(backup, "extensions")), false);
+      assert.equal(existsSync(join(backup, interruptedResource)), false);
       assert.deepEqual(
-        readResource(agentDir, "extensions"),
-        originals.get("extensions"),
+        readResource(agentDir, interruptedResource),
+        originals.get(interruptedResource),
       );
+      assertUnchangedResource();
       runRollback(basename(backup));
 
-      for (const name of existingResources) {
+      for (const name of restorableResources) {
         assert.deepEqual(readResource(agentDir, name), originals.get(name));
       }
+      assertUnchangedResource();
       assert.equal(existsSync(join(agentDir, missingResource)), false);
       assert.equal(
         readFileSync(join(agentDir, ".env"), "utf8"),
@@ -168,19 +202,24 @@ test("install backup can be listed and the documented rollback restores isolated
       );
 
       const afterFirstRollback = new Map(
-        resources.map((name) => [
-          name,
-          existsSync(join(agentDir, name))
-            ? readResource(agentDir, name)
-            : null,
-        ]),
+        resources
+          .filter((name) => name !== unchangedResource)
+          .map((name) => [
+            name,
+            existsSync(join(agentDir, name))
+              ? readResource(agentDir, name)
+              : null,
+          ]),
       );
       runRollback(basename(backup));
-      for (const name of resources) {
+      for (const name of resources.filter(
+        (name) => name !== unchangedResource,
+      )) {
         const expected = afterFirstRollback.get(name);
         assert.equal(existsSync(join(agentDir, name)), expected !== null);
         if (expected) assert.deepEqual(readResource(agentDir, name), expected);
       }
+      assertUnchangedResource();
     }
 
     assert.match(text, /## Backup and rollback/);

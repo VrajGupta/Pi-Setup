@@ -481,11 +481,11 @@ Status: **Planned** · Blocked-by: PI-10 · Phase 3
 
 ## PI-15 — Setup, rollback, and push-proof documentation
 
-Status: **Debugger Ready** · Reviewer FAIL (bounce 2/3: rollback deletes an originally present installer-unchanged resource) · Blocked-by: PI-08 (Done) · Phase 2
+Status: **Debugging** · Reviewer FAIL (bounce 2/3: rollback deletes an originally present installer-unchanged resource) · Blocked-by: PI-08 (Done) · Phase 2
 
 **Why this exists.** `README.md` claims the installer "backs up current runtime resources", but `SETUP.md` (36 lines) documents no way to restore them, and no Windows path. Push proof itself already exists — `origin/main` and local `HEAD` are both `bb5d79e` — so this ticket documents how to reproduce that proof, and claims no new push.
 
-**What to build.** Extend `SETUP.md` with an install → verify → rollback lifecycle, and a short "proving a push landed" section.
+**What to build.** Extend `SETUP.md` with an install → verify → rollback lifecycle, a narrowly scoped installer provenance manifest, and a short "proving a push landed" section.
 
 **Acceptance criteria.**
 - `SETUP.md` documents the install command for macOS/Linux and for Windows (PowerShell), consistent with the PI-08 installer.
@@ -493,7 +493,7 @@ Status: **Debugger Ready** · Reviewer FAIL (bounce 2/3: rollback deletes an ori
 - The rollback section states what rollback does **not** restore (for example `auth.json`, `models.json`, and session data) rather than implying a total restore.
 - A "push proof" section shows the exact commands that establish a push landed (`git rev-parse HEAD` and `git ls-remote origin <branch>` compared), and states that a handoff may not claim a push without that comparison.
 - No credential, token, or key appears in any added text; the remote is referenced by URL only.
-- The ticket changes only documentation and installer test fixtures: `git diff --stat` shows no change under `extensions/`.
+- The ticket changes only documentation, the narrowly scoped installer provenance manifest, and installer test fixtures: `git diff --stat` shows no change under `extensions/`.
 
 **Verification-command.** `test -f scripts/install-rollback.test.mjs && node --test --experimental-strip-types extensions/workflow/config-docs.test.ts scripts/install-rollback.test.mjs && npm run check`
 
@@ -511,6 +511,12 @@ Status: **Debugger Ready** · Reviewer FAIL (bounce 2/3: rollback deletes an ori
 - Blocking correctness finding: `scripts/install.mjs:205-208` leaves an already-correct managed symlink unchanged and writes no backup entry, while `SETUP.md:54-60,77-78` classifies every missing backup entry as originally absent. Trigger: install with `~/.pi/agent/extensions` already linked to this checkout, then run the documented rollback. Result: rollback deletes that originally present symlink; the independent production-seam probe exited 1 with `extensions_exists_after_rollback=false`.
 - The interrupted-retry regression is deterministic and passes; originally absent removal, path rejection, non-restored state, scope, no-sleep, and secret-shape checks passed.
 - Routing: → **Debugger Ready** for a test-first distinction between installer-unchanged and originally absent resources, mirrored in POSIX and PowerShell. Review: `docs/handoffs/2026-08-05-reviewer-pi15-bounce-2.md`.
+
+**Debugger audit — reviewer bounce 2 (2026-08-05).**
+- Reproduced the independent production-seam probe: an existing `extensions` symlink to this checkout was deleted by rollback because the installer wrote no backup entry and the rollback inferred `absent`; the probe reported `extensionsExistsAfterRollback=false`.
+- Scope amendment: `scripts/install.mjs` now atomically writes `.rollback-manifest` before resource moves, recording `present`, `unchanged`, or `absent` for every managed resource. Rollback refuses missing provenance, preserves `unchanged`, removes only explicit `absent`, and keeps the interrupted `present` retry fail-closed semantics. POSIX and PowerShell consume the same state names.
+- The focused fixture uses the unchanged `extensions` symlink, interrupted `skills` move, and truly absent `themes` resource in one deterministic production-seam test; it verifies byte restoration, retry safety, and non-restored state without fixed sleeps.
+- No settings/auth/session restoration, secrets, provider changes, or `extensions/` changes. Handoff: `docs/handoffs/2026-08-05-debugger-pi15-bounce-2.md`.
 
 ---
 

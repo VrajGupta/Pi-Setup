@@ -202,8 +202,41 @@ function createBackup(agentDir) {
   return backup;
 }
 
+function hasEntry(path) {
+  return (
+    existsSync(path) || Boolean(lstatSync(path, { throwIfNoEntry: false }))
+  );
+}
+
+function isUnchanged(source, target) {
+  return (
+    existsSync(target) &&
+    existsSync(source) &&
+    realpathSync(source) === realpathSync(target)
+  );
+}
+
+function createRollbackManifest(agentDir, backup) {
+  const manifest = join(backup, ".rollback-manifest");
+  const temporary = join(
+    backup,
+    `.rollback-manifest.tmp-${process.pid}-${Date.now()}`,
+  );
+  mkdirSync(temporary);
+  for (const { name, source } of resources()) {
+    const target = join(agentDir, name);
+    const state = !hasEntry(target)
+      ? "absent"
+      : isUnchanged(source, target)
+        ? "unchanged"
+        : "present";
+    writeFileSync(join(temporary, `${name}.${state}`), "");
+  }
+  renameSync(temporary, manifest);
+}
+
 function linkOrCopy(source, target, backup, forceCopy) {
-  if (existsSync(target) && realpathSync(source) === realpathSync(target)) {
+  if (isUnchanged(source, target)) {
     return "unchanged";
   }
 
@@ -256,6 +289,7 @@ export function install({ agentDir, dryRun = false, forceCopy = false } = {}) {
   mkdirSync(targetDir, { recursive: true });
   mergeSettings(join(targetDir, "settings.json"), false);
   const backup = createBackup(targetDir);
+  createRollbackManifest(targetDir, backup);
   let simulateSymlinkFailure = forceCopy;
   for (const { name, source } of resources()) {
     const result = linkOrCopy(
