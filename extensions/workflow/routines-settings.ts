@@ -15,6 +15,7 @@ export interface RoutineDefinition {
   readonly at?: readonly number[];
   readonly prompt: string;
   readonly enabled: boolean;
+  readonly snoozedUntil?: number;
 }
 
 export interface ReadResult {
@@ -140,6 +141,22 @@ function validateRoutine(
     return null;
   }
 
+  // snoozedUntil — optional; finite positive number; null/absent → undefined; invalid → dropped with warning per-entry
+  let snoozedUntil: number | undefined;
+  if (raw.snoozedUntil !== undefined && raw.snoozedUntil !== null) {
+    if (
+      typeof raw.snoozedUntil === "number" &&
+      Number.isFinite(raw.snoozedUntil) &&
+      raw.snoozedUntil > 0
+    ) {
+      snoozedUntil = raw.snoozedUntil;
+    } else {
+      warnings.push(
+        `routine at index ${index} has invalid snoozedUntil — dropped`,
+      );
+    }
+  }
+
   // enabled — boolean, default true
   const enabled = typeof raw.enabled === "boolean" ? raw.enabled : true;
 
@@ -150,6 +167,7 @@ function validateRoutine(
     ...(at ? { at } : {}),
     prompt: raw.prompt,
     enabled,
+    ...(snoozedUntil !== undefined ? { snoozedUntil } : {}),
   };
 }
 
@@ -221,6 +239,9 @@ function normalizeRoutine(r: RoutineDefinition): Record<string, unknown> {
   };
   if (r.at && r.at.length > 0) {
     obj.at = [...r.at];
+  }
+  if (r.snoozedUntil !== undefined) {
+    obj.snoozedUntil = r.snoozedUntil;
   }
   return obj;
 }

@@ -377,6 +377,116 @@ test("readRoutines passes through explicit enabled value", () => {
   assert.equal(routines[1].enabled, true);
 });
 
+// ─── snoozedUntil validation (bounce-1 fix) ───────────────────────────
+
+test("readRoutines preserves valid snoozedUntil", () => {
+  const settings = {
+    workflow: {
+      routines: [
+        {
+          name: "snoozed",
+          scheduleMs: 60000,
+          prompt: "hello",
+          snoozedUntil: 1780000000000,
+        },
+      ],
+    },
+  };
+  const { routines, warnings } = readRoutines(settings);
+  assert.equal(routines.length, 1);
+  assert.equal(routines[0].snoozedUntil, 1780000000000);
+  assert.equal(warnings.length, 0);
+});
+
+test("readRoutines treats null snoozedUntil as undefined", () => {
+  const settings = {
+    workflow: {
+      routines: [
+        {
+          name: "snoozed",
+          scheduleMs: 60000,
+          prompt: "hello",
+          snoozedUntil: null,
+        },
+      ],
+    },
+  };
+  const { routines, warnings } = readRoutines(settings);
+  assert.equal(routines.length, 1);
+  assert.equal(routines[0].snoozedUntil, undefined);
+  assert.equal("snoozedUntil" in routines[0], false);
+  assert.equal(warnings.length, 0);
+});
+
+test("readRoutines treats absent snoozedUntil as undefined", () => {
+  const settings = {
+    workflow: {
+      routines: [{ name: "plain", scheduleMs: 60000, prompt: "hello" }],
+    },
+  };
+  const { routines } = readRoutines(settings);
+  assert.equal(routines.length, 1);
+  assert.equal(routines[0].snoozedUntil, undefined);
+  assert.equal("snoozedUntil" in routines[0], false);
+});
+
+test("readRoutines drops invalid snoozedUntil values with warning, keeps entry", () => {
+  const settings = {
+    workflow: {
+      routines: [
+        { name: "nan", scheduleMs: 60000, prompt: "one", snoozedUntil: NaN },
+        {
+          name: "inf",
+          scheduleMs: 60000,
+          prompt: "two",
+          snoozedUntil: Infinity,
+        },
+        {
+          name: "neg",
+          scheduleMs: 60000,
+          prompt: "three",
+          snoozedUntil: -1000,
+        },
+        { name: "zero", scheduleMs: 60000, prompt: "four", snoozedUntil: 0 },
+        {
+          name: "str",
+          scheduleMs: 60000,
+          prompt: "five",
+          snoozedUntil: "1780000000000",
+        },
+      ],
+    },
+  };
+  const { routines, warnings } = readRoutines(settings);
+  assert.equal(routines.length, 5);
+  assert.equal(warnings.length, 5);
+  assert.ok(warnings.every((w) => w.includes("invalid snoozedUntil")));
+  for (const r of routines) {
+    assert.equal("snoozedUntil" in r, false);
+  }
+});
+
+test("readRoutines invalid snoozedUntil does not drop a valid sibling", () => {
+  const settings = {
+    workflow: {
+      routines: [
+        { name: "bad", scheduleMs: 60000, prompt: "one", snoozedUntil: "nope" },
+        {
+          name: "good",
+          scheduleMs: 60000,
+          prompt: "two",
+          snoozedUntil: 1780000000000,
+        },
+      ],
+    },
+  };
+  const { routines, warnings } = readRoutines(settings);
+  assert.equal(routines.length, 2);
+  assert.equal(routines[0].snoozedUntil, undefined);
+  assert.equal(routines[1].snoozedUntil, 1780000000000);
+  assert.equal(warnings.length, 1);
+});
+
 // ─── duplicates: first-wins (INV-16) ─────────────────────────────────
 
 test("readRoutines first-wins on duplicate names", () => {
@@ -489,6 +599,7 @@ test("writeRoutines then readRoutines returns same routines", () => {
       at: [540],
       prompt: "daily standup",
       enabled: true,
+      snoozedUntil: 1780000000000,
     },
     {
       name: "hourly",
@@ -518,7 +629,52 @@ test("writeRoutines then readRoutines returns same routines", () => {
     if (original[i].at) {
       assert.deepEqual(routines[i].at, original[i].at);
     }
+    if (original[i].snoozedUntil !== undefined) {
+      assert.equal(routines[i].snoozedUntil, original[i].snoozedUntil);
+    } else {
+      assert.equal("snoozedUntil" in routines[i], false);
+    }
   }
+});
+
+test("snoozedUntil survives read → write → read round-trip", () => {
+  const settings = { workflow: { mode: "workflow" } };
+  const original: RoutineDefinition[] = [
+    {
+      name: "snoozed",
+      scheduleMs: 60000,
+      prompt: "hello",
+      enabled: true,
+      snoozedUntil: 1780000000000,
+    },
+  ];
+
+  const w1 = writeRoutines(original, settings);
+  const { routines: r1 } = readRoutines(w1.settings!);
+  assert.equal(r1[0].snoozedUntil, 1780000000000);
+
+  const w2 = writeRoutines(r1 as RoutineDefinition[], settings);
+  const { routines: r2 } = readRoutines(w2.settings!);
+  assert.equal(r2[0].snoozedUntil, 1780000000000);
+  assert.equal(r2.length, 1);
+});
+
+test("writeRoutines preserves snoozedUntil on output", () => {
+  const settings = { workflow: { mode: "workflow" } };
+  const routines: RoutineDefinition[] = [
+    {
+      name: "snoozed",
+      scheduleMs: 60000,
+      prompt: "hello",
+      enabled: true,
+      snoozedUntil: 1780000000000,
+    },
+  ];
+  const result = writeRoutines(routines, settings);
+  assert.equal(result.ok, true);
+  const wf = result.settings!.workflow as Record<string, unknown>;
+  const saved = (wf.routines as Record<string, unknown>[])[0];
+  assert.equal(saved.snoozedUntil, 1780000000000);
 });
 
 test("writeRoutines is idempotent", () => {

@@ -978,12 +978,14 @@ Status: **Review Ready** · Blocked-by: none · GitHub issue #27
 **Verification-command.** `node --test --experimental-strip-types extensions/workflow/routines-scheduler.test.ts && npm run check`
 
 **Coder delivery (2026-08-05).**
+
 - Changed: `extensions/workflow/routines-scheduler.ts` (new), `extensions/workflow/routines-scheduler.test.ts` (new)
 - Diff SHA-256: `76a478b4bc3a19e15a7c6db0c3b84f553db5650fc702d27c5ad5709be2962805`
 - Gate: `node --test --experimental-strip-types extensions/workflow/routines-scheduler.test.ts && npm run check && npm run format:check` → exit 0 (13 tests; tsc clean; format clean)
 - Handoff: `docs/handoffs/2026-08-05-coder-pi28.md`
 
 **Debugger delivery (2026-08-05).**
+
 - Changed: `extensions/workflow/routines-scheduler.ts` (edit), `extensions/workflow/routines-scheduler.test.ts` (edit)
 - Fixed: routine interval clamp [60000, 604800000] (was [2000, 300000]); tick interval clamp [5000, 60000] with gcd (was [2000, 300000]); at+scheduleMs spec precedence (at pins first fire, interval drives); scheduleMs null/string type-boundary; INV-6 crash-wrap on throwing now/setTimer; no timer for all-invalid/disabled routines; also added 10 new tests covering at [0] boundary, empty at+scheduleMs, null scheduleMs, duplicate names, invalid at dropping, at+scheduleMs precedence, sub-minute once-per-minute guard, all-disabled, INV-6 throwing now/setTimer.
 - Diff SHA-256: `173e1e5272723a54bb5b7e5310142a1ed36bff267dffcaf4efdc23ac4e2662e9`
@@ -992,7 +994,7 @@ Status: **Review Ready** · Blocked-by: none · GitHub issue #27
 
 ## PI-29 — Definitions in settings (read/write workflow.routines)
 
-Status: **Debugger Ready** · Blocked-by: none · GitHub issue #26
+Status: **Review Ready** · Blocked-by: none · GitHub issue #26
 
 **What to build.** `extensions/workflow/routine-definitions.ts`: validation, read, and write helpers for `workflow.routines` in settings. `readRoutines()`, `writeRoutines()`, `validateRoutine()`. Same atomic write pattern as `settings-mode.ts`. `settings.example.json` gains `workflow.routines: []`.
 
@@ -1007,15 +1009,23 @@ Status: **Debugger Ready** · Blocked-by: none · GitHub issue #26
 - Write failure returns `false` without destroying the file.
 - Read path never throws (INV-6).
 
-**Verification-command.** `node --test --experimental-strip-types extensions/workflow/routine-definitions.test.ts && npm run check`
+**Verification-command.** `node --test --experimental-strip-types extensions/workflow/routines-settings.test.ts && npm run check`
 
 **Coder delivery (2026-08-05).** Changed paths: `extensions/workflow/routines-settings.ts` (new), `extensions/workflow/routines-settings.test.ts` (new), `settings.example.json` (add `workflow.routines: []`). Diff SHA-256: `8f573b58d5f03bab096a970cf81056fa4f80b524fb22b1445cefef1d91410ba6`. Gate: `node --test --experimental-strip-types extensions/workflow/routines-settings.test.ts && npm run check` → exit 0 (29 tests; tsc clean); `npm run format:check` (laned files) → exit 0. Handoff: `docs/handoffs/2026-08-05-coder-pi29.md`.
 
 **Debugger delivery (2026-08-05).**
+
 - Findings fixed: scheduleMs clamping [60000, 604800000] per spec INV-16; dangerous character validation for name; INV-6 throwing getter guard; `at` dedup; perf test 10k entries < 500ms.
 - Diff SHA-256: `89ee051927e1b3aaf22f09590718d9a837da0506f5d5b29812726cac4930c866`
 - Gate: `node --test --experimental-strip-types extensions/workflow/routines-settings.test.ts && npm run check && npx prettier --check extensions/workflow/routines-settings.ts extensions/workflow/routines-settings.test.ts` → exit 0 (40 tests; tsc clean; format clean)
 - Handoff: `docs/handoffs/2026-08-05-debugger-pi29.md`
+
+**Debugger delivery (bounce 1, 2026-08-05).**
+
+- Reviewer findings fixed test-first: (1) `snoozedUntil` now carried on `RoutineDefinition`, validated (optional; finite positive number; null/absent → undefined; invalid → dropped per-entry with warning), preserved by `normalizeRoutine` on write, and proven stable across read → write → read round-trips; (2) Verification-command typo corrected from `routine-definitions.test.ts` to `routines-settings.test.ts` (also posted to issue #26).
+- Diff SHA-256: `ed8f67166baee0e8d4d67f1a56b3a0f4f1de4cfea8faa2a5d5e7a92b4e905b4f`
+- Gate: `node --test --experimental-strip-types extensions/workflow/routines-settings.test.ts && npm run check` → exit 0 (47 tests; tsc clean); `npm run format:check` → exit 0.
+- Handoff: `docs/handoffs/2026-08-05-debugger-pi29-bounce1.md`
 
 ## PI-30 — Due-routine banner and /routine command
 
