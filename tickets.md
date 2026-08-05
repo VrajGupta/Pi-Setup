@@ -682,7 +682,9 @@ Parallel entry points: **PI-20** and **PI-22**.
 
 ## PI-20 — belowEditor status surface host and deterministic render bounds
 
-Status: **Review Ready** · Blocked-by: none · GitHub issue #18
+Status: **Done** · Blocked-by: none · GitHub issue #18
+
+**Reviewer final (2026-08-05): PASS (96/100).** Gate exit 0 (17/17 + tsc). No blocking findings. Routing: → **Done** — Project #12 read back Done; issue #18 closed.
 
 **Coder delivery (2026-08-05).** Built `extensions/ui-customization/status-widget.ts` with a pure `renderStatusWidget(state)` function that takes `{width, maxLines, inputLines}` and returns exactly `min(inputCount, maxLines)` lines plus one `+N more · /flow` overflow line when overflow occurs. `maxLines` clamps to [8, 200]; missing/invalid defaults to 40. Every line is width-clipped via `truncateToWidth`. Registered the widget in `extensions/ui-customization/index.ts` via `ctx.ui.setWidget("vraj-status", …, { placement: "belowEditor" })` at session_start, cleared on session_shutdown. Product diff SHA-256 (f953ef1..HEAD): `8f4ee68d0ea9a909595dcf9c760eda3e8f31a3365bfa0aa110deb66c34fe1e12`. Status-widget tests **15/15 pass, exit 0** (includes INV-6 throwing-getter coverage: a throwing `inputLines`/`width` getter degrades to `[]`, never throws). Exact gate `node --test --experimental-strip-types extensions/ui-customization/status-widget.test.ts && npm run check`: test leg exits 0; `npm run check` currently fails ONLY on `extensions/workflow/tracker-poll.test.ts:29` (TS2322) — an untracked PI-22 in-progress file outside this lane (environmental, not PI-20). `format:check` → exit 0 for PI-20 files. Artifact: `docs/handoffs/2026-08-05-coder-pi20.md`. Route: independent debugger; only reviewer may set Done.
 
@@ -736,7 +738,9 @@ Status: **Planned** · Blocked-by: PI-20 · GitHub issue #19
 
 ## PI-22 — Fixed-interval off-render tracker poll (INV-13)
 
-Status: **Review Ready** · Blocked-by: none · GitHub issue #20
+Status: **Done** · Blocked-by: none · GitHub issue #20
+
+**Reviewer final (2026-08-05): PASS (91/100).** Gate exit 0 (18 tests + tsc). No blocking findings. Routing: → **Done** — Project #12 read back Done; issue #20 closed.
 
 **Coder delivery (2026-08-05).** Added `extensions/workflow/tracker-poll.ts` (single-flight fixed-interval off-render poll, interval clamped to [2000, 300000] default 10000, timeout preserves prior snapshot with reason, stop clears timer) plus deterministic fake-timer tests covering interval clamping, single-flight (fixed a module defect where the read timeout cleared in-flight state and allowed overlapping reads), failed-read reason preservation, and stop behavior. Exact gate `node --test --experimental-strip-types extensions/workflow/tracker-poll.test.ts extensions/workflow/issue-list.test.ts && npm run check` → exit 0 (12 tests; tsc clean); `npm run format:check` exit 0.
 
