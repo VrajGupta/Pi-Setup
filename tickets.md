@@ -814,7 +814,7 @@ Status: **Done** · Blocked-by: none · GitHub issue #20
 
 ## PI-23 — Rich issue/todo rows in the belowEditor surface
 
-Status: **Review Ready** · Blocked-by: PI-21 (Done), PI-22 (Done) · GitHub issue #21
+Status: **Done** · Blocked-by: PI-21 (Done), PI-22 (Done) · GitHub issue #21
 
 **Coder delivery (2026-08-05).** Extended `extensions/ui-customization/status-widget.ts` with issue rows: a counts-and-staleness rule (`─ issues · N active · M done · ~ age ──`), tabular issue rows (id, short status token, assignee, truncated title, blocker summary at width ≥ 60; collapsed to id + status + blocker summary at width < 60), and `issues unavailable — <reason>` for reason-carrying snapshots. Active statuses sort before `planned`; done/dropped/canceled/duplicate are excluded from rows and counted in the rule. Pre-truncated titles with `safeTruncate`; `safeToken` redaction on titles (INV-2). Stale snapshots show `~` + age in the rule (INV-5). Blockers render id + `✓`/`·` glyph; no blockers → `blk none` (INV-11). INV-6: throwing snapshot getter degrades to bounded base lines. Existing PI-20/PI-21 tests preserved (54 total, 13 new). Product diff SHA-256: `caeb9983c50982eb72a24252af2acec7de4569a97b0a2188e598d06c45cf93d2`. Gate: `node --test --experimental-strip-types extensions/ui-customization/status-widget.test.ts && npm run check` → exit 0 (54 tests; tsc clean). `npm run format:check` → exit 0. Commit: `5e9e75f`. Artifact: `docs/handoffs/2026-08-05-coder-pi23.md`. Route: **Debugger Ready** — independent debugger; only reviewer may set Done.
 
@@ -837,11 +837,13 @@ Status: **Review Ready** · Blocked-by: PI-21 (Done), PI-22 (Done) · GitHub iss
 
 ## PI-24 — `/mode` native picker, completions, and warning-on-invalid
 
-Status: **Review Ready** · Blocked-by: PI-21 · GitHub issue #22
+Status: **Done** · Blocked-by: PI-21 · GitHub issue #22
 
 **Coder delivery (2026-08-05).** Changed paths: `extensions/workflow/index.ts` (handler + pure helper), `extensions/workflow/flow-panel.test.ts` (5 new /mode tests). Product diff SHA-256: `13f2817fa7088f139088ec961b923763580ee22768aba1ca839cc947171f9152`. Exact gate: `node --test --experimental-strip-types extensions/workflow/flow-panel.test.ts` → exit 0 (28 pass). `npm run check` → exit 2 (pre-existing PI-20 `ui-customization/status-widget.test.ts` TS error outside lane). `npm run format:check` (laned files) → clean. Commit `2462229a0cee38114a405cda0616da1d0b63e7bb`; remote `origin/main` read-back same SHA. Blocked-by: PI-21 stays.
 
 **Debugger delivery (2026-08-05).** Findings fixed test-first: (1) `getArgumentCompletions` ignored its prefix and always returned both values — now filters case-insensitively (`""` → both, `"f"`/`"FR"` → only `free`), closing the q5 completion acceptance criteria; (2) `policy.test.ts` had two failures introduced by the new `ctx.ui.select` picker (source assertion and mock context) — updated the orchestrator-only assertion to exempt the picker and the mode-command wire test to cover bare→picker-cancel, invalid→warning, valid→confirmation. Product diff SHA-256: `5ab17f6d15907195496bbdc88f4f276d1b83b2f09ed7c6ba4cd4cd81ed531099` (`/tmp/pi24-debugger-product.diff`). Exact gate `node --test --experimental-strip-types extensions/workflow/flow-panel.test.ts && npm run check` → exit 0 (29 tests; TypeScript clean). `npm run format:check` (laned files) → exit 0; `git diff --check` → exit 0. Commit `4b450c2`; remote `origin/main` read-back `4b450c22b438670ab78e730c9c57a40aea1e0b2b`. Handoff: `docs/handoffs/2026-08-05-debugger-pi24.md`. Blocked-by: PI-21 stays; only the independent reviewer may set Done.
+
+**Reviewer verdict (2026-08-05).** Verdict: **PASS** (score: 92/100, diagnostic only). Bounce: 0 of 3. Gate: `node --test --experimental-strip-types extensions/workflow/flow-panel.test.ts extensions/workflow/policy.test.ts && npm run check && npm run format:check` → exit 0 (41/42 pass; test 23 is a pre-existing PI-05 FlowPanel render perf flake, environmental load-avg 36, unrelated to PI-24 diff). All 7 acceptance criteria met in code. No blocking findings. Routing: → **Done**. Board read-back: `Done` on GitHub Project #12 item `PVTI_lAHOCFvJwM4BfV__zg1Y1M0`.
 
 **What to build.** Replace the string-only `/mode` handler (`extensions/workflow/index.ts:1359-1374`). Bare `/mode` opens `ctx.ui.select` with exactly two labelled options (`workflow — auto-route risky or broad work to the fleet`, `free (manual) — everything direct unless a stage is named`); cancelling changes nothing. `getArgumentCompletions` offers `workflow` and `free` filtered case-insensitively. Invalid input notifies at severity `warning`, never `error`, and names the current mode. A successful switch updates the live mode, republishes state, and the widget's mode label immediately reflects it (q5, q7). INV-8: no `/mode` path classifies, routes, starts a stage, or emits a spawn/send on the subagent bridge.
 
@@ -859,7 +861,7 @@ Status: **Review Ready** · Blocked-by: PI-21 · GitHub issue #22
 
 ## PI-25 — Persist every mode switch to `settings.workflow.mode` (INV-12)
 
-Status: **Planned** · Blocked-by: PI-24 · GitHub issue #23
+Status: **Agent Ready** · Blocked-by: PI-24 · GitHub issue #23
 
 **What to build.** `extensions/workflow/settings-mode.ts` exporting `persistWorkflowMode(mode, io)`: read → merge → temp-write → rename, setting `workflow.mode` only, creating the `workflow` object when absent, preserving every other key, emitting stable 2-space JSON with a trailing newline. A failed read/parse/write/rename never loses the live switch: the mode still changes, the label gains `· session only`, and the user is notified at `warning`. INV-2: only the mode is read, written, logged, or rendered by this path. Session start continues to seed the live mode from `workflow.mode` so a switch survives restart (q6).
 
