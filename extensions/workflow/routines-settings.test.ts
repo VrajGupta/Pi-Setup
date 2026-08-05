@@ -98,37 +98,152 @@ test("readRoutines rejects entry with non-number scheduleMs", () => {
   assert.ok(warnings[0].includes("invalid scheduleMs"));
 });
 
-test("readRoutines rejects entry with zero scheduleMs", () => {
+// ─── name validation: dangerous characters ───────────────────────────
+
+test("readRoutines rejects name with spaces", () => {
+  const settings = {
+    workflow: {
+      routines: [{ name: "bad name", scheduleMs: 60000, prompt: "hello" }],
+    },
+  };
+  const { routines, warnings } = readRoutines(settings);
+  assert.equal(routines.length, 0);
+  assert.equal(warnings.length, 1);
+});
+
+test("readRoutines rejects name with shell metacharacters", () => {
+  const settings = {
+    workflow: {
+      routines: [
+        { name: "test;rm -rf", scheduleMs: 60000, prompt: "hello" },
+        { name: "backtick`cmd`", scheduleMs: 60000, prompt: "hello" },
+        { name: "dollar$HOME", scheduleMs: 60000, prompt: "hello" },
+        { name: "pipe|cat", scheduleMs: 60000, prompt: "hello" },
+        { name: "quote'bad", scheduleMs: 60000, prompt: "hello" },
+      ],
+    },
+  };
+  const { routines, warnings } = readRoutines(settings);
+  assert.equal(routines.length, 0);
+  assert.equal(warnings.length, 5);
+});
+
+test("readRoutines rejects name over 40 characters", () => {
+  const settings = {
+    workflow: {
+      routines: [
+        {
+          name: "a".repeat(41),
+          scheduleMs: 60000,
+          prompt: "hello",
+        },
+      ],
+    },
+  };
+  const { routines, warnings } = readRoutines(settings);
+  assert.equal(routines.length, 0);
+  assert.equal(warnings.length, 1);
+});
+
+test("readRoutines accepts name of exactly 40 characters", () => {
+  const settings = {
+    workflow: {
+      routines: [
+        {
+          name: "a".repeat(40),
+          scheduleMs: 60000,
+          prompt: "hello",
+        },
+      ],
+    },
+  };
+  const { routines, warnings } = readRoutines(settings);
+  assert.equal(routines.length, 1);
+  assert.equal(warnings.length, 0);
+});
+
+test("readRoutines accepts valid names with hyphens, dots, underscores", () => {
+  const settings = {
+    workflow: {
+      routines: [
+        { name: "daily-standup", scheduleMs: 60000, prompt: "p" },
+        { name: "weekly.review", scheduleMs: 60000, prompt: "p" },
+        { name: "hourly_check", scheduleMs: 60000, prompt: "p" },
+        { name: "Routine-1.0_test", scheduleMs: 60000, prompt: "p" },
+      ],
+    },
+  };
+  const { routines, warnings } = readRoutines(settings);
+  assert.equal(routines.length, 4);
+  assert.equal(warnings.length, 0);
+});
+
+test("readRoutines clamps zero scheduleMs to 60000", () => {
   const settings = {
     workflow: {
       routines: [{ name: "zero", scheduleMs: 0, prompt: "hello" }],
     },
   };
   const { routines, warnings } = readRoutines(settings);
-  assert.equal(routines.length, 0);
-  assert.equal(warnings.length, 1);
+  assert.equal(routines.length, 1);
+  assert.equal(routines[0].scheduleMs, 60000);
+  assert.equal(warnings.length, 0);
 });
 
-test("readRoutines rejects entry with negative scheduleMs", () => {
+test("readRoutines clamps negative scheduleMs to 60000", () => {
   const settings = {
     workflow: {
       routines: [{ name: "neg", scheduleMs: -1000, prompt: "hello" }],
     },
   };
   const { routines, warnings } = readRoutines(settings);
-  assert.equal(routines.length, 0);
-  assert.equal(warnings.length, 1);
+  assert.equal(routines.length, 1);
+  assert.equal(routines[0].scheduleMs, 60000);
+  assert.equal(warnings.length, 0);
 });
 
-test("readRoutines rejects entry with non-finite scheduleMs", () => {
+test("readRoutines rejects non-finite scheduleMs", () => {
   const settings = {
     workflow: {
-      routines: [{ name: "nan", scheduleMs: NaN, prompt: "hello" }],
+      routines: [
+        { name: "nan", scheduleMs: NaN, prompt: "hello" },
+        { name: "inf", scheduleMs: Infinity, prompt: "world" },
+      ],
     },
   };
   const { routines, warnings } = readRoutines(settings);
   assert.equal(routines.length, 0);
-  assert.equal(warnings.length, 1);
+  assert.equal(warnings.length, 2);
+  assert.ok(warnings.every((w) => w.includes("invalid scheduleMs")));
+});
+
+test("readRoutines clamps scheduleMs above max to 604800000", () => {
+  const settings = {
+    workflow: {
+      routines: [{ name: "big", scheduleMs: 1_000_000_000, prompt: "hello" }],
+    },
+  };
+  const { routines, warnings } = readRoutines(settings);
+  assert.equal(routines.length, 1);
+  assert.equal(routines[0].scheduleMs, 604800000);
+  assert.equal(warnings.length, 0);
+});
+
+test("readRoutines keeps in-range scheduleMs unchanged", () => {
+  const settings = {
+    workflow: {
+      routines: [
+        { name: "a", scheduleMs: 60000, prompt: "p" },
+        { name: "b", scheduleMs: 3600000, prompt: "p" },
+        { name: "c", scheduleMs: 604800000, prompt: "p" },
+      ],
+    },
+  };
+  const { routines } = readRoutines(settings);
+  assert.equal(routines.length, 3);
+  assert.equal(routines[0].scheduleMs, 60000);
+  assert.equal(routines[1].scheduleMs, 3600000);
+  assert.equal(routines[2].scheduleMs, 604800000);
 });
 
 test("readRoutines rejects entry with missing prompt", () => {
@@ -187,6 +302,25 @@ test("readRoutines silently drops invalid at values, keeps valid ones", () => {
   const { routines, warnings } = readRoutines(settings);
   assert.equal(routines.length, 1);
   assert.equal(routines[0].name, "filtered");
+  assert.deepEqual(routines[0].at, [500, 700]);
+  assert.equal(warnings.length, 0);
+});
+
+test("readRoutines deduplicates at values", () => {
+  const settings = {
+    workflow: {
+      routines: [
+        {
+          name: "deduped",
+          scheduleMs: 60000,
+          at: [500, 500, 700, 500, 700],
+          prompt: "hello",
+        },
+      ],
+    },
+  };
+  const { routines, warnings } = readRoutines(settings);
+  assert.equal(routines.length, 1);
   assert.deepEqual(routines[0].at, [500, 700]);
   assert.equal(warnings.length, 0);
 });
@@ -443,6 +577,53 @@ test("readRoutines never throws on any input", () => {
     assert.ok(Array.isArray(routines));
     assert.ok(Array.isArray(warnings));
   }
+});
+
+test("readRoutines handles throwing workflow getter without crashing", () => {
+  const settings = {
+    get workflow() {
+      throw new Error("boom");
+    },
+  };
+  const { routines, warnings } = readRoutines(settings);
+  assert.equal(routines.length, 0);
+  assert.equal(warnings.length, 0);
+});
+
+test("readRoutines handles throwing routines getter without crashing", () => {
+  const settings = {
+    workflow: {
+      get routines() {
+        throw new Error("boom");
+      },
+    },
+  };
+  const { routines, warnings } = readRoutines(settings);
+  assert.equal(routines.length, 0);
+  assert.equal(warnings.length, 0);
+});
+
+// ─── perf: 10 000 entries ───────────────────────────────────────────
+
+test("readRoutines handles 10 000 entries in under 500 ms", () => {
+  const entries: Record<string, unknown>[] = [];
+  for (let i = 0; i < 10_000; i++) {
+    entries.push({
+      name: `r${i}`,
+      scheduleMs: 60000 + i,
+      prompt: "hello",
+    });
+  }
+  const settings = { workflow: { routines: entries } };
+  const start = performance.now();
+  const { routines, warnings } = readRoutines(settings);
+  const elapsed = performance.now() - start;
+  assert.equal(routines.length, 10_000);
+  assert.equal(warnings.length, 0);
+  assert.ok(
+    elapsed < 500,
+    `10 000 entries took ${elapsed}ms, expected < 500ms`,
+  );
 });
 
 test("writeRoutines never throws on any input", () => {

@@ -32,16 +32,50 @@ function isObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null;
 }
 
-function isPositiveNumber(v: unknown): v is number {
-  return typeof v === "number" && Number.isFinite(v) && v > 0;
-}
+const MIN_SCHEDULE_MS = 60_000;
+const MAX_SCHEDULE_MS = 604_800_000;
+const MAX_NAME_LENGTH = 40;
+// Terminal-safe: alphanumeric, underscore, hyphen, dot only.
+const SAFE_NAME_RE = /^[a-zA-Z0-9._-]+$/;
 
 function isIntegerInRange(v: unknown, min: number, max: number): v is number {
   return typeof v === "number" && Number.isInteger(v) && v >= min && v <= max;
 }
 
+/**
+ * Clamp scheduleMs to [MIN_SCHEDULE_MS, MAX_SCHEDULE_MS].
+ * Returns null (reject) for non-number, null, undefined.
+ */
+function clampScheduleMs(v: unknown): number | null {
+  if (typeof v !== "number" || !Number.isFinite(v)) return null;
+  if (v < MIN_SCHEDULE_MS) return MIN_SCHEDULE_MS;
+  if (v > MAX_SCHEDULE_MS) return MAX_SCHEDULE_MS;
+  return v;
+}
+
+function isValidName(v: unknown): v is string {
+  return (
+    typeof v === "string" &&
+    v.length > 0 &&
+    v.length <= MAX_NAME_LENGTH &&
+    SAFE_NAME_RE.test(v)
+  );
+}
+
 function isNonEmptyString(v: unknown): v is string {
   return typeof v === "string" && v.length > 0;
+}
+
+/**
+ * Safely access a property on an object, returning undefined if the getter throws.
+ * INV-6: a throwing getter must not crash the read path.
+ */
+function safeGet(obj: Record<string, unknown>, key: string): unknown {
+  try {
+    return obj[key];
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -60,8 +94,8 @@ function validateRoutine(
     return null;
   }
 
-  // name — non-empty string
-  if (!isNonEmptyString(raw.name)) {
+  // name — non-empty, terminal-safe, <= 40 chars
+  if (!isValidName(raw.name)) {
     warnings.push(`routine at index ${index} has invalid name — skipped`);
     return null;
   }
@@ -72,8 +106,9 @@ function validateRoutine(
     return null;
   }
 
-  // scheduleMs — positive number
-  if (!isPositiveNumber(raw.scheduleMs)) {
+  // scheduleMs — clamp to [MIN_SCHEDULE_MS, MAX_SCHEDULE_MS]
+  const scheduleMs = clampScheduleMs(raw.scheduleMs);
+  if (scheduleMs === null) {
     warnings.push(`routine at index ${index} has invalid scheduleMs — skipped`);
     return null;
   }
@@ -92,8 +127,10 @@ function validateRoutine(
       }
       // Invalid at values are silently dropped
     }
-    if (filtered.length > 0) {
-      at = filtered;
+    // Deduplicate for consistency with the scheduler
+    const deduped = [...new Set(filtered)];
+    if (deduped.length > 0) {
+      at = deduped;
     }
   }
 
@@ -109,7 +146,7 @@ function validateRoutine(
   seenNames.add(raw.name);
   return {
     name: raw.name,
-    scheduleMs: raw.scheduleMs,
+    scheduleMs,
     ...(at ? { at } : {}),
     prompt: raw.prompt,
     enabled,
@@ -126,12 +163,13 @@ export function readRoutines(settings: Record<string, unknown>): ReadResult {
     return { routines: [], warnings: [] };
   }
 
-  const workflow = settings.workflow;
+  // INV-6: use safeGet so a throwing getter never crashes the read path.
+  const workflow = safeGet(settings, "workflow");
   if (!isObject(workflow)) {
     return { routines: [], warnings: [] };
   }
 
-  const raw = workflow.routines;
+  const raw = safeGet(workflow, "routines");
   if (!Array.isArray(raw)) {
     return { routines: [], warnings: [] };
   }

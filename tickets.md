@@ -985,7 +985,7 @@ Status: **Debugger Ready** · Blocked-by: none · GitHub issue #27
 
 ## PI-29 — Definitions in settings (read/write workflow.routines)
 
-Status: **Debugger Ready** · Blocked-by: none · GitHub issue #26
+Status: **Review Ready** · Blocked-by: none · GitHub issue #26
 
 **What to build.** `extensions/workflow/routine-definitions.ts`: validation, read, and write helpers for `workflow.routines` in settings. `readRoutines()`, `writeRoutines()`, `validateRoutine()`. Same atomic write pattern as `settings-mode.ts`. `settings.example.json` gains `workflow.routines: []`.
 
@@ -1003,6 +1003,12 @@ Status: **Debugger Ready** · Blocked-by: none · GitHub issue #26
 **Verification-command.** `node --test --experimental-strip-types extensions/workflow/routine-definitions.test.ts && npm run check`
 
 **Coder delivery (2026-08-05).** Changed paths: `extensions/workflow/routines-settings.ts` (new), `extensions/workflow/routines-settings.test.ts` (new), `settings.example.json` (add `workflow.routines: []`). Diff SHA-256: `8f573b58d5f03bab096a970cf81056fa4f80b524fb22b1445cefef1d91410ba6`. Gate: `node --test --experimental-strip-types extensions/workflow/routines-settings.test.ts && npm run check` → exit 0 (29 tests; tsc clean); `npm run format:check` (laned files) → exit 0. Handoff: `docs/handoffs/2026-08-05-coder-pi29.md`.
+
+**Debugger delivery (2026-08-05).**
+- Findings fixed: scheduleMs clamping [60000, 604800000] per spec INV-16; dangerous character validation for name; INV-6 throwing getter guard; `at` dedup; perf test 10k entries < 500ms.
+- Diff SHA-256: `89ee051927e1b3aaf22f09590718d9a837da0506f5d5b29812726cac4930c866`
+- Gate: `node --test --experimental-strip-types extensions/workflow/routines-settings.test.ts && npm run check && npx prettier --check extensions/workflow/routines-settings.ts extensions/workflow/routines-settings.test.ts` → exit 0 (40 tests; tsc clean; format clean)
+- Handoff: `docs/handoffs/2026-08-05-debugger-pi29.md`
 
 ## PI-30 — Due-routine banner and /routine command
 
