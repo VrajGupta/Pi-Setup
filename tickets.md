@@ -720,7 +720,7 @@ The ticket is **Review Ready**, not Done. Only the independent reviewer may set 
 
 ## PI-21 — Rich mode/route/stage rows with tabular alignment (INV-11)
 
-Status: **Planned** · Blocked-by: PI-20 · GitHub issue #19
+Status: **Agent Ready** · Blocked-by: PI-20 · GitHub issue #19
 
 **What to build.** The rich mode/route/stage content: section rule, a `columns()` line with the mode label left and the route label right, the stage rail, and one row per tracked stage agent (glyph, stage, `backend/model`, elapsed, turns, `% ctx`). Labels are exactly `mode workflow` / `mode free (manual)` and `route direct` / `route fleet/<stage>` (q7). A pure `layoutColumns` helper computes each numeric column width once per render from the widest cell measured with `visibleWidth`, and right-aligns every numeric cell (tabular numbers). Telemetry stays measured-only: unknown renders `?` with no `%`, sub-1 % positive renders `<1%`, stale readings carry `~` plus age. Width degradation: `< 100` drops `backend/model`; `< 60` collapses the rail to the active stage.
 
