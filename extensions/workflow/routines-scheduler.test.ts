@@ -83,16 +83,16 @@ test("routine scheduler: pure module — no fs/network/subprocess imports", () =
   assert.doesNotMatch(source, /git\s+(commit|push)/i);
 });
 
-// ---- interval clamp + cadence ----
+// ---- interval clamp + cadence [60000, 604800000] ----
 
-test("routine scheduler: interval clamps to [2000, 300000] and fires at that cadence", async () => {
+test("routine scheduler: interval clamps to [60000, 604800000] and fires at that cadence", async () => {
   const cases: [unknown, number][] = [
     [-1, MIN_ROUTINE_INTERVAL_MS],
     [0, MIN_ROUTINE_INTERVAL_MS],
-    [1000, MIN_ROUTINE_INTERVAL_MS],
-    [2000, MIN_ROUTINE_INTERVAL_MS],
-    [10000, 10000],
-    [300000, MAX_ROUTINE_INTERVAL_MS],
+    [30000, MIN_ROUTINE_INTERVAL_MS],
+    [60000, MIN_ROUTINE_INTERVAL_MS],
+    [120000, 120000],
+    [604800000, MAX_ROUTINE_INTERVAL_MS],
     [1_000_000_000, MAX_ROUTINE_INTERVAL_MS],
     [Infinity, DEFAULT_ROUTINE_INTERVAL_MS],
     [NaN, DEFAULT_ROUTINE_INTERVAL_MS],
@@ -151,15 +151,19 @@ test("routine scheduler: missing scheduleMs and no at never fires", async () => 
   scheduler.stop();
 });
 
-// ---- at list: matching minute, once per minute, wrapping ----
+// ---- null scheduleMs treated as missing ----
 
-test("routine scheduler: at list fires at matching minute, once per minute, wrapping", async () => {
-  const clock = fakeTimer(new Date(2026, 0, 1, 0, 0).getTime());
+test("routine scheduler: null scheduleMs is treated as missing, not as a 10s interval", async () => {
+  const clock = fakeTimer(new Date(2026, 0, 1, 8, 59).getTime());
   const fires: string[] = [];
   const scheduler = startRoutineScheduler({
     routines: [
-      routine({ name: "daily", at: [9] }),
-      routine({ name: "tick", scheduleMs: 2000 }),
+      routine({
+        name: "null-ms",
+        scheduleMs: null as unknown as number,
+        at: [540],
+      }),
+      routine({ name: "bad", scheduleMs: null as unknown as number }),
     ],
     now: clock.now,
     setTimer: clock.setTimer,
@@ -168,8 +172,43 @@ test("routine scheduler: at list fires at matching minute, once per minute, wrap
       fires.push(r.name);
     },
   });
+  clock.advance(60 * 1000); // 09:00
+  await flush();
+  assert.deepEqual(
+    fires,
+    ["null-ms"],
+    "null scheduleMs with at should fire at at minute",
+  );
+  const snap = scheduler.getSnapshot();
+  assert.equal(
+    snap.routines.find((s) => s.name === "bad")?.configError,
+    "missing schedule (set scheduleMs or at)",
+  );
+  scheduler.stop();
+});
 
-  // advance to 09:00
+// ---- at list: matching minute, once per minute, wrapping ----
+
+test("routine scheduler: at list fires at matching minute, once per minute", async () => {
+  const clock = fakeTimer(new Date(2026, 0, 1, 0, 0).getTime());
+  const fires: string[] = [];
+  // Use two routines with intervals that produce a sub-minute tick (gcd=6000)
+  // so the once-per-minute guard is exercised.
+  const scheduler = startRoutineScheduler({
+    routines: [
+      routine({ name: "daily", at: [9] }),
+      routine({ name: "tick", scheduleMs: 60000 }),
+      routine({ name: "sub", scheduleMs: 66000 }), // gcd(60000, 66000) = 6000
+    ],
+    now: clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+    onDue: (r) => {
+      if (r.name === "daily") fires.push(r.name);
+    },
+  });
+
+  // advance to 09:00:00
   clock.advance(9 * 60 * 60 * 1000);
   await flush();
   assert.equal(
@@ -179,7 +218,7 @@ test("routine scheduler: at list fires at matching minute, once per minute, wrap
   );
 
   // sub-minute ticks within the same minute → no second fire
-  clock.advance(6000);
+  clock.advance(6 * 1000);
   await flush();
   assert.equal(
     fires.filter((n) => n === "daily").length,
@@ -225,6 +264,134 @@ test("routine scheduler: at list wrapping across midnight", async () => {
   scheduler.stop();
 });
 
+test("routine scheduler: at boundary 0 fires at midnight", async () => {
+  const clock = fakeTimer(new Date(2026, 0, 1, 23, 58).getTime());
+  const fires: string[] = [];
+  const scheduler = startRoutineScheduler({
+    routines: [routine({ name: "midnight", at: [0] })],
+    now: clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+    onDue: (r) => {
+      fires.push(r.name);
+    },
+  });
+  clock.advance(60 * 1000); // 23:59 → no fire
+  await flush();
+  assert.equal(fires.length, 0, "no fire at 23:59");
+  clock.advance(60 * 1000); // 00:00
+  await flush();
+  assert.equal(fires.length, 1, "should fire at 00:00");
+  scheduler.stop();
+});
+
+// ---- at + scheduleMs: spec precedence (at pins first fire, then interval drives) ----
+
+test("routine scheduler: both at and scheduleMs — at pins first fire, then interval drives (spec q1)", async () => {
+  const clock = fakeTimer(new Date(2026, 0, 1, 9, 30).getTime());
+  const fires: string[] = [];
+  const scheduler = startRoutineScheduler({
+    // scheduleMs=3600000, at=[540] — next at 540 is tomorrow 09:00
+    routines: [routine({ name: "both", scheduleMs: 3600000, at: [540] })],
+    now: clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+    onDue: (r) => {
+      fires.push(`[${r.name}@${clock.now()}]`);
+    },
+  });
+
+  // 09:30 + 1h = 10:30: interval has elapsed but at has not matched → no fire
+  clock.advance(60 * 60 * 1000);
+  await flush();
+  assert.equal(
+    fires.length,
+    0,
+    "interval must not fire before the first at alignment",
+  );
+
+  // advance to next day 09:00 (minute 540): first fire via at
+  clock.advance(22.5 * 60 * 60 * 1000);
+  await flush();
+  assert.equal(
+    fires.length,
+    1,
+    "first fire should align to the next at minute",
+  );
+
+  // +1h: interval fires from the at anchor
+  clock.advance(60 * 60 * 1000);
+  await flush();
+  assert.equal(
+    fires.length,
+    2,
+    "subsequent fires use the interval from the anchor",
+  );
+
+  scheduler.stop();
+});
+
+// ---- invalid at values are dropped ----
+
+test("routine scheduler: at values outside 0-1439 or non-integer are dropped", async () => {
+  const clock = fakeTimer(new Date(2026, 0, 1, 8, 59).getTime());
+  let fires = 0;
+  const scheduler = startRoutineScheduler({
+    routines: [routine({ name: "bad-at", at: [1440, -5, 1.5, 540] })],
+    now: clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+    onDue: () => {
+      fires++;
+    },
+  });
+  clock.advance(60 * 1000); // 09:00 — only valid minute 540 remains
+  await flush();
+  assert.equal(fires, 1, "only the valid at value should fire");
+  scheduler.stop();
+});
+
+test("routine scheduler: at with only invalid values and no scheduleMs is a config error", async () => {
+  const clock = fakeTimer();
+  const scheduler = startRoutineScheduler({
+    routines: [routine({ name: "none", at: [1440, -5, 1.5] })],
+    now: clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+  });
+  clock.advance(60000);
+  const snap = scheduler.getSnapshot();
+  assert.equal(
+    snap.routines[0]?.configError,
+    "missing schedule (set scheduleMs or at)",
+  );
+  scheduler.stop();
+});
+
+// ---- empty at array with scheduleMs is interval-only ----
+
+test("routine scheduler: empty at array with scheduleMs is interval-only", async () => {
+  const clock = fakeTimer();
+  let fires = 0;
+  const scheduler = startRoutineScheduler({
+    routines: [routine({ name: "empty", at: [], scheduleMs: 60000 })],
+    now: clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+    onDue: () => {
+      fires++;
+    },
+  });
+  clock.advance(60 * 1000);
+  await flush();
+  assert.equal(
+    fires,
+    1,
+    "empty at array + scheduleMs behaves as interval-only",
+  );
+  scheduler.stop();
+});
+
 // ---- two intervals: expected counts (tickets.md AC) ----
 
 test("routine scheduler: intervals 60000 and 120000 fire 2 and 1 over 120000 ms", async () => {
@@ -260,7 +427,7 @@ test("routine scheduler: slow handler never overlaps itself", async () => {
   let maxActive = 0;
   let release: (() => void) | undefined;
   const scheduler = startRoutineScheduler({
-    routines: [routine({ name: "a", scheduleMs: 2000 })],
+    routines: [routine({ name: "a", scheduleMs: 60000 })],
     now: clock.now,
     setTimer: clock.setTimer,
     clearTimer: clock.clearTimer,
@@ -274,7 +441,7 @@ test("routine scheduler: slow handler never overlaps itself", async () => {
   });
 
   for (let i = 0; i < 10; i++) {
-    clock.advance(2000);
+    clock.advance(60000);
     await flush();
   }
   assert.equal(active, 1);
@@ -291,8 +458,8 @@ test("routine scheduler: throwing routine A never kills scheduler or routine B",
   let bFires = 0;
   const scheduler = startRoutineScheduler({
     routines: [
-      routine({ name: "a", scheduleMs: 2000 }),
-      routine({ name: "b", scheduleMs: 2000 }),
+      routine({ name: "a", scheduleMs: 60000 }),
+      routine({ name: "b", scheduleMs: 60000 }),
     ],
     now: clock.now,
     setTimer: clock.setTimer,
@@ -304,7 +471,7 @@ test("routine scheduler: throwing routine A never kills scheduler or routine B",
   });
 
   for (let i = 0; i < 5; i++) {
-    assert.doesNotThrow(() => clock.advance(2000));
+    assert.doesNotThrow(() => clock.advance(60000));
     await flush();
   }
   assert.equal(bFires, 5, "routine B should fire every tick");
@@ -323,7 +490,7 @@ test("routine scheduler: stop clears timers and prevents further fires", async (
   let fireCalls = 0;
   let release: (() => void) | undefined;
   const scheduler = startRoutineScheduler({
-    routines: [routine({ name: "a", scheduleMs: 2000 })],
+    routines: [routine({ name: "a", scheduleMs: 60000 })],
     now: clock.now,
     setTimer: clock.setTimer,
     clearTimer: clock.clearTimer,
@@ -335,7 +502,7 @@ test("routine scheduler: stop clears timers and prevents further fires", async (
     },
   });
 
-  clock.advance(2000);
+  clock.advance(60000);
   await flush();
   assert.equal(fireCalls, 1);
   assert.ok(clock.unrefCount() >= 1, "timer should be unref'd");
@@ -346,7 +513,7 @@ test("routine scheduler: stop clears timers and prevents further fires", async (
   await flush();
 
   for (let i = 0; i < 10; i++) {
-    clock.advance(2000);
+    clock.advance(60000);
     await flush();
   }
   assert.equal(fireCalls, 1, "fires continued after stop");
@@ -375,6 +542,25 @@ test("routine scheduler: with no routines the timer never fires", async () => {
   clock.advance(100_000);
   await flush();
   assert.equal(fires, 0);
+  assert.equal(scheduler.getSnapshot().tickCount, 0);
+  scheduler.stop();
+});
+
+// ---- all-disabled or all-invalid → no timer ----
+
+test("routine scheduler: with only disabled or invalid routines no timer is scheduled", async () => {
+  const clock = fakeTimer();
+  const scheduler = startRoutineScheduler({
+    routines: [
+      routine({ name: "d", scheduleMs: 60000, enabled: false }),
+      routine({ name: "x", prompt: "" }),
+    ],
+    now: clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+  });
+  assert.equal(clock.pendingCount(), 0, "no timer with nothing fire-able");
+  clock.advance(60000);
   assert.equal(scheduler.getSnapshot().tickCount, 0);
   scheduler.stop();
 });
@@ -452,19 +638,95 @@ test("routine scheduler: disabled and snoozed routines never appear as due", asy
   scheduler.stop();
 });
 
+// ---- duplicate names + malformed defs ----
+
+test("routine scheduler: duplicate names and malformed defs are isolated", async () => {
+  const clock = fakeTimer();
+  let fires = 0;
+  const scheduler = startRoutineScheduler({
+    routines: [
+      routine({ name: "a", scheduleMs: 60000 }),
+      routine({ name: "a", scheduleMs: 60000 }),
+      routine({ name: "", prompt: "p", scheduleMs: 60000 }),
+      routine({ name: "no-prompt", scheduleMs: 60000, prompt: "" }),
+      null as unknown as RoutineDefinition,
+    ],
+    now: clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+    onDue: () => {
+      fires++;
+    },
+  });
+  clock.advance(60000);
+  await flush();
+  assert.equal(fires, 1, "only the first valid routine fires");
+  const snap = scheduler.getSnapshot();
+  const reasons = snap.routines.map((r) => r.configError ?? "ok");
+  assert.deepEqual(reasons, [
+    "ok",
+    "duplicate name",
+    "invalid name",
+    "missing prompt",
+    "invalid definition",
+  ]);
+  scheduler.stop();
+});
+
+// ---- INV-6: throwing now / setTimer ----
+
+test("routine scheduler: throwing injected now() stops the scheduler (INV-6)", () => {
+  const clock = fakeTimer();
+  let calls = 0;
+  const now = () => {
+    if (++calls > 1) throw new Error("clock failed");
+    return clock.now();
+  };
+  const scheduler = startRoutineScheduler({
+    routines: [routine({ name: "a", scheduleMs: 60000 })],
+    now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+    onDue: () => {},
+  });
+  assert.doesNotThrow(() => clock.advance(60000));
+  assert.doesNotThrow(() => scheduler.stop());
+  scheduler.stop();
+});
+
+test("routine scheduler: throwing injected setTimer() stops the scheduler (INV-6)", () => {
+  const clock = fakeTimer();
+  let setCalls = 0;
+  const setTimer = (cb: () => void, delayMs: number): NodeJS.Timeout => {
+    setCalls++;
+    if (setCalls > 1) throw new Error("timer failed");
+    return clock.setTimer(cb, delayMs);
+  };
+  const scheduler = startRoutineScheduler({
+    routines: [routine({ name: "a", scheduleMs: 60000 })],
+    now: clock.now,
+    setTimer,
+    clearTimer: clock.clearTimer,
+    onDue: () => {},
+  });
+  assert.doesNotThrow(() => clock.advance(60000));
+  assert.doesNotThrow(() => scheduler.stop());
+  scheduler.stop();
+});
+
 // ---- perf: 10 000 steps ----
 
 test("routine scheduler: 10 000 ticks complete in under 2 000 ms", () => {
   const clock = fakeTimer();
   const scheduler = startRoutineScheduler({
-    routines: [routine({ name: "a", scheduleMs: 2000 })],
+    routines: [routine({ name: "a", scheduleMs: 60000 })],
     now: clock.now,
     setTimer: clock.setTimer,
     clearTimer: clock.clearTimer,
   });
 
   const started = performance.now();
-  for (let i = 0; i < 10_000; i++) clock.advance(2000);
+  for (let i = 0; i < 10_000; i++) clock.advance(60000);
   const elapsed = performance.now() - started;
   assert.equal(scheduler.getSnapshot().tickCount, 10_000);
   assert.ok(

@@ -11,15 +11,18 @@
  * recurring timer is unref'd and cleared on stop() (INV-18).
  */
 
-export const MIN_ROUTINE_INTERVAL_MS = 2_000;
-export const MAX_ROUTINE_INTERVAL_MS = 300_000;
-export const DEFAULT_ROUTINE_INTERVAL_MS = 10_000;
+export const MIN_ROUTINE_INTERVAL_MS = 60_000;
+export const MAX_ROUTINE_INTERVAL_MS = 604_800_000;
+export const DEFAULT_ROUTINE_INTERVAL_MS = 60_000;
+const MIN_TICK_MS = 5_000;
+const MAX_TICK_MS = 60_000;
+const DEFAULT_TICK_MS = 10_000;
 const AT_ONLY_TICK_MS = 60_000;
 const MAX_MINUTE_OF_DAY = 1_439;
 
 export interface RoutineDefinition {
   readonly name: string;
-  /** Fixed interval between fires, clamped to [2000, 300000]. */
+  /** Fixed interval between fires, clamped to [60000, 604800000]. */
   readonly scheduleMs?: number;
   /** Minutes of day (0-1439) at which the routine fires (spec q1). */
   readonly at?: readonly number[];
@@ -53,7 +56,7 @@ export interface RoutineScheduler {
   stop(): void;
 }
 
-function clampInterval(value: unknown): number {
+function clampRoutineInterval(value: unknown): number {
   if (value === undefined || value === null || typeof value !== "number") {
     return DEFAULT_ROUTINE_INTERVAL_MS;
   }
@@ -62,6 +65,21 @@ function clampInterval(value: unknown): number {
     MIN_ROUTINE_INTERVAL_MS,
     Math.min(MAX_ROUTINE_INTERVAL_MS, value),
   );
+}
+
+function clampTickMs(value: number): number {
+  return Math.max(MIN_TICK_MS, Math.min(MAX_TICK_MS, value));
+}
+
+function gcd(a: number, b: number): number {
+  let x = Math.abs(a);
+  let y = Math.abs(b);
+  while (y !== 0) {
+    const t = y;
+    y = x % y;
+    x = t;
+  }
+  return x;
 }
 
 function minuteOfDay(epochMs: number): number {
@@ -157,7 +175,7 @@ function createInternal(def: unknown, seen: Set<string>): RoutineInternal {
       configError: "invalid at list",
     };
   }
-  const hasInterval = candidate.scheduleMs !== undefined;
+  const hasInterval = typeof candidate.scheduleMs === "number";
   if (!hasInterval && validAt === undefined) {
     return {
       def: candidate,
@@ -171,19 +189,19 @@ function createInternal(def: unknown, seen: Set<string>): RoutineInternal {
 }
 
 function computeTickMs(states: readonly RoutineInternal[]): number {
-  let min: number | undefined;
+  let g: number | undefined;
   let hasAtOnly = false;
   for (const state of states) {
     if (state.configError !== undefined || !state.enabled) continue;
-    if (state.def.scheduleMs !== undefined) {
-      const clamped = clampInterval(state.def.scheduleMs);
-      min = min === undefined ? clamped : Math.min(min, clamped);
+    if (typeof state.def.scheduleMs === "number") {
+      const clamped = clampRoutineInterval(state.def.scheduleMs);
+      g = g === undefined ? clamped : gcd(g, clamped);
     } else if (state.validAt !== undefined) {
       hasAtOnly = true;
     }
   }
-  if (min === undefined && !hasAtOnly) return DEFAULT_ROUTINE_INTERVAL_MS;
-  return clampInterval(min ?? AT_ONLY_TICK_MS);
+  if (g === undefined && !hasAtOnly) return DEFAULT_TICK_MS;
+  return clampTickMs(g ?? AT_ONLY_TICK_MS);
 }
 
 /**
@@ -232,8 +250,12 @@ export function startRoutineScheduler({
 
   const settle = (state: RoutineInternal, error: string | undefined) => {
     state.isRunning = false;
-    state.lastFiredAt = now();
     if (error !== undefined) state.lastError = error;
+    try {
+      state.lastFiredAt = now();
+    } catch {
+      // Bounded (INV-6): keep previous lastFiredAt on clock failure.
+    }
   };
 
   const fire = (state: RoutineInternal, dueAt: number) => {
@@ -265,20 +287,34 @@ export function startRoutineScheduler({
     ) {
       return false;
     }
-    if (state.validAt !== undefined) {
+    const hasInterval = typeof def.scheduleMs === "number";
+    // at drives the first fire when scheduleMs is present (spec q1: one-time alignment).
+    // at-only routines always use at as the recurring schedule.
+    if (
+      state.validAt !== undefined &&
+      (!hasInterval || state.lastFiredAt === undefined)
+    ) {
       const minute = minuteOfDay(nowVal);
       const minuteKey = Math.floor(nowVal / 60_000);
       const atMatch = state.validAt.includes(minute);
+      const startedInAtMinute =
+        state.lastFiredAt === undefined &&
+        state.lastFiredMinuteKey === undefined &&
+        state.validAt.includes(minuteOfDay(startedAt));
       if (
-        atMatch &&
+        (atMatch || startedInAtMinute) &&
         (state.lastFiredMinuteKey === undefined ||
           state.lastFiredMinuteKey !== minuteKey)
       ) {
         return true;
       }
     }
-    if (def.scheduleMs !== undefined) {
-      const interval = clampInterval(def.scheduleMs);
+    // Interval drives after the first fire (or always when at is absent).
+    if (
+      hasInterval &&
+      (state.validAt === undefined || state.lastFiredAt !== undefined)
+    ) {
+      const interval = clampRoutineInterval(def.scheduleMs);
       const anchor = state.lastFiredAt ?? startedAt;
       if (nowVal - anchor >= interval) return true;
     }
@@ -287,22 +323,35 @@ export function startRoutineScheduler({
 
   function tick() {
     if (isStopped) return;
-    tickCount++;
-    const nowVal = now();
-    const due: string[] = [];
-    for (const state of states) {
-      if (state.configError !== undefined || !state.enabled) continue;
-      if (!isDue(state, nowVal)) continue;
-      due.push(state.name);
-      if (!state.isRunning) fire(state, nowVal);
+    try {
+      tickCount++;
+      const nowVal = now();
+      const due: string[] = [];
+      for (const state of states) {
+        if (state.configError !== undefined || !state.enabled) continue;
+        if (!isDue(state, nowVal)) continue;
+        due.push(state.name);
+        if (!state.isRunning) fire(state, nowVal);
+      }
+      dueNames = due;
+      if (isStopped) return;
+      timer = setTimer(tick, tickMs);
+      unref(timer);
+    } catch {
+      // Bounded (INV-6): a throwing injected now()/setTimer() stops the
+      // scheduler instead of crash-looping the host.
+      isStopped = true;
+      if (timer) {
+        clear(timer);
+        timer = undefined;
+      }
     }
-    dueNames = due;
-    if (isStopped) return;
-    timer = setTimer(tick, tickMs);
-    unref(timer);
   }
 
-  if (states.length > 0) {
+  const hasActive = states.some(
+    (s) => s.configError === undefined && s.enabled,
+  );
+  if (states.length > 0 && hasActive) {
     timer = setTimer(tick, tickMs);
     unref(timer);
   }

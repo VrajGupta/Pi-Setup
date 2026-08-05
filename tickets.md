@@ -961,7 +961,7 @@ Parallel entry points: **PI-28** and **PI-29**.
 
 ## PI-28 — Scheduler engine (off-render, injectable timers, per-routine isolation)
 
-Status: **Debugger Ready** · Blocked-by: none · GitHub issue #27
+Status: **Review Ready** · Blocked-by: none · GitHub issue #27
 
 **What to build.** `extensions/workflow/routines-scheduler.ts`: off-render, fixed-interval, single-flight-per-routine scheduler with injectable timers. `startRoutineScheduler({ routines, now, setTimer, clearTimer, onDue })` returning `{ getDueRoutineNames(), getSnapshot(), stop() }`. Tick interval is the gcd of all routine intervals, clamped [5000, 60000], default 10000. Per-routine isolation (INV-15, INV-16). No filesystem I/O (INV-3).
 
@@ -982,6 +982,13 @@ Status: **Debugger Ready** · Blocked-by: none · GitHub issue #27
 - Diff SHA-256: `76a478b4bc3a19e15a7c6db0c3b84f553db5650fc702d27c5ad5709be2962805`
 - Gate: `node --test --experimental-strip-types extensions/workflow/routines-scheduler.test.ts && npm run check && npm run format:check` → exit 0 (13 tests; tsc clean; format clean)
 - Handoff: `docs/handoffs/2026-08-05-coder-pi28.md`
+
+**Debugger delivery (2026-08-05).**
+- Changed: `extensions/workflow/routines-scheduler.ts` (edit), `extensions/workflow/routines-scheduler.test.ts` (edit)
+- Fixed: routine interval clamp [60000, 604800000] (was [2000, 300000]); tick interval clamp [5000, 60000] with gcd (was [2000, 300000]); at+scheduleMs spec precedence (at pins first fire, interval drives); scheduleMs null/string type-boundary; INV-6 crash-wrap on throwing now/setTimer; no timer for all-invalid/disabled routines; also added 10 new tests covering at [0] boundary, empty at+scheduleMs, null scheduleMs, duplicate names, invalid at dropping, at+scheduleMs precedence, sub-minute once-per-minute guard, all-disabled, INV-6 throwing now/setTimer.
+- Diff SHA-256: `173e1e5272723a54bb5b7e5310142a1ed36bff267dffcaf4efdc23ac4e2662e9`
+- Gate: `node --test --experimental-strip-types extensions/workflow/routines-scheduler.test.ts && npm run check && npm run format:check` → exit 0 (23 tests; tsc clean; format clean)
+- Handoff: `docs/handoffs/2026-08-05-debugger-pi28.md`
 
 ## PI-29 — Definitions in settings (read/write workflow.routines)
 
