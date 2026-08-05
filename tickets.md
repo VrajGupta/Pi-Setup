@@ -327,7 +327,7 @@ read happens off the render path.
 
 ## PI-11 — Retro-gate the orchestrator-only + honest-telemetry continuation (`bb5d79e`)
 
-Status: **Debugger Ready** · Blocked-by: none · Phase 3 · Priority 1 · *Amended 2026-08-05 (human decision): the shared-formatter sub-1% rounding residual is accepted display precision for this ticket; all safety, input-routing, and unknown-telemetry requirements stay hard. See the amendment section in `docs/2026-08-04-flow-todo-crossrepo-and-docs.md`.*
+Status: **Review Ready** · Blocked-by: none · Phase 3 · Priority 1 · *Amended 2026-08-05 (human decision): the shared-formatter sub-1% rounding residual is accepted display precision for this ticket; all safety, input-routing, and unknown-telemetry requirements stay hard. See the amendment section in `docs/2026-08-04-flow-todo-crossrepo-and-docs.md`.*
 
 **Why this exists.** Commit `bb5d79e` ("fix: keep user messages with orchestrator") is the current HEAD and the current `origin/main`. It removed the workflow `input` steering hook and `canSteerStage`, changed stage-row progress to `<1% ctx`, and made zero Claude usage report unknown — but it has no ticket, no debugger audit, and no reviewer verdict. **The commit is preserved. No reset, rebase, revert, or force-push is authorized.** This ticket retro-gates it forward-only and closes the remaining gaps the user re-reported on 2026-08-04: the Pi `steeringMode` setting and the header `STEER` affordance still imply direct stage steering.
 
@@ -352,6 +352,14 @@ Status: **Debugger Ready** · Blocked-by: none · Phase 3 · Priority 1 · *Amen
 - Exact gate exit 0: 63 focused tests, TypeScript check, 204 Node tests, and 22 Vitest tests. `npm run format:check` exit 0; `git diff --check` exit 0.
 - Review target product diff (`98ee39150e242c0929d80c471c1b0a9dcc20bfb7..d1893a18d7851352c78ec299f58c2a5adcad4006`) SHA-256: `c99ec3630c06d9c97fb433288755dab8890fb352f425b839401d13fa4e5525e2`.
 - Artifact: `docs/handoffs/2026-08-05-coder-pi11.md`. Route: independent debugger; only reviewer may set Done.
+
+**Debugger audit (2026-08-05, acting debugger — pinned stage harness unavailable).**
+
+- The pinned debugger stage (codex/gpt-5.6-luna) could not be spawned through the workflow engine in this environment (spawn registered an id but no agent materialized; two attempts, recover + relay all no-op). User authorized the coordinator to act as debugger for this ticket, then fan out subagents for the rest. Native subagent bridge verified working before the audit.
+- Red-team probes (all exit 0, production seams): installer steering migration idempotent and malformed settings rejected; codex `parseThreadTokenUsage` adversarial inputs (0, -1, NaN, Infinity, string, null, garbage) all → unknown, valid → measured; shipped `formatContextUtilization` renders `<1%/200k` for positive sub-1%, `?/200k` for zero/negative/NaN/missing, `""` for invalid capacity — no fabricated `0%`; routing classifies small→direct, risky→planner, explicit stage→that stage, explain→direct; takeover `app.clear` abort is stage-guarded (`!isStageTakeover`); relay send requires active stage ID; no workflow `input` handler; no `STEER` string anywhere in extensions or settings.
+- Baseline gate exit 0: 63 focused tests, `npm run check` clean, 204 Node tests, 22 Vitest tests. `npm run format:check` exit 0.
+- No new defect found. All prior bounce findings remain fixed at their production seams. No PI-16/12/10/14 implementation file changed (only `.claude/agents/debugger-pi-agent.md` on-lane profile repoint + tracker).
+- Routing: **Review Ready**. Handoff: `docs/handoffs/2026-08-05-debugger-pi11.md`. Only the independent reviewer may set Done.
 
 **Debugger audit (2026-08-04).**
 
