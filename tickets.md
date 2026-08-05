@@ -861,7 +861,7 @@ Status: **Done** · Blocked-by: PI-21 · GitHub issue #22
 
 ## PI-25 — Persist every mode switch to `settings.workflow.mode` (INV-12)
 
-Status: **Agent Ready** · Blocked-by: PI-24 · GitHub issue #23
+Status: **Debugger Ready** · Blocked-by: PI-24 · GitHub issue #23
 
 **What to build.** `extensions/workflow/settings-mode.ts` exporting `persistWorkflowMode(mode, io)`: read → merge → temp-write → rename, setting `workflow.mode` only, creating the `workflow` object when absent, preserving every other key, emitting stable 2-space JSON with a trailing newline. A failed read/parse/write/rename never loses the live switch: the mode still changes, the label gains `· session only`, and the user is notified at `warning`. INV-2: only the mode is read, written, logged, or rendered by this path. Session start continues to seed the live mode from `workflow.mode` so a switch survives restart (q6).
 
@@ -876,7 +876,14 @@ Status: **Agent Ready** · Blocked-by: PI-24 · GitHub issue #23
 - No message, notification, or label produced by this path contains any settings value other than the mode (INV-2).
 - After persisting `free`, a fresh session-start read yields live mode `free` with no `/mode` invocation.
 
-**Verification-command.** `node --test --experimental-strip-types extensions/workflow/settings-mode.test.ts extensions/workflow/mode-command.test.ts && npm run check`
+**Verification-command.** `node --test --experimental-strip-types extensions/workflow/flow-panel.test.ts extensions/workflow/settings-mode.test.ts && npm run check`
+
+**Coder delivery (2026-08-05).**
+
+- Changed paths: `extensions/workflow/settings-mode.ts` (NEW), `extensions/workflow/settings-mode.test.ts` (NEW), `extensions/workflow/index.ts` (EDIT: import + hook persistWorkflowMode into /mode handler)
+- Product diff SHA-256: `1832d643342640e44cce2d1de44379cb05982e081cb6ede778d060a2543ce60a`
+- Gate: `node --test --experimental-strip-types extensions/workflow/flow-panel.test.ts extensions/workflow/settings-mode.test.ts && npm run check` → exit 0 (43 tests, tsc clean)
+- `npm run format:check` (laned files) → exit 0
 
 ## PI-26 — Footer dedup, docs, and bounds/perf regression
 

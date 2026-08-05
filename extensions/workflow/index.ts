@@ -47,6 +47,7 @@ import {
   type WorkflowMode,
 } from "./src/policy.ts";
 import { assembleWorkflowSystemPrompt } from "./prompt-assembly.ts";
+import { persistWorkflowMode } from "./settings-mode.ts";
 
 const REASONING_LEVELS = [
   "off",
@@ -1405,7 +1406,13 @@ export default function workflow(pi: ExtensionAPI) {
         if (picked.kind !== "switch") return;
         mode = picked.mode;
         setState({ mode, lastEvent: `mode: ${picked.mode}` });
-        ctx.ui.notify(picked.confirmation, "info");
+        const persisted = await persistWorkflowMode(mode);
+        ctx.ui.notify(
+          persisted
+            ? picked.confirmation
+            : `${picked.confirmation} · session only`,
+          persisted ? "info" : "warning",
+        );
         return;
       }
       if (outcome.kind === "warn") {
@@ -1414,7 +1421,13 @@ export default function workflow(pi: ExtensionAPI) {
       }
       mode = outcome.mode;
       setState({ mode, lastEvent: `mode: ${outcome.mode}` });
-      ctx.ui.notify(outcome.confirmation, "info");
+      const persisted = await persistWorkflowMode(mode);
+      ctx.ui.notify(
+        persisted
+          ? outcome.confirmation
+          : `${outcome.confirmation} · session only`,
+        persisted ? "info" : "warning",
+      );
     },
   });
 
