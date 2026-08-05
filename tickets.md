@@ -427,7 +427,9 @@ Status: **Done** · Blocked-by: none · Phase 3 · Priority 1 · *Amended 2026-0
 
 ## PI-16 — Stage rows explain silence instead of showing a bare number (INV-1, INV-5, INV-6)
 
-Status: **Review Ready** · Blocked-by: PI-11 · Phase 3 · Priority 2
+Status: **Done** · Blocked-by: PI-11 · Phase 3 · Priority 2
+
+**Reviewer final (2026-08-05): PASS (94/100).** Re-review of fix commit `9489176` (generic errors → `reason unknown`; no `%` on indeterminate rows; closed vocabulary pinned). Gate exit 0. No blocking findings. Routing: → **Done** — Project #12 read back Done; issue #3 closed.
 
 **Reviewer bounce 1 (2026-08-05): FAIL (48/100).** Three findings: (1) any `status:"error"` event rendered `provider error: <event>` even for generic events like `local validation error` — fabricated cause instead of `reason unknown`; (2) an indeterminate `/flow` row whose provider detail contains `%` (e.g. `50% failure`) rendered a percent, violating INV-1; (3) the closed quota-limit mapping was untested against mutation. Fixed test-first in both `stageReason` copies (ui-customization/index.ts, workflow/index.ts): provider cause now requires provider-shaped tokens (`provider|authorization|timeout|rate limit|quota|spend|unavailable|5xx`); generic errors render `reason unknown`; `/flow` strips `%` from reason text on non-measured rows; added three pinning regressions in flow-panel.test.ts. Exact gate → exit 0 (47 focused; tsc clean; 224 Node; 22 Vitest); `npm run format:check` exit 0. Re-routed to Review Ready.
 
