@@ -10,8 +10,8 @@ Status legend: `Planned` · `Agent Ready` · `Coding` · `Debugger Ready` · `De
 GitHub issue mirror. Live board: **GitHub Project #12 (owner `VrajGupta`)** — its `Status` field is the
 workflow authority for stage state; this file mirrors it and carries the durable ticket text.
 
-`PI-06 → #2` · `PI-07 → #9` · `PI-08 → #10` · `PI-09 → #11` · `PI-10 → #7` · `PI-11 → #1`
-`PI-12 → #6` · `PI-13 → #4` · `PI-14 → #8` · `PI-15 → #12` · `PI-16 → #3` · `PI-17 → #5`
+`PI-06 → #2` · `PI-07 → #9` · `PI-08 → #10` · `PI-09 → #11` · `PI-10 → #7` · `PI-11 → #1` · `PI-18 → #17`
+`PI-12 → #6` · `PI-13 → #4` · `PI-14 → #8` · `PI-15 → #12` · `PI-16 → #3` · `PI-17 → #5` · `PI-19 → #16`
 
 ## Immediate priority override
 
@@ -548,3 +548,37 @@ Status: **Planned** · Blocked-by: PI-11 · Phase 3
 - Tests cover the main-chat boundary, explicit stage-view send, helper behavior, stage identity checks, terminal-safe/redacted text, and width bounds.
 
 **Verification-command.** `node --test --experimental-strip-types extensions/workflow/policy.test.ts extensions/subagents/takeover.test.ts extensions/subagents/manager.test.ts && npm run check && npm test`
+
+---
+
+## PI-18 — Two-state mode setting with routing override (workflow vs free)
+
+Status: **Planned** · Blocked-by: none · GitHub issue #17
+
+**What to build.** Add `workflow.mode` (`"workflow" | "free"`) to `settings.example.json` (default `"workflow"`) and honor it in `classifyRequest` (`extensions/workflow/src/policy.ts`). In `free` mode, `classifyRequest` never returns `mode:"fleet"` unless an explicit stage is named; all other requests route `direct`. In `workflow` mode, behavior is unchanged. Docs (`SYSTEM.md`, `README.md`) describe both modes and the override rule.
+
+**Acceptance criteria.**
+- `classifyRequest` with mode `free` and a risky/broad prompt returns `mode:"direct"`.
+- `classifyRequest` with mode `free` and an explicit `planner|coder|debugger|reviewer` (or legacy `part1-4`) returns `mode:"fleet"` with that stage.
+- `classifyRequest` with mode `workflow` matches today for risky (fleet) and small (direct) prompts.
+- Default mode is `workflow` when `workflow.mode` is absent or invalid.
+- `settings.example.json` defaults `workflow.mode` to `"workflow"` and documents both values.
+- `SYSTEM.md`/`README.md` state the override rule once each.
+
+**Verification-command.** `node --test --experimental-strip-types extensions/workflow/policy.test.ts && npm run check`
+
+---
+
+## PI-19 — Mode switch command and visible mode indicator
+
+Status: **Planned** · Blocked-by: PI-18 · GitHub issue #16
+
+**What to build.** A runtime switch (`/mode workflow|free`) that sets the live routing mode, plus a visible text indicator (`mode: workflow` / `mode: free`) in the footer or `/flow` rail.
+
+**Acceptance criteria.**
+- Switching from `workflow` to `free` updates the live mode; the indicator reads `mode: free`.
+- The indicator is ASCII/text, not colour-only (INV-11).
+- With no switch, the indicator matches the configured default (`workflow`).
+- The mode switch never starts or routes to a fleet stage by itself.
+
+**Verification-command.** `node --test --experimental-strip-types extensions/workflow/policy.test.ts extensions/ui-customization/footer.test.ts && npm run check`
