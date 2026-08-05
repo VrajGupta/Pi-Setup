@@ -450,7 +450,9 @@ Status: **Review Ready** · Blocked-by: PI-11 · Phase 3 · Priority 2
 
 ## PI-12 — Retire the header status block; the footer is the single status surface (INV-3, INV-4, INV-11)
 
-Status: **Review Ready** · Blocked-by: PI-16 (Done) · Phase 3
+Status: **Done** · Blocked-by: PI-16 (Done) · Phase 3
+
+**Reviewer final (2026-08-05): PASS (98/100).** Gate exit 0 (26 focused; 221 Node; 22 Vitest; tsc clean). Mutation probe (imported node:fs readFileSync + render call) failed the purity test as required — proof is mutation-proof. No blocking findings. Routing: → **Done** — Project #12 read back Done; issue #6 closed.
 
 **Reviewer bounce 1 (2026-08-05): FAIL (38/100).** Four findings: (1) footer cap — 4 agents + 1 status rendered 8 lines, violating INV-4's ≤7; (2) INV-3 proof only covered pure `footer.ts`, not the shipped `index.ts` wrapper; (3) a throwing `getExtensionStatuses()` still rendered agent rows instead of the 3 base lines (INV-6); (4) bare `key=` redaction was dropped from `SECRET_ASSIGNMENT_PATTERN` (INV-2). Fixed test-first: statuses now fill only the remaining budget after base+rows (7-line cap); a throwing extension-status getter degrades to the 3 base lines; wrapper render benchmark added; bare `key` added to the redaction pattern. Exact gate → exit 0 (24 focused + header test; `npm run check`; 220 Node tests; 22 Vitest); `npm run format:check` exit 0. Re-routed to Review Ready.
 
