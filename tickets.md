@@ -994,7 +994,7 @@ Status: **Review Ready** · Blocked-by: none · GitHub issue #27
 
 ## PI-29 — Definitions in settings (read/write workflow.routines)
 
-Status: **Review Ready** · Blocked-by: none · GitHub issue #26
+Status: **Done** · Blocked-by: none · GitHub issue #26
 
 **What to build.** `extensions/workflow/routine-definitions.ts`: validation, read, and write helpers for `workflow.routines` in settings. `readRoutines()`, `writeRoutines()`, `validateRoutine()`. Same atomic write pattern as `settings-mode.ts`. `settings.example.json` gains `workflow.routines: []`.
 
@@ -1029,7 +1029,7 @@ Status: **Review Ready** · Blocked-by: none · GitHub issue #26
 
 ## PI-30 — Due-routine banner and /routine command
 
-Status: **Planned** · Blocked-by: PI-28, PI-29 · GitHub issue #28
+Status: **Agent Ready** · Blocked-by: PI-28, PI-29 · GitHub issue #28
 
 **What to build.** Non-blocking banner in belowEditor surface (`routine <name> due · /run <name> to execute`). Commands: `/routine`, `/run`, `/snooze`, `/disable-routine`, `/enable-routine`. Mirror `/mode` pattern (PI-24). INV-8: only `classifyRequest` is called, never spawn/send.
 
