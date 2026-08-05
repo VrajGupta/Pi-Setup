@@ -29,6 +29,13 @@ import {
   type WorkflowSubagentSummary,
 } from "../shared/workflow-state.ts";
 import { buildReading, isStale } from "../shared/stage-progress.ts";
+import {
+  parseTicketSnapshot,
+  TICKET_STATUSES,
+  type TicketRecord,
+  type TicketSnapshot,
+  type TicketStatus,
+} from "../shared/ticket-snapshot.ts";
 import { notifyNative } from "../shared/notify-native.ts";
 import {
   STAGE_PROFILES,
@@ -215,6 +222,121 @@ function readTimestamp(
   }
 }
 
+function isTicketStatus(value: unknown): value is TicketStatus {
+  return (
+    typeof value === "string" && TICKET_STATUSES.includes(value as TicketStatus)
+  );
+}
+
+function isTicketRecord(value: unknown): value is TicketRecord {
+  if (!isRecord(value)) return false;
+  if (
+    typeof value.repo !== "string" ||
+    typeof value.id !== "string" ||
+    typeof value.title !== "string" ||
+    !isTicketStatus(value.status) ||
+    !Array.isArray(value.blockedBy) ||
+    (value.assignee !== undefined &&
+      !["planner", "coder", "debugger", "reviewer"].includes(
+        value.assignee as string,
+      )) ||
+    !["unblocked", "blocked", "blocked (cycle)"].includes(
+      value.blocking as string,
+    ) ||
+    !isRecord(value.eta)
+  ) {
+    return false;
+  }
+  if (
+    !value.blockedBy.every(
+      (blocker) =>
+        isRecord(blocker) &&
+        typeof blocker.id === "string" &&
+        typeof blocker.satisfied === "boolean",
+    )
+  ) {
+    return false;
+  }
+  if (value.eta.kind === "unknown") return true;
+  const minMs = finiteNumber(value.eta.minMs);
+  const maxMs = finiteNumber(value.eta.maxMs);
+  const n = finiteNumber(value.eta.n);
+  return (
+    value.eta.kind === "estimated" &&
+    minMs !== undefined &&
+    minMs > 0 &&
+    maxMs !== undefined &&
+    maxMs >= minMs &&
+    n !== undefined &&
+    Number.isSafeInteger(n) &&
+    n >= 3
+  );
+}
+
+function isTicketSnapshot(value: unknown): value is TicketSnapshot {
+  return (
+    isRecord(value) &&
+    typeof value.repo === "string" &&
+    finiteNumber(value.capturedAt) !== undefined &&
+    Array.isArray(value.records) &&
+    value.records.every(isTicketRecord) &&
+    (value.reason === undefined || typeof value.reason === "string")
+  );
+}
+
+function issueField(value: unknown) {
+  return displayText(value).trim() || "—";
+}
+
+function issueStatus(status: TicketStatus) {
+  switch (status) {
+    case "agent-ready":
+      return "ready";
+    case "coding":
+    case "debugger-ready":
+    case "debugging":
+    case "review-ready":
+      return `active: ${status}`;
+    case "canceled":
+    case "duplicate":
+      return `dropped: ${status}`;
+    default:
+      return status;
+  }
+}
+
+function issueBlockers(record: TicketRecord) {
+  const blockers = record.blockedBy.length
+    ? record.blockedBy
+        .map(
+          (blocker) =>
+            `${issueField(blocker.id)} (${blocker.satisfied ? "satisfied" : "blocked"})`,
+        )
+        .join(", ")
+    : "none";
+  return `blockers ${blockers} · chain ${record.blocking === "unblocked" ? "satisfied" : "blocked"}`;
+}
+
+function issueEta(record: TicketRecord) {
+  return record.eta.kind === "unknown"
+    ? "eta unknown"
+    : `eta ${record.eta.minMs}–${record.eta.maxMs}ms (n=${record.eta.n})`;
+}
+
+function issueList(snapshot: unknown) {
+  if (!isTicketSnapshot(snapshot))
+    return [" issue list unavailable — invalid snapshot"];
+  if (snapshot.reason)
+    return [` issue list unavailable — ${issueField(snapshot.reason)}`];
+  return [
+    " issues / todos",
+    ...snapshot.records.map(
+      (record) =>
+        ` repo ${issueField(record.repo)} · id ${issueField(record.id)} · title ${issueField(record.title)} · assignee ${record.assignee ?? "—"} · status ${issueStatus(record.status)} · ${issueBlockers(record)} · ${issueEta(record)}`,
+    ),
+  ];
+}
+
 export class FlowPanel {
   private tab = 0;
   private readonly tabs = [
@@ -223,6 +345,7 @@ export class FlowPanel {
     "Agents",
     "Capabilities",
     "Session",
+    "Issues",
   ];
   private readonly ctx: FlowPanelContext;
   private readonly theme: FlowPanelTheme;
@@ -235,6 +358,7 @@ export class FlowPanel {
   };
   private readonly done: () => void;
   private readonly rerender: () => void;
+  private readonly getTicketSnapshot: () => unknown;
 
   constructor(
     ctx: FlowPanelContext,
@@ -245,6 +369,7 @@ export class FlowPanel {
     getCapabilities: () => { loaded: string[]; selected: string[] },
     done: () => void,
     rerender: () => void,
+    getTicketSnapshot: () => unknown = () => undefined,
   ) {
     this.ctx = ctx;
     this.theme = theme;
@@ -254,6 +379,7 @@ export class FlowPanel {
     this.getCapabilities = getCapabilities;
     this.done = done;
     this.rerender = rerender;
+    this.getTicketSnapshot = getTicketSnapshot;
   }
 
   handleInput(data: string) {
@@ -367,6 +493,8 @@ export class FlowPanel {
         return this.capabilities();
       case 4:
         return this.session(state);
+      case 5:
+        return this.issues();
       default:
         return this.overview(state, agents, now);
     }
@@ -435,6 +563,14 @@ export class FlowPanel {
         )
         .map(({ agent }) => agentText(agent, state, now, agentsUpdatedAt)),
     ];
+  }
+
+  private issues() {
+    try {
+      return issueList(this.getTicketSnapshot());
+    } catch {
+      return [" issue list unavailable — snapshot unavailable"];
+    }
   }
 
   private capabilities() {
@@ -674,6 +810,7 @@ export default function workflow(pi: ExtensionAPI) {
   let context: ExtensionContext | undefined;
   let agents: WorkflowSubagentSummary[] = [];
   let agentsUpdatedAt = Date.now();
+  let ticketSnapshot: TicketSnapshot | undefined;
   const usedCapabilities = new Set<string>();
   let requestRender: (() => void) | undefined;
   let lastEnvelope = "";
@@ -688,6 +825,18 @@ export default function workflow(pi: ExtensionAPI) {
   const setState = (patch: Partial<WorkflowState>) => {
     state = { ...state, ...patch };
     publish();
+  };
+
+  const refreshTicketSnapshot = async (ctx: ExtensionContext) => {
+    try {
+      ticketSnapshot = parseTicketSnapshot(
+        await readFile(join(ctx.cwd, "tickets.md"), "utf8"),
+        { repo: basename(ctx.cwd), capturedAt: Date.now() },
+      );
+    } catch {
+      ticketSnapshot = undefined;
+    }
+    requestRender?.();
   };
 
   const persist = async () => {
@@ -896,6 +1045,7 @@ export default function workflow(pi: ExtensionAPI) {
           () => capabilitySnapshot(ctx),
           () => done(),
           () => tui.requestRender(),
+          () => ticketSnapshot,
         );
         requestRender = () => tui.requestRender();
         return panel;
@@ -1017,6 +1167,7 @@ export default function workflow(pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     context = ctx;
     usedCapabilities.clear();
+    await refreshTicketSnapshot(ctx);
     try {
       const saved = JSON.parse(
         await readFile(statePath(ctx.cwd), "utf8"),
@@ -1105,5 +1256,6 @@ export default function workflow(pi: ExtensionAPI) {
     stopSubagentState();
     requestRender = undefined;
     context = undefined;
+    ticketSnapshot = undefined;
   });
 }
