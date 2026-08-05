@@ -561,7 +561,9 @@ Status: **Done** · Reviewer PASS (final review, bounce 3/3) · Blocked-by: PI-0
 
 ## PI-17 — Explicit direct conversation from an opened stage view
 
-Status: **Review Ready** · Blocked-by: PI-11 · Phase 3
+Status: **Done** · Blocked-by: PI-11 · Phase 3
+
+**Reviewer final (2026-08-05): PASS (97/100).** Gate exit 0 (24 focused; 216 Node; 22 Vitest; tsc clean). All acceptance criteria met; no blocking findings. Routing: → **Done** — Project #12 read back Done; issue #5 closed.
 
 **Coder delivery (2026-08-05).** Built the explicit stage-view input with visible destination/send/cancel affordances and bounded redacted errors. The manager now verifies the selected stage identity before sending, redacts stage-view text, and leaves helper send/abort behavior unchanged. Product diff SHA-256: `8609d1c317f6a1caf2ec683fef1f8344495690e7339154244e13dfd5e0d8579a`. Exact gate `node --test --experimental-strip-types extensions/workflow/policy.test.ts extensions/subagents/takeover.test.ts extensions/subagents/manager.test.ts && npm run check && npm test` → exit 0; `npm run format:check` → exit 0. Artifact: `docs/handoffs/2026-08-05-coder-pi17.md`. Project #12 issue #5 read back `Debugger Ready`.
 
