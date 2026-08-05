@@ -29,30 +29,60 @@ Get-ChildItem -LiteralPath (Join-Path $HOME ".pi\agent\backups") -Directory -Fil
   Sort-Object LastWriteTime -Descending
 ```
 
-Quit Pi first. Replace the placeholder with the exact backup you listed; rollback restores only the installer-managed `extensions`, `skills`, `themes`, `SYSTEM.md`, `keybindings.json`, and `node_modules` entries that exist in that backup.
+Quit Pi first. Replace the placeholder with the exact backup you listed. Rollback restores the installer-managed `extensions`, `skills`, `themes`, `SYSTEM.md`, `keybindings.json`, and `node_modules` entries from that backup, and removes any of those entries that were not present before the install. A completed rollback is marked and is safe to run again.
 
 ```sh
 agent_dir="$HOME/.pi/agent"
-backup="$agent_dir/backups/pi-agent-<timestamp>-<pid>"
-case "$backup" in "$agent_dir"/backups/pi-agent-*) ;; *) echo "Choose a listed backup" >&2; exit 1;; esac
-for name in extensions skills themes SYSTEM.md keybindings.json node_modules; do
-  [ -e "$backup/$name" ] || continue
-  rm -rf "$agent_dir/$name"
-  mv "$backup/$name" "$agent_dir/$name"
-done
+backup_root="$agent_dir/backups"
+backup="$backup_root/pi-agent-<timestamp>-<pid>"
+backup_name=${backup#"$backup_root"/}
+case "$backup_name" in
+  pi-agent-*) ;;
+  *) echo "Choose a listed backup" >&2; exit 1 ;;
+esac
+case "$backup_name" in
+  */*) echo "Choose a direct child of the backups folder" >&2; exit 1 ;;
+esac
+[ -d "$backup" ] || { echo "Backup not found" >&2; exit 1; }
+if [ -e "$backup/.rollback-complete" ]; then
+  echo "Rollback already completed"
+else
+  for name in extensions skills themes SYSTEM.md keybindings.json node_modules; do
+    saved="$backup/$name"
+    target="$agent_dir/$name"
+    if [ -e "$saved" ] || [ -L "$saved" ]; then
+      if [ -e "$target" ] || [ -L "$target" ]; then rm -rf "$target"; fi
+      mv "$saved" "$target"
+    elif [ -e "$target" ] || [ -L "$target" ]; then
+      rm -rf "$target"
+    fi
+  done
+  : > "$backup/.rollback-complete"
+fi
 ```
 
 ```powershell
 $agentDir = Join-Path $HOME ".pi\agent"
-$backup = Join-Path $agentDir "backups\pi-agent-<timestamp>-<pid>"
-if ($backup -notlike "$agentDir\backups\pi-agent-*") { throw "Choose a listed backup" }
+$backupRoot = Join-Path $agentDir "backups"
+$backup = Join-Path $backupRoot "pi-agent-<timestamp>-<pid>"
+$backupName = Split-Path -Leaf $backup
+if ((Split-Path -Parent $backup) -ne $backupRoot -or $backupName -notlike "pi-agent-*") { throw "Choose a direct child of the backups folder" }
+if (-not (Test-Path -LiteralPath $backup -PathType Container)) { throw "Backup not found" }
+$complete = Join-Path $backup ".rollback-complete"
+if (-not (Test-Path -LiteralPath $complete)) {
 foreach ($name in "extensions", "skills", "themes", "SYSTEM.md", "keybindings.json", "node_modules") {
   $saved = Join-Path $backup $name
   $target = Join-Path $agentDir $name
   if (Test-Path -LiteralPath $saved) {
     if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
     Move-Item -LiteralPath $saved -Destination $target
+  } elseif (Test-Path -LiteralPath $target) {
+    Remove-Item -LiteralPath $target -Recurse -Force
   }
+}
+  New-Item -ItemType File -Path $complete -Force | Out-Null
+} else {
+  Write-Host "Rollback already completed"
 }
 ```
 
@@ -60,15 +90,16 @@ This move-based rollback restores those saved files byte-for-byte. It does **not
 
 ## Push proof
 
-A successful `git push` command alone is not proof. Fetch the branch, then compare the local commit and fetched remote-tracking commit; do not report a push unless the SHAs match.
+A successful `git push` command alone is not proof. Fetch the branch, then compare the local commit with both the fetched remote-tracking commit and the direct `ls-remote` result; do not report a push unless all SHAs match.
 
 ```sh
 branch=$(git branch --show-current)
 git fetch origin "$branch"
 local=$(git rev-parse HEAD)
-remote=$(git rev-parse "origin/$branch")
-printf 'local:  %s\nremote: %s\n' "$local" "$remote"
-test "$local" = "$remote"
+fetched=$(git rev-parse "origin/$branch")
+remote=$(git ls-remote --exit-code origin "$branch" | cut -f1)
+printf 'local:   %s\nfetched: %s\nremote:  %s\n' "$local" "$fetched" "$remote"
+test "$local" = "$fetched" && test "$local" = "$remote"
 ```
 
 ## Firecrawl

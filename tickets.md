@@ -481,7 +481,7 @@ Status: **Planned** · Blocked-by: PI-10 · Phase 3
 
 ## PI-15 — Setup, rollback, and push-proof documentation
 
-Status: **Debugger Ready** · Blocked-by: PI-08 (Done) · Phase 2
+Status: **Review Ready** · Blocked-by: PI-08 (Done) · Phase 2
 
 **Why this exists.** `README.md` claims the installer "backs up current runtime resources", but `SETUP.md` (36 lines) documents no way to restore them, and no Windows path. Push proof itself already exists — `origin/main` and local `HEAD` are both `bb5d79e` — so this ticket documents how to reproduce that proof, and claims no new push.
 
