@@ -129,6 +129,23 @@ test("Overview explains the route and only shows waiting on for waiting states",
   }
 });
 
+test("the overview renders the live routing mode as text (PI-19)", () => {
+  for (const [mode, expected] of [
+    ["workflow", /mode\s+workflow/],
+    ["free", /mode\s+free/],
+  ] as const) {
+    const output = panel(state({ mode })).render(120).join("\n");
+    assert.match(output, expected);
+    // INV-11: the mode is spelled as text, not carried by colour alone.
+    assert.match(output, /mode\s+workflow|mode\s+free/);
+  }
+  // Absent mode defaults to the configured default (workflow).
+  const defaulted = panel(state({ mode: undefined }))
+    .render(120)
+    .join("\n");
+  assert.match(defaulted, /mode\s+workflow/);
+});
+
 test("panel rows fit widths 40 and 120", () => {
   const flow = panel(
     state({

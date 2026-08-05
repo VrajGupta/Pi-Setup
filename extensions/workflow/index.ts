@@ -44,6 +44,7 @@ import {
   parseControlEnvelope,
   type ControlEnvelope,
   type RouteDecision,
+  type WorkflowMode,
 } from "./src/policy.ts";
 import { assembleWorkflowSystemPrompt } from "./prompt-assembly.ts";
 
@@ -715,6 +716,7 @@ export class FlowPanel {
       this.theme.fg("mdHeading", " snapshot"),
       ` ${displayText(this.ctx.cwd, "?")}`,
       ` route   ${routeText(state.route)}`,
+      ` mode    ${displayText(state.mode, "workflow")}`,
       ` why this route  ${routeReason(state.route)}`,
       ` status  ${displayText(state.status, "unknown")}${isKnownStage(state.activeStage) ? ` · ${state.activeStage}` : ""}`,
       ...(waiting ? [waiting] : []),
@@ -1065,6 +1067,10 @@ function isFlowInput(value: unknown): value is FlowInput {
 
 export default function workflow(pi: ExtensionAPI) {
   let state = emptyWorkflowState();
+  // Live routing mode (PI-19): session-scoped, initialized from the configured
+  // default (`workflow.mode` in settings) and changed only by /mode. The switch
+  // never classifies, routes, or starts a fleet stage by itself.
+  let mode: WorkflowMode = "workflow";
   let context: ExtensionContext | undefined;
   let agents: WorkflowSubagentSummary[] = [];
   let agentsUpdatedAt = Date.now();
@@ -1093,6 +1099,13 @@ export default function workflow(pi: ExtensionAPI) {
     } catch {
       return undefined;
     }
+  };
+
+  // Mirrors policy.ts's normalizeWorkflowMode: only "free" is special; any
+  // absent, invalid, or otherwise non-"free" value means the default mode.
+  const modeFromSettings = (settings: unknown): WorkflowMode => {
+    const workflow = isRecord(settings) ? settings.workflow : undefined;
+    return isRecord(workflow) && workflow.mode === "free" ? "free" : "workflow";
   };
 
   const refreshRepositoryView = async (ctx: ExtensionContext) => {
@@ -1343,6 +1356,23 @@ export default function workflow(pi: ExtensionAPI) {
     handler: openFlow,
   });
 
+  pi.registerCommand("mode", {
+    description: "Set workflow routing mode (workflow | free)",
+    handler: async (args, ctx) => {
+      const value = args.trim().toLowerCase();
+      if (value !== "workflow" && value !== "free") {
+        ctx.ui.notify(
+          `/mode expects workflow or free; current mode: ${mode}`,
+          "error",
+        );
+        return;
+      }
+      mode = value;
+      setState({ mode, lastEvent: `mode: ${mode}` });
+      ctx.ui.notify(`routing mode: ${mode}`, "info");
+    },
+  });
+
   pi.registerTool({
     name: "workflow",
     label: "Workflow Control",
@@ -1375,7 +1405,7 @@ export default function workflow(pi: ExtensionAPI) {
       usedCapabilities.add("workflow");
       pi.events.emit(CAPABILITY_CHANNEL, "workflow");
       if (input.action === "route") {
-        const decision = classifyRequest(input.prompt ?? "");
+        const decision = classifyRequest(input.prompt ?? "", mode);
         setState({
           status: "routing",
           route: decision,
@@ -1414,7 +1444,7 @@ export default function workflow(pi: ExtensionAPI) {
         };
       }
       if (!input.prompt) throw new Error("workflow start requires prompt.");
-      const decision = classifyRequest(input.prompt);
+      const decision = classifyRequest(input.prompt, mode);
       const stage = input.stage ?? decision.stage ?? "planner";
       const response = await startStage(
         ctx,
@@ -1439,6 +1469,8 @@ export default function workflow(pi: ExtensionAPI) {
     context = ctx;
     usedCapabilities.clear();
     await refreshRepositoryView(ctx);
+    const settings = await readGlobalSettings();
+    mode = modeFromSettings(settings);
     try {
       const saved = JSON.parse(
         await readFile(statePath(ctx.cwd), "utf8"),
@@ -1459,6 +1491,9 @@ export default function workflow(pi: ExtensionAPI) {
     } catch {
       state = emptyWorkflowState();
     }
+    // The live mode is session-scoped: it starts from the configured default
+    // every session, never restored from a previous run's persisted state.
+    state = { ...state, mode };
     publish();
   });
 
@@ -1466,8 +1501,8 @@ export default function workflow(pi: ExtensionAPI) {
     if (ctx.mode !== "tui") return;
     const decision =
       state.activeStage && isControlResponse(event.prompt)
-        ? (state.route ?? classifyRequest(event.prompt))
-        : classifyRequest(event.prompt);
+        ? (state.route ?? classifyRequest(event.prompt, mode))
+        : classifyRequest(event.prompt, mode);
     setState({
       status:
         state.activeStage && isControlResponse(event.prompt)

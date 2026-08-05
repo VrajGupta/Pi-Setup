@@ -26,6 +26,10 @@ export type WorkflowStatus =
 
 export interface WorkflowState {
   status: WorkflowStatus;
+  /** Live routing mode ("workflow" | "free"). PI-19's /mode command overrides
+   * the persisted setting for the session; absent means the configured default
+   * "workflow" (see `settings.json` `workflow.mode`). */
+  mode?: "workflow" | "free";
   activeStage: StageName | null;
   route: {
     mode: "direct" | "fleet";
@@ -111,6 +115,7 @@ export type WorkflowBridgeRequest =
 export function emptyWorkflowState(): WorkflowState {
   return {
     status: "idle",
+    mode: "workflow",
     activeStage: null,
     route: null,
     taskPreview: "",
