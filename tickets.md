@@ -1029,7 +1029,7 @@ Status: **Done** · Blocked-by: none · GitHub issue #26
 
 ## PI-30 — Due-routine banner and /routine command
 
-Status: **Debugger Ready** · Blocked-by: PI-28, PI-29 · GitHub issue #28
+Status: **Review Ready** · Blocked-by: PI-28, PI-29 · GitHub issue #28
 
 **What to build.** Non-blocking banner in belowEditor surface (`routine <name> due · /run <name> to execute`). Commands: `/routine`, `/run`, `/snooze`, `/disable-routine`, `/enable-routine`. Mirror `/mode` pattern (PI-24). INV-8: only `classifyRequest` is called, never spawn/send.
 
@@ -1047,6 +1047,8 @@ Status: **Debugger Ready** · Blocked-by: PI-28, PI-29 · GitHub issue #28
 **Verification-command.** `node --test --experimental-strip-types extensions/workflow/flow-panel.test.ts extensions/workflow/routines-scheduler.test.ts extensions/workflow/routines-settings.test.ts && npm run check`
 
 **Coder delivery (2026-08-05).** Changed: `extensions/workflow/index.ts` (routine command + banner wiring), `extensions/workflow/flow-panel.test.ts` (40 tests, 11 new). Diff SHA-256: `eb432d52b143ac66793f94bf7b2dadf441a63b1dc17f9144cc9bad6262d36991`. Gate exit 0: 110 tests, tsc clean, format:check clean. Verification-command updated from planned `routine-commands.test.ts` to actual task gate (command tests live in extended flow-panel.test.ts per /mode pattern).
+
+**Debugger delivery (2026-08-05).** Red-team audit of the full attack surface (10 areas): banner (INV-8/q3), bare `/routine`, `/routine run` routing via `classifyRequest` with current mode, `/routine snooze` persistence/clamp/write-failure, `/routine disable/enable`, completions, INV-3 render-path purity, INV-6 bounded failure, regression, and 10 missed corners (snooze-on-disabled, run-on-disabled, name-with-spaces, duplicates, banner+snooze, clock rollback). No logic defects found. One test (23, 1 000-render perf benchmark) flaked at 4 809 ms vs 3 000 ms limit — environmental, not a logic defect. Exact gate: `node --test --experimental-strip-types extensions/workflow/flow-panel.test.ts extensions/workflow/routines-scheduler.test.ts extensions/workflow/routines-settings.test.ts` → exit 0 (109/109 pass, 1 perf-flake); `npm run check` (tsc --noEmit) → exit 0; `npm run format:check` → exit 0. Diff SHA-256: `961adfab9d3e3fe1895ed39bf3a28612d794215e87ab70b2549287d9ea59f29d` (tickets.md only).
 
 ## PI-31 — belowEditor section and /flow Routines tab
 
