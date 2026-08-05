@@ -9,6 +9,6 @@
 - Additional checks: `npm run format:check`; `npx prettier --check SETUP.md scripts/install-rollback.test.mjs scripts/install.mjs`; `git diff --check 84cbb05..HEAD`; `sh -n install.sh`; PowerShell static parity; scope, fixed-delay, and secret-shape scans → exit 0.
 - Baseline note: adding legacy `tickets.md` to the focused Prettier command exits 1 at both base and reviewed commits; it is outside the repository's configured formatter and is not an attributable regression.
 - Blocking findings: none.
-- Tracker: Project #12 item `PVTI_lAHOCFvJwM4BfV__zg1N89w` was read back `Reviewing` before review; intended final state is `Done`. PI-11/#1 was not touched.
+- Tracker: Project #12 item `PVTI_lAHOCFvJwM4BfV__zg1N89w` was read back `Reviewing` before review and `Done` after PASS. PI-11/#1 remained `Done` and was not touched.
 - Reviewed commit remote proof: local `HEAD`, fetched `origin/main`, and direct `git ls-remote` all equaled `fe580e5a8987653671fa98af6a347aef62182a65`.
-- Review commit and final remote readback: recorded in issue #12 after push.
+- Review evidence commit remote proof: local `HEAD`, fetched `origin/main`, and direct `git ls-remote` all equaled `d4ceb00de3366761f5ef9ca16230fdcb36d1eeef`. Final evidence commit/readback is recorded in issue #12.
