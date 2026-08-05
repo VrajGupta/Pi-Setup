@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import test from "node:test";
 import { readRepositoryTracker, resolveRepositories } from "./index.ts";
 
@@ -43,6 +43,16 @@ test("registry comes only from explicit settings and never scans directories", (
       "/repo",
     ),
     { defaulted: false, paths: ["/a", "/b"] },
+  );
+  assert.deepEqual(
+    resolveRepositories(
+      { workflow: { repositories: ["relative/repo", "~/Work/../Other"] } },
+      "/repo",
+    ),
+    {
+      defaulted: false,
+      paths: [resolve("/repo", "relative/repo"), resolve(homedir(), "Other")],
+    },
   );
 
   const registrySource = source.slice(
@@ -94,6 +104,23 @@ test("tracker reads are bounded, read-only, timestamped, and map failures to per
   });
   assert.equal(unreadable.snapshot, undefined);
   assert.equal(unreadable.reason, "unreadable");
+
+  const sameMessageAsTimeout = await readRepositoryTracker("/error", {
+    readTracker: async () => {
+      throw new Error("repository read timed out");
+    },
+  });
+  assert.equal(sameMessageAsTimeout.reason, "unreadable");
+
+  const timeoutCount = () =>
+    process
+      .getActiveResourcesInfo()
+      .filter((resource) => resource === "Timeout").length;
+  const beforeFastRead = timeoutCount();
+  await readRepositoryTracker("/fast", {
+    readTracker: async () => "## PI-98 — fast\n\nStatus: **Done**\n",
+  });
+  assert.equal(timeoutCount(), beforeFastRead);
 
   const timedOut = await readRepositoryTracker("/slow", {
     readTracker: () => new Promise<string>(() => {}),

@@ -220,14 +220,24 @@ test("tickets are grouped by repository and never render under a repository they
       {
         path: "/work/alpha",
         repo: "alpha",
-        capturedAt: alpha.capturedAt,
+        capturedAt: Date.now(),
         snapshot: alpha,
       },
       {
         path: "/work/beta",
         repo: "beta",
-        capturedAt: beta.capturedAt,
+        capturedAt: Date.now(),
         snapshot: beta,
+      },
+      {
+        path: "/work/gamma",
+        repo: "gamma",
+        capturedAt: Date.now(),
+        snapshot: {
+          repo: "delta",
+          capturedAt: Date.now(),
+          records: [record("T-2", "cross-repo leak", "delta")],
+        },
       },
     ],
   }))
@@ -241,6 +251,17 @@ test("tickets are grouped by repository and never render under a repository they
   assert.ok(alphaHeader >= 0 && betaHeader > alphaHeader);
   assert.ok(output.indexOf("title alpha title") < betaHeader);
   assert.ok(output.indexOf("title beta title") > betaHeader);
+  assert.match(output, /repo gamma — unavailable — invalid snapshot/);
+  assert.doesNotMatch(output, /cross-repo leak/);
+
+  const legacyOutput = legacyIssuesPanel(() => ({
+    ...alpha,
+    records: [record("T-2", "cross-repo leak", "beta")],
+  }))
+    .render(120)
+    .join("\n");
+  assert.match(legacyOutput, /issue list unavailable — invalid snapshot/);
+  assert.doesNotMatch(legacyOutput, /cross-repo leak/);
 });
 
 test("an unavailable repository degrades that section only; the others still render", () => {
@@ -291,6 +312,27 @@ test("an unavailable repository degrades that section only; the others still ren
     assert.match(output, /title alpha title/);
     assert.match(output, /title gamma title/);
   }
+
+  const emptySnapshotOutput = issuesPanel(() => ({
+    defaulted: false,
+    reads: [
+      {
+        path: "/work/beta",
+        repo: "beta",
+        capturedAt: Date.now(),
+        snapshot: {
+          repo: "beta",
+          capturedAt: Date.now(),
+          records: [],
+          reason: "empty tracker",
+        },
+      },
+    ],
+  }))
+    .render(120)
+    .join("\n");
+  assert.match(emptySnapshotOutput, /repo beta — unavailable — empty tracker/);
+  assert.doesNotMatch(emptySnapshotOutput, /0 tickets/);
 });
 
 test("with no registry configured the view shows this repository only and says so", () => {
@@ -299,7 +341,7 @@ test("with no registry configured the view shows this repository only and says s
     reads: [
       {
         path: "/repo",
-        repo: "pi-agent",
+        repo: snapshot.repo,
         capturedAt: Date.now(),
         snapshot,
       },
@@ -308,7 +350,7 @@ test("with no registry configured the view shows this repository only and says s
     .render(240)
     .join("\n");
   assert.match(output, / registry default: this repository only/);
-  assert.match(output, /repo pi-agent · 7 tickets/);
+  assert.match(output, /repo VrajGupta\/Pi-Setup · 7 tickets/);
   assert.match(output, /id PI-01/);
 });
 
@@ -329,13 +371,13 @@ test("a stale snapshot renders with ~ and its age, never as current", () => {
       {
         path: "/work/alpha",
         repo: "alpha",
-        capturedAt: alpha.capturedAt,
+        capturedAt: Date.now(),
         snapshot: alpha,
       },
       {
         path: "/work/beta",
         repo: "beta",
-        capturedAt: beta.capturedAt,
+        capturedAt: Date.now(),
         snapshot: beta,
       },
     ],
@@ -365,6 +407,7 @@ test("legacy single-snapshot fallback validates and rejects hostile fields", () 
 
   const hostile = {
     ...snapshot,
+    repo: "",
     records: [
       {
         ...snapshot.records[0]!,
@@ -385,6 +428,35 @@ test("legacy single-snapshot fallback validates and rejects hostile fields", () 
     hostileOutput,
     /SYNTHETIC_DB_PASSWORD|SYNTHETIC_UNTERMINATED_SECRET|TAIL|SYNTHETIC_AWS_SECRET|SYNTHETIC_SIP_SECRET/,
   );
+
+  const hostileRepo = "Authorization: Bearer SYNTHETIC_REPO\u001b[2J";
+  const hostileRepoLines = issuesPanel(() => ({
+    defaulted: false,
+    reads: [
+      {
+        path: "/work/hostile",
+        repo: hostileRepo,
+        capturedAt: Date.now(),
+        snapshot: {
+          repo: hostileRepo,
+          capturedAt: Date.now(),
+          records: [
+            record(
+              "PI-98",
+              "title\napi_key=SYNTHETIC_TITLE_SECRET",
+              hostileRepo,
+            ),
+          ],
+        },
+      },
+    ],
+  })).render(240);
+  const hostileRepoOutput = hostileRepoLines.join("\n");
+  assert.doesNotMatch(
+    hostileRepoOutput,
+    /SYNTHETIC_REPO|SYNTHETIC_TITLE_SECRET|\u001b\[2J/,
+  );
+  assert.ok(hostileRepoLines.every((line) => !line.includes("\n")));
 });
 
 test("Issues/Todos does not reuse rows after a malformed snapshot", () => {
@@ -423,6 +495,10 @@ test("Issues/Todos stays bounded, read-only, pure, fast, and fails visibly", () 
     () => undefined,
     () => ({ defaulted: false, reads: "bad" }),
     () => ({ defaulted: false, reads: [] }),
+    () => ({
+      defaulted: "yes",
+      reads: [localView.reads[0]],
+    }),
     () => {
       throw new Error("tracker unavailable");
     },
@@ -432,6 +508,22 @@ test("Issues/Todos stays bounded, read-only, pure, fast, and fails visibly", () 
       /issue list unavailable — /,
     );
   }
+  assert.match(
+    issuesPanel(() => ({
+      defaulted: false,
+      reads: [
+        {
+          path: "/work/beta",
+          repo: "beta",
+          capturedAt: Date.now(),
+          reason: "",
+        },
+      ],
+    }))
+      .render(120)
+      .join("\n"),
+    /repo beta — unavailable — unknown/,
+  );
 
   const start = performance.now();
   for (let index = 0; index < 1_000; index += 1) flow.render(120);

@@ -319,7 +319,12 @@ function isTicketSnapshot(value: unknown): value is TicketSnapshot {
   }
   const ids = new Set<string>();
   for (const record of value.records) {
-    if (!isTicketRecord(record) || ids.has(record.id)) return false;
+    if (
+      !isTicketRecord(record) ||
+      record.repo !== value.repo ||
+      ids.has(record.id)
+    )
+      return false;
     ids.add(record.id);
   }
   return true;
@@ -369,16 +374,20 @@ function issueRow(record: TicketRecord) {
 }
 
 function repositoryHeader(read: RepositoryRead, now: number) {
-  if (read.snapshot === undefined) {
-    return ` repo ${issueField(read.repo)} — unavailable — ${issueField(read.reason ?? "unknown")}`;
+  if (read.snapshot === undefined || read.snapshot.reason !== undefined) {
+    return ` repo ${issueField(read.repo)} — unavailable — ${issueField(read.reason || read.snapshot?.reason || "unknown")}`;
   }
+  const capturedAt = Math.min(read.capturedAt, read.snapshot.capturedAt);
+  const age = Math.max(0, now - capturedAt);
   const count = read.snapshot.records.length;
-  const stale = now - read.capturedAt > REPOSITORY_STALENESS_MS;
-  return ` repo ${issueField(read.repo)} · ${count} ticket${count === 1 ? "" : "s"}${stale ? ` · ~ ${formatElapsed(now - read.capturedAt)}` : ""}`;
+  const stale = age > REPOSITORY_STALENESS_MS;
+  return ` repo ${issueField(read.repo)} · ${count} ticket${count === 1 ? "" : "s"}${stale ? ` · ~ ${formatElapsed(age)}` : ""}`;
 }
 
 function repositoryRows(read: RepositoryRead) {
-  return read.snapshot === undefined ? [] : read.snapshot.records.map(issueRow);
+  return read.snapshot === undefined || read.snapshot.reason !== undefined
+    ? []
+    : read.snapshot.records.map(issueRow);
 }
 
 function repositoryList(
@@ -409,7 +418,10 @@ function isRepositoryRead(value: unknown): value is RepositoryRead {
   const hasReason = value.reason !== undefined;
   if (hasSnapshot === hasReason) return false;
   if (hasReason && typeof value.reason !== "string") return false;
-  return !hasSnapshot || isTicketSnapshot(value.snapshot);
+  return (
+    !hasSnapshot ||
+    (isTicketSnapshot(value.snapshot) && value.snapshot.repo === value.repo)
+  );
 }
 
 function normalizeRepositoryRead(value: unknown): RepositoryRead {
@@ -438,13 +450,22 @@ export function resolveRepositories(
   ) {
     return {
       defaulted: false,
-      paths: [...new Set(raw.map((entry) => (entry as string).trim()))],
+      paths: [
+        ...new Set(
+          raw.map((entry) => {
+            const path = entry.trim();
+            if (path === "~") return homedir();
+            if (path.startsWith("~/")) return resolve(homedir(), path.slice(2));
+            return resolve(fallback, path);
+          }),
+        ),
+      ],
     };
   }
   return { defaulted: true, paths: [fallback] };
 }
 
-const REPOSITORY_READ_TIMEOUT = "repository read timed out";
+const REPOSITORY_READ_TIMEOUT = Symbol("repository read timed out");
 const REPOSITORY_STALENESS_MS = 30_000;
 
 export interface RepositoryReadOptions {
@@ -460,26 +481,40 @@ export async function readRepositoryTracker(
 ): Promise<RepositoryRead> {
   const readTracker =
     options.readTracker ?? ((path: string) => readFile(path, "utf8"));
-  const timeoutMs = options.timeoutMs ?? 2_000;
+  const requestedTimeout = finiteNumber(options.timeoutMs);
+  const timeoutMs =
+    requestedTimeout === undefined || requestedTimeout <= 0
+      ? 2_000
+      : Math.min(requestedTimeout, 2_000);
   const now = options.now ?? Date.now;
-  const path = declaredPath.startsWith("~/")
-    ? join(homedir(), declaredPath.slice(2))
-    : declaredPath;
-  const base = { path, repo: basename(path), capturedAt: now() };
+  const path =
+    declaredPath === "~"
+      ? homedir()
+      : declaredPath.startsWith("~/")
+        ? resolve(homedir(), declaredPath.slice(2))
+        : resolve(declaredPath);
+  const base = {
+    path,
+    repo: basename(path),
+    capturedAt: finiteNumber(now()) ?? Date.now(),
+  };
   let tracker: string;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     tracker = await Promise.race([
-      readTracker(join(path, "tickets.md")),
-      new Promise<never>((_resolve, reject) =>
-        setTimeout(() => reject(new Error(REPOSITORY_READ_TIMEOUT)), timeoutMs),
-      ),
+      Promise.resolve().then(() => readTracker(join(path, "tickets.md"))),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => reject(REPOSITORY_READ_TIMEOUT), timeoutMs);
+      }),
     ]);
   } catch (error) {
-    if (error instanceof Error && error.message === REPOSITORY_READ_TIMEOUT)
+    if (error === REPOSITORY_READ_TIMEOUT)
       return { ...base, reason: "timeout" };
     if (isRecord(error) && error.code === "ENOENT")
       return { ...base, reason: "no tracker" };
     return { ...base, reason: "unreadable" };
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
   }
   try {
     const snapshot = parseTicketSnapshot(tracker, {
@@ -731,12 +766,18 @@ export class FlowPanel {
   private issues(now: number) {
     try {
       const view = this.readRepositoryView();
-      if (view === "invalid")
+      if (view === "invalid") {
+        this.clearIssueCache();
         return [" issue list unavailable — invalid snapshot"];
-      if (view === undefined)
+      }
+      if (view === undefined) {
+        this.clearIssueCache();
         return [" issue list unavailable — snapshot unavailable"];
-      if (view.reads.length === 0)
+      }
+      if (view.reads.length === 0) {
+        this.clearIssueCache();
         return [" issue list unavailable — no repositories registered"];
+      }
       if (
         view.reads !== this.cachedReads ||
         this.cachedSections === undefined
@@ -752,18 +793,27 @@ export class FlowPanel {
         now,
       );
     } catch {
-      this.cachedReads = undefined;
-      this.cachedNormalizedReads = undefined;
-      this.cachedSections = undefined;
+      this.clearIssueCache();
       return [" issue list unavailable — snapshot unavailable"];
     }
+  }
+
+  private clearIssueCache() {
+    this.cachedReads = undefined;
+    this.cachedNormalizedReads = undefined;
+    this.cachedSections = undefined;
   }
 
   private readRepositoryView(): RepositoryView | "invalid" | undefined {
     const view = this.getRepositoryView();
     if (view !== undefined) {
-      if (!isRecord(view) || !Array.isArray(view.reads)) return "invalid";
-      return { defaulted: view.defaulted === true, reads: view.reads };
+      if (
+        !isRecord(view) ||
+        typeof view.defaulted !== "boolean" ||
+        !Array.isArray(view.reads)
+      )
+        return "invalid";
+      return { defaulted: view.defaulted, reads: view.reads };
     }
     const snapshot = this.getTicketSnapshot();
     if (snapshot === undefined) return undefined;
