@@ -668,3 +668,136 @@ Final debugger product diff SHA-256: `3eb8755ca62b932245d4e14a6129dce40f7fd3caed
 - The mode switch never starts or routes to a fleet stage by itself.
 
 **Verification-command.** `node --test --experimental-strip-types extensions/workflow/policy.test.ts extensions/workflow/flow-panel.test.ts extensions/ui-customization/footer.test.ts && npm run check`
+
+---
+
+# Effort — belowEditor status/control surface (PI-20 … PI-26)
+
+Spec: `docs/2026-08-05-below-editor-status-surface.md` · Locked decisions q1–q8 (user, 2026-08-05).
+GitHub issue mirror: `PI-20 → #18` · `PI-21 → #19` · `PI-22 → #20` · `PI-23 → #21` · `PI-24 → #22` · `PI-25 → #23` · `PI-26 → #24`.
+All seven entered GitHub Project #12 as `Planned` and were read back. Only `/reviewer` may move a ticket to `Done`.
+
+Dependency order: `PI-20 → PI-21 → {PI-23, PI-24 → PI-25}`, `PI-22 → PI-23`, `{PI-23, PI-25} → PI-26`.
+Parallel entry points: **PI-20** and **PI-22**.
+
+## PI-20 — belowEditor status surface host and deterministic render bounds
+
+Status: **Planned** · Blocked-by: none · GitHub issue #18
+
+**What to build.** A pure render module `extensions/ui-customization/status-widget.ts` exporting `renderStatusWidget(state, width): string[]`, registered from `extensions/ui-customization/index.ts` as `ctx.ui.setWidget("vraj-status", factory, { placement: "belowEditor" })`. This ticket builds the host and the bounds only: skeleton lines plus width/line/overflow machinery and failure behaviour. Per q2 there is no fixed small line cap; the line count is a deterministic function of input counts with a hard runaway ceiling `maxLines` (default 40, from `workflow.statusWidget.maxLines`, clamped `[8, 200]`) and an explicit `+N more · /flow` overflow line. Reuse `columns`, `truncateToWidth`, `visibleWidth`, `theme.fg`; no new dependency; render does no I/O (INV-3).
+
+**Acceptance criteria.**
+- At widths 20, 80, and 200 every returned line satisfies `visibleWidth(line) <= width`.
+- Rendering the same state twice returns identical arrays (deterministic line count).
+- An input exceeding the ceiling returns exactly `maxLines` lines whose final line is `+N more · /flow` with the correct suppressed count.
+- `maxLines` of 0 clamps to 8, 100000 clamps to 200, absent/non-numeric yields 40.
+- A throwing state accessor returns the base lines rather than throwing or emptying the surface (INV-6).
+- Width 0 or a malformed state returns `[]` without throwing.
+- The module source imports none of `node:fs`, `node:child_process`, `node:https`, `node:net` (INV-3).
+- In tui mode the widget registers on `session_start` at placement `belowEditor` under key `vraj-status` and is cleared on `session_shutdown`.
+
+**Verification-command.** `node --test --experimental-strip-types extensions/ui-customization/status-widget.test.ts && npm run check`
+
+## PI-21 — Rich mode/route/stage rows with tabular alignment (INV-11)
+
+Status: **Planned** · Blocked-by: PI-20 · GitHub issue #19
+
+**What to build.** The rich mode/route/stage content: section rule, a `columns()` line with the mode label left and the route label right, the stage rail, and one row per tracked stage agent (glyph, stage, `backend/model`, elapsed, turns, `% ctx`). Labels are exactly `mode workflow` / `mode free (manual)` and `route direct` / `route fleet/<stage>` (q7). A pure `layoutColumns` helper computes each numeric column width once per render from the widest cell measured with `visibleWidth`, and right-aligns every numeric cell (tabular numbers). Telemetry stays measured-only: unknown renders `?` with no `%`, sub-1 % positive renders `<1%`, stale readings carry `~` plus age. Width degradation: `< 100` drops `backend/model`; `< 60` collapses the rail to the active stage.
+
+**Acceptance criteria.**
+- Mode cell renders exactly `mode workflow` or exactly `mode free (manual)`.
+- Route cell renders exactly `route direct` with no active stage and exactly `route fleet/coder` with an active coder stage.
+- Elapsed cells for `9s` and `12m30s` have equal `visibleWidth`; likewise the turns and `% ctx` cells.
+- With a monochrome theme the four stage states remain distinguishable by `✓`, `◉`, `·`, `×` (INV-11).
+- Unmeasured context renders `? ctx`, the output contains no `0%`, and a positive sub-1 % reading renders `<1%` (INV-1).
+- A stage reading older than the staleness window renders a leading `~` and its age (INV-5).
+- At width 80 the `backend/model` column is absent while the other cells remain; at width 50 the rail contains only the active stage.
+- PI-20 bounds still hold for the enriched output.
+
+**Verification-command.** `node --test --experimental-strip-types extensions/ui-customization/status-widget.test.ts && npm run check`
+
+## PI-22 — Fixed-interval off-render tracker poll (INV-13)
+
+Status: **Planned** · Blocked-by: none · GitHub issue #20
+
+**What to build.** `extensions/workflow/tracker-poll.ts`: `startTrackerPoll({ intervalMs, read, now, setTimer })` returning `{ getSnapshot(), stop() }`. Fixed interval read once from `workflow.trackerPollMs` (default 10000, clamped `[2000, 300000]`), single-flight (a tick during an in-flight read is skipped, not queued), bounded read timeout, each completed read stored with `capturedAt` and an optional reason, timer `unref`'d and cleared on `session_shutdown`. Timers are injected so tests use a fake clock and never a real sleep. Consumes `extensions/shared/ticket-snapshot.ts` as a read-only dependency (INV-3, INV-10).
+
+**Acceptance criteria.**
+- Interval 2000 with the fake clock advanced 10000 ms invokes `read` exactly 5 times.
+- With a never-settling read, advancing 10 intervals invokes `read` exactly once.
+- A rejecting read preserves the previous snapshot and its `capturedAt`, records a non-empty reason, and never propagates the rejection.
+- A read exceeding the bounded timeout is abandoned with a timeout reason, the previous snapshot survives, and a later tick can start a new read.
+- After `stop()`, advancing 10 intervals invokes `read` zero further times.
+- `trackerPollMs` of 0 yields 2000, of 1000000000 yields 300000, absent/non-numeric yields 10000.
+- Every stored snapshot carries a `capturedAt` from the injected clock; an unreadable repository is stored with a reason, never another repository's records (INV-10).
+
+**Verification-command.** `node --test --experimental-strip-types extensions/workflow/tracker-poll.test.ts && npm run check`
+
+## PI-23 — Rich issue/todo rows in the belowEditor surface
+
+Status: **Planned** · Blocked-by: PI-21, PI-22 · GitHub issue #21
+
+**What to build.** Named issue rows in the surface (q3): a counts-and-staleness section rule (`─ issues · 4 active · 12 done · ~ 12s ─…`) and one row per active-window ticket in the order named id → status word → assignee role → truncated title → blocker summary, each blocker rendered as its id plus a satisfied/unsatisfied glyph. Active statuses sort before `planned`; `done`/`dropped`/`canceled`/`duplicate` are excluded from rows and summarised in the rule. Truncation with `…`, full values reachable in `/flow` → Issues. At `width < 60` a row collapses to `PI-nn status blk-summary`. Missing or failed snapshots render `issues unavailable — <reason>` (INV-5, INV-10).
+
+**Acceptance criteria.**
+- A row contains, in order, the named id, status word, assignee role, title, and blocker summary.
+- An over-long title truncates with `…` and the row still satisfies `visibleWidth(line) <= width`.
+- Rows are ordered active-before-planned; no done/dropped/canceled/duplicate ticket appears as a row, and the rule reports their count.
+- Each blocker renders id plus a satisfied/unsatisfied glyph; a ticket with no blockers renders `blk none` (INV-11).
+- A snapshot older than the staleness window renders `~` and its age in the issues rule.
+- An absent or reason-carrying snapshot renders `issues unavailable — <reason>`, never blank and never another repository's records.
+- A 200-ticket snapshot yields exactly the ceiling line count with a correct `+N more · /flow` final line.
+- At width 50 each row collapses to id + status + blocker summary and still fits.
+
+**Verification-command.** `node --test --experimental-strip-types extensions/ui-customization/status-widget.test.ts extensions/workflow/tracker-poll.test.ts && npm run check`
+
+## PI-24 — `/mode` native picker, completions, and warning-on-invalid
+
+Status: **Planned** · Blocked-by: PI-21 · GitHub issue #22
+
+**What to build.** Replace the string-only `/mode` handler (`extensions/workflow/index.ts:1359-1374`). Bare `/mode` opens `ctx.ui.select` with exactly two labelled options (`workflow — auto-route risky or broad work to the fleet`, `free (manual) — everything direct unless a stage is named`); cancelling changes nothing. `getArgumentCompletions` offers `workflow` and `free` filtered case-insensitively. Invalid input notifies at severity `warning`, never `error`, and names the current mode. A successful switch updates the live mode, republishes state, and the widget's mode label immediately reflects it (q5, q7). INV-8: no `/mode` path classifies, routes, starts a stage, or emits a spawn/send on the subagent bridge.
+
+**Acceptance criteria.**
+- Empty-argument `/mode` opens the picker with exactly two options; cancelling leaves the live mode unchanged and emits no state change.
+- Choosing `free` yields a widget mode cell of exactly `mode free (manual)`; choosing `workflow` yields exactly `mode workflow`.
+- `getArgumentCompletions("")` returns both values; `("f")` and `("FR")` each return only `free`.
+- `/mode fleet` notifies at severity `warning`, names the current mode, and leaves the mode unchanged.
+- `/mode  FREE  ` switches to `free` (existing trim/lowercase behaviour preserved).
+- A non-string argument is treated as invalid input and does not throw.
+- No `/mode` path emits a `spawn` or `send` on the subagent bridge channel (INV-8).
+
+**Verification-command.** `node --test --experimental-strip-types extensions/workflow/mode-command.test.ts extensions/workflow/policy.test.ts && npm run check`
+
+## PI-25 — Persist every mode switch to `settings.workflow.mode` (INV-12)
+
+Status: **Planned** · Blocked-by: PI-24 · GitHub issue #23
+
+**What to build.** `extensions/workflow/settings-mode.ts` exporting `persistWorkflowMode(mode, io)`: read → merge → temp-write → rename, setting `workflow.mode` only, creating the `workflow` object when absent, preserving every other key, emitting stable 2-space JSON with a trailing newline. A failed read/parse/write/rename never loses the live switch: the mode still changes, the label gains `· session only`, and the user is notified at `warning`. INV-2: only the mode is read, written, logged, or rendered by this path. Session start continues to seed the live mode from `workflow.mode` so a switch survives restart (q6).
+
+**Acceptance criteria.**
+- Switching to `free` writes `workflow.mode: "free"` and leaves every other parsed key and value unchanged.
+- A settings file with no `workflow` object gains one containing only `mode`.
+- The write is atomic (temp path then rename); no path truncates the target in place.
+- Applying the same switch twice yields byte-identical file content.
+- A write or rename failure notifies at `warning`, leaves the live mode switched, and the label carries `· session only`.
+- Invalid JSON in the settings file is not overwritten; the switch degrades to `· session only` with a warning.
+- No message, notification, or label produced by this path contains any settings value other than the mode (INV-2).
+- After persisting `free`, a fresh session-start read yields live mode `free` with no `/mode` invocation.
+
+**Verification-command.** `node --test --experimental-strip-types extensions/workflow/settings-mode.test.ts extensions/workflow/mode-command.test.ts && npm run check`
+
+## PI-26 — Footer dedup, docs, and bounds/perf regression
+
+Status: **Planned** · Blocked-by: PI-23, PI-25 · GitHub issue #24
+
+**What to build.** Deduplicate the footer against the new surface (q1): rich status lives below the prompt; the footer keeps telemetry (cwd, runtime/model, usage, git/PR) and the workflow rail, with its 7-line cap unchanged. Document the surface, the exact mode and route labels, the `/mode` picker and completions, mode persistence, and the poll interval in `README.md` and `SYSTEM.md`; add `workflow.trackerPollMs` and `workflow.statusWidget.maxLines` to `settings.example.json`. Lock the INV-14 render budget and the amended INV-4 bounds in the suite.
+
+**Acceptance criteria.**
+- No status token rendered by the belowEditor surface (mode label, route label, stage rows, issue rows) is also rendered by `renderFooter` for the same state; the footer still renders cwd, runtime, usage, git/PR, and the rail.
+- `renderFooter` still returns at most 7 lines for every tested state.
+- `settings.example.json` contains `workflow.trackerPollMs` (10000) and `workflow.statusWidget.maxLines` (40), and the existing config-docs check passes over them.
+- `README.md` and `SYSTEM.md` each contain the literal strings `mode free (manual)`, `route fleet/`, and `belowEditor`.
+- A 200-ticket surface render at width 120 completes in under 50 ms wall-clock, measured in the test (INV-14).
+- The full suite, the type check, and the format check all exit 0.
+
+**Verification-command.** `npm test && npm run check && npm run format:check`
