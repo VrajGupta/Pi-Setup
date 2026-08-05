@@ -959,7 +959,7 @@ Parallel entry points: **PI-28** and **PI-29**.
 
 ## PI-28 — Scheduler engine (off-render, injectable timers, per-routine isolation)
 
-Status: **Planned** · Blocked-by: none · GitHub issue #27
+Status: **Agent Ready** · Blocked-by: none · GitHub issue #27
 
 **What to build.** `extensions/workflow/routine-scheduler.ts`: off-render, fixed-interval, single-flight-per-routine scheduler with injectable timers. `startRoutineScheduler({ routines, now, setTimer, clearTimer, onDue })` returning `{ getDueRoutines(), stop() }`. Tick interval is the gcd of all routine intervals, clamped [5000, 60000], default 10000. Per-routine isolation (INV-15, INV-16). No filesystem I/O (INV-3).
 
@@ -976,7 +976,7 @@ Status: **Planned** · Blocked-by: none · GitHub issue #27
 
 ## PI-29 — Definitions in settings (read/write workflow.routines)
 
-Status: **Planned** · Blocked-by: none · GitHub issue #26
+Status: **Agent Ready** · Blocked-by: none · GitHub issue #26
 
 **What to build.** `extensions/workflow/routine-definitions.ts`: validation, read, and write helpers for `workflow.routines` in settings. `readRoutines()`, `writeRoutines()`, `validateRoutine()`. Same atomic write pattern as `settings-mode.ts`. `settings.example.json` gains `workflow.routines: []`.
 
