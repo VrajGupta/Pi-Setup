@@ -12,6 +12,8 @@ workflow authority for stage state; this file mirrors it and carries the durable
 
 `PI-06 → #2` · `PI-07 → #9` · `PI-08 → #10` · `PI-09 → #11` · `PI-10 → #7` · `PI-11 → #1` · `PI-18 → #17`
 `PI-12 → #6` · `PI-13 → #4` · `PI-14 → #8` · `PI-15 → #12` · `PI-16 → #3` · `PI-17 → #5` · `PI-19 → #16`
+`PI-20 → #18` · `PI-21 → #19` · `PI-22 → #20` · `PI-23 → #21` · `PI-24 → #22` · `PI-25 → #23` · `PI-26 → #24`
+`PI-27 → #25` · `PI-28 → #27` · `PI-29 → #26` · `PI-30 → #28` · `PI-31 → #29` · `PI-32 → #30`
 
 ## Immediate priority override
 
@@ -940,6 +942,106 @@ Status: **Done** · Blocked-by: PI-23, PI-25 · GitHub issue #24
 
 ## PI-27 — Routines: periodic scheduled prompts/tasks (like Claude Code routines)
 
-Status: **Planned** · Blocked-by: PI-26 · GitHub issue #25
+Status: **Agent Ready** · Blocked-by: PI-26 (Done) · GitHub issue #25
 
-Planner will grill and lock: cadence model (interval vs cron), where routine definitions live, fleet dispatch from a routine, suppression rules, surface in belowEditor + /flow. See issue #25 for the acceptance sketch.
+Planner spec: `docs/2026-08-05-routines-spec.md`. See issue #25 for the acceptance sketch. Blocker PI-26 is Done; ready for coder.
+
+---
+
+# Effort — Routines: periodic scheduled prompts/tasks (PI-28 … PI-32)
+
+Spec: `docs/2026-08-05-routines-spec.md` · Locked decisions q1–q8 (planner defaults, autonomous run 2026-08-05).
+GitHub issue mirror: `PI-28 → #27` · `PI-29 → #26` · `PI-30 → #28` · `PI-31 → #29` · `PI-32 → #30`.
+All five entered GitHub Project #12 as `Planned` and were read back. Only `/reviewer` may move a ticket to `Done`.
+
+Dependency order: `{PI-28, PI-29} → PI-30 → PI-31 → PI-32`.
+Parallel entry points: **PI-28** and **PI-29**.
+
+## PI-28 — Scheduler engine (off-render, injectable timers, per-routine isolation)
+
+Status: **Planned** · Blocked-by: none · GitHub issue #27
+
+**What to build.** `extensions/workflow/routine-scheduler.ts`: off-render, fixed-interval, single-flight-per-routine scheduler with injectable timers. `startRoutineScheduler({ routines, now, setTimer, clearTimer, onDue })` returning `{ getDueRoutines(), stop() }`. Tick interval is the gcd of all routine intervals, clamped [5000, 60000], default 10000. Per-routine isolation (INV-15, INV-16). No filesystem I/O (INV-3).
+
+**Acceptance criteria.**
+- Two routines of intervals 60000 and 120000 fire at expected counts (2 and 1) over 120000 ms.
+- A routine whose check is still in flight is skipped for that tick (single-flight per routine).
+- Snoozed routines report as snoozed with remaining time; disabled routines never appear as due.
+- A throwing routine check is caught; the scheduler continues, and the routine's status includes an error reason.
+- With no routines, the timer never fires.
+- After `stop()`, advancing 10 intervals fires zero checks.
+- Every timer is `unref`'d.
+
+**Verification-command.** `node --test --experimental-strip-types extensions/workflow/routine-scheduler.test.ts && npm run check`
+
+## PI-29 — Definitions in settings (read/write workflow.routines)
+
+Status: **Planned** · Blocked-by: none · GitHub issue #26
+
+**What to build.** `extensions/workflow/routine-definitions.ts`: validation, read, and write helpers for `workflow.routines` in settings. `readRoutines()`, `writeRoutines()`, `validateRoutine()`. Same atomic write pattern as `settings-mode.ts`. `settings.example.json` gains `workflow.routines: []`.
+
+**Acceptance criteria.**
+- Valid routine round-trips.
+- `intervalMs: 0` clamps to 60000; `1000000000` clamps to 604800000.
+- Missing `name` or `prompt` rejected with reason.
+- Dangerous characters in name rejected.
+- Duplicate names: first wins, second rejected with reason.
+- No `workflow.routines` key returns empty array.
+- Write failure returns `false` without destroying the file.
+- Read path never throws (INV-6).
+
+**Verification-command.** `node --test --experimental-strip-types extensions/workflow/routine-definitions.test.ts && npm run check`
+
+## PI-30 — Due-routine banner and /routine command
+
+Status: **Planned** · Blocked-by: PI-28, PI-29 · GitHub issue #28
+
+**What to build.** Non-blocking banner in belowEditor surface (`routine <name> due · /run <name> to execute`). Commands: `/routine`, `/run`, `/snooze`, `/disable-routine`, `/enable-routine`. Mirror `/mode` pattern (PI-24). INV-8: only `classifyRequest` is called, never spawn/send.
+
+**Acceptance criteria.**
+- Due routine produces a banner line.
+- Bare `/routine` opens picker of enabled/not-snoozed routines.
+- `/routine <name>` shows details.
+- `/run <name>` classifies via `classifyRequest`; prompt never displayed in notification.
+- `/snooze <name> [N]` snoozes for N intervals.
+- `/disable-routine` / `/enable-routine` toggle persistence.
+- Dangerous names are redacted/rejected.
+- No command path emits spawn/send (INV-8).
+
+**Verification-command.** `node --test --experimental-strip-types extensions/workflow/routine-commands.test.ts && npm run check`
+
+## PI-31 — belowEditor section and /flow Routines tab
+
+Status: **Planned** · Blocked-by: PI-30 · GitHub issue #29
+
+**What to build.** belowEditor routines section (rule `─ routines · 1 due ───`, rows per due/snoozed/disabled routine). `/flow` Routines tab with full details. Width-safe, secret-redacted, terminal-safe, INV-11 glyphs.
+
+**Acceptance criteria.**
+- 1 due + 1 snoozed + 1 disabled renders rule and 3 rows in order.
+- Due row shows name, schedule summary, age.
+- Snoozed row shows name and remaining snooze time.
+- Disabled row shows name and `disabled`.
+- At width 50, only due routines appear.
+- `~` staleness for overdue > 1 min (INV-5).
+- Colour-disabled states remain distinguishable (INV-11).
+- Throwing getter degrades to base lines (INV-6).
+- Routines tab renders at widths 40/80/120 with no I/O (INV-3).
+
+**Verification-command.** `node --test --experimental-strip-types extensions/ui-customization/status-widget.test.ts extensions/workflow/routine-panel.test.ts && npm run check`
+
+## PI-32 — Lifecycle wiring, docs, and regression
+
+Status: **Planned** · Blocked-by: PI-31 · GitHub issue #30
+
+**What to build.** Wire scheduler + commands into `session_start`/`session_shutdown`. Document routines in `README.md`, `SYSTEM.md`, `settings.example.json`. INV-14 render budget holds with routines section. Closing gate.
+
+**Acceptance criteria.**
+- `session_start` starts scheduler; `session_shutdown` stops it.
+- Timer is `unref`'d.
+- `settings.example.json` contains `workflow.routines: []` with docs.
+- `README.md` and `SYSTEM.md` contain `routine`, `/routine`, `classifyRequest`.
+- Surface render with 200-ticket snapshot + 5 routines at width 120 completes in under 50 ms (INV-14).
+- Deterministic line count: 5 routines = 5 more lines than 0 routines.
+- `npm test`, `npm run check`, `npm run format:check` all exit 0.
+
+**Verification-command.** `npm test && npm run check && npm run format:check`
