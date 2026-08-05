@@ -20,7 +20,7 @@ For PI-11 only, positive sub-1% usage may round to `0%` in the unconsumed shared
 - `tickets.md` moves PI-11 from `Reviewing` to `Agent Ready` and preserves bounce-3 history.
 - Amendment commit: `ff96fe0d92615a4604412a31a327ef5f4476b26e`.
 - Remote `main` read-back: `ff96fe0d92615a4604412a31a327ef5f4476b26e`.
-- This handoff and `.vraj/session_summary.md` are takeover context; commit them separately and record that remote SHA in the next session's first summary.
+- Takeover context commit: `38a97d5ad64363bf9c290f9898ccb04cd1d23fcf`; remote `main` read-back: `38a97d5ad64363bf9c290f9898ccb04cd1d23fcf`.
 
 ## Verification and recovery
 
