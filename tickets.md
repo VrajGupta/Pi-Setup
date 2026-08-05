@@ -992,7 +992,7 @@ Status: **Review Ready** · Blocked-by: none · GitHub issue #27
 
 ## PI-29 — Definitions in settings (read/write workflow.routines)
 
-Status: **Review Ready** · Blocked-by: none · GitHub issue #26
+Status: **Debugger Ready** · Blocked-by: none · GitHub issue #26
 
 **What to build.** `extensions/workflow/routine-definitions.ts`: validation, read, and write helpers for `workflow.routines` in settings. `readRoutines()`, `writeRoutines()`, `validateRoutine()`. Same atomic write pattern as `settings-mode.ts`. `settings.example.json` gains `workflow.routines: []`.
 
