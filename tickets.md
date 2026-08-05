@@ -481,7 +481,7 @@ Status: **Planned** · Blocked-by: PI-10 · Phase 3
 
 ## PI-15 — Setup, rollback, and push-proof documentation
 
-Status: **Debugging** · Reviewer FAIL (bounce 2/3: rollback deletes an originally present installer-unchanged resource) · Blocked-by: PI-08 (Done) · Phase 2
+Status: **Done** · Reviewer PASS (final review, bounce 3/3) · Blocked-by: PI-08 (Done) · Phase 2
 
 **Why this exists.** `README.md` claims the installer "backs up current runtime resources", but `SETUP.md` (36 lines) documents no way to restore them, and no Windows path. Push proof itself already exists — `origin/main` and local `HEAD` are both `bb5d79e` — so this ticket documents how to reproduce that proof, and claims no new push.
 
@@ -517,6 +517,12 @@ Status: **Debugging** · Reviewer FAIL (bounce 2/3: rollback deletes an original
 - Scope amendment: `scripts/install.mjs` now atomically writes `.rollback-manifest` before resource moves, recording `present`, `unchanged`, or `absent` for every managed resource. Rollback refuses missing provenance, preserves `unchanged`, removes only explicit `absent`, and keeps the interrupted `present` retry fail-closed semantics. POSIX and PowerShell consume the same state names.
 - The focused fixture uses the unchanged `extensions` symlink, interrupted `skills` move, and truly absent `themes` resource in one deterministic production-seam test; it verifies byte restoration, retry safety, and non-restored state without fixed sleeps.
 - No settings/auth/session restoration, secrets, provider changes, or `extensions/` changes. Handoff: `docs/handoffs/2026-08-05-debugger-pi15-bounce-2.md`.
+
+**Reviewer final review (2026-08-05): PASS (96/100, diagnostic only) · Bounce 3 of 3.**
+- Reviewed product commit `fe580e5a8987653671fa98af6a347aef62182a65` against base `84cbb0528bb34faf21be7058f42e0447c0e34ea9`; product diff SHA-256 `fc22e72435a6a613a804eff37fff61ab7bf4045b35be3029144a5ead4465a378`.
+- Exact gate passed: 9 tests and `tsc --noEmit`, exit 0. Project format, focused Prettier, diff check, `sh -n install.sh`, PowerShell static parity, scope, fixed-delay, and secret-shape checks passed.
+- Prior findings are closed at the production seam: interrupted rollback retries preserve the restored original; `unchanged` provenance preserves the installer-unchanged `extensions` symlink; explicit `absent` provenance removes the truly absent `themes` resource.
+- Blocking findings: none. Routing: → **Done**. Review: `docs/handoffs/2026-08-05-reviewer-pi15-bounce-3.md`.
 
 ---
 
