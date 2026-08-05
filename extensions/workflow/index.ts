@@ -548,14 +548,26 @@ function stageReason(
   stale: boolean,
 ) {
   const event = displayText(state.lastEvent);
-  if (agent.status === "error") return `provider error: ${event}`;
+  if (agent.status === "error") {
+    // Only label a provider cause when the event is actually provider-shaped;
+    // a generic error must render reason unknown, never a fabricated cause.
+    return /\b(provider|authorization|timeout|rate limit|quota|spend|unavailable)\b|\b5\d\d\b/i.test(
+      event,
+    )
+      ? `provider error: ${event}`
+      : "reason unknown";
+  }
   if (agent.stage === state.activeStage) {
     if (state.status === "needs-input") return "waiting on question";
     if (state.status === "needs-helper") return "waiting on helper";
     if (state.status === "blocked") {
       if (/\b(quota|spend|rate limit|limit reached)\b/i.test(event))
         return "quota limit";
-      if (/\b(provider|error|failed|timeout|authorization)\b/i.test(event))
+      if (
+        /\b(provider|authorization|timeout|unavailable)\b|\b5\d\d\b/i.test(
+          event,
+        )
+      )
         return `provider error: ${event}`;
     }
   }
@@ -586,7 +598,13 @@ function agentText(
       : "";
   const bridgeStale = isStale(reading, now);
   const stale = reading.kind === "indeterminate" || bridgeStale;
-  const reason = stageAgent ? stageReason(agent, state, bridgeStale) : "";
+  const rawReason = stageAgent ? stageReason(agent, state, bridgeStale) : "";
+  // INV-1: a row with no measured reading renders no % at all, including
+  // inside its reason text (e.g. a provider detail like "50% failure").
+  const reason =
+    stageAgent && reading.kind !== "measured"
+      ? rawReason.replace(/%/g, "")
+      : rawReason;
   return `${stale ? " ~ " : " "}${reason ? `${reason} · ` : ""}${statusGlyph(agent.status)} ${stageAgent ? agent.stage : "helper"} · ${displayText(agent.id, "?")} · ${displayText(agent.title, "?")} · ${displayText(agent.backend, "?")}/${displayText(agent.modelLabel, "?") || "?"} · ${formatElapsed(safeElapsed(now, agent.startedAt))} · ${safeTurns(agent.turns)}t${progress}`;
 }
 

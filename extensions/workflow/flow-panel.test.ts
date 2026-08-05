@@ -218,6 +218,63 @@ test("stage rows use only closed, redacted reasons for silence", () => {
   assert.match(unknown.render(200).join("\n"), /reason unknown/);
 });
 
+test("generic blocked errors render reason unknown, never a fabricated provider cause", () => {
+  for (const lastEvent of [
+    "local validation error",
+    "previous run found; verify evidence before resuming",
+    "malformed input rejected",
+  ]) {
+    const blocked = panel(
+      state({ status: "blocked", activeStage: "coder", lastEvent }),
+      [agent({ stage: "coder" })],
+    );
+    agentsTab(blocked);
+    const output = blocked.render(200).join("\n");
+    assert.match(output, /reason unknown/);
+    assert.doesNotMatch(output, /provider error/);
+  }
+  // A genuinely provider-shaped event still renders provider error.
+  const provider = panel(
+    state({
+      status: "blocked",
+      activeStage: "coder",
+      lastEvent: "provider timeout after 30s",
+    }),
+    [agent({ stage: "coder" })],
+  );
+  agentsTab(provider);
+  assert.match(provider.render(200).join("\n"), /provider error/);
+});
+
+test("an indeterminate row with provider detail never renders a percent", () => {
+  const indeterminate = panel(
+    state({
+      status: "blocked",
+      activeStage: "coder",
+      lastEvent: "provider error: 50% failure rate",
+    }),
+    [agent({ stage: "coder", status: "error" })],
+  );
+  agentsTab(indeterminate);
+  const output = indeterminate.render(200).join("\n");
+  assert.doesNotMatch(output, /%/);
+});
+
+test("quota-limit reason mapping is pinned (closed vocabulary)", () => {
+  for (const lastEvent of [
+    "quota exceeded",
+    "rate limit reached",
+    "spend limit hit",
+  ]) {
+    const quota = panel(
+      state({ status: "blocked", activeStage: "coder", lastEvent }),
+      [agent({ stage: "coder" })],
+    );
+    agentsTab(quota);
+    assert.match(quota.render(200).join("\n"), /quota limit/);
+  }
+});
+
 test("FlowPanel rendering contains no filesystem, network, or subprocess call", () => {
   const source = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
   const panelSource = source.slice(

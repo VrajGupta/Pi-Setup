@@ -88,14 +88,26 @@ function stageReason(
   now: number,
 ) {
   const event = workflow.lastEvent;
-  if (agent.status === "error") return `provider error: ${event}`;
+  if (agent.status === "error") {
+    // Only label a provider cause when the event is actually provider-shaped;
+    // a generic error must render reason unknown, never a fabricated cause.
+    return /\b(provider|authorization|timeout|rate limit|quota|spend|unavailable)\b|\b5\d\d\b/i.test(
+      event,
+    )
+      ? `provider error: ${event}`
+      : "reason unknown";
+  }
   if (agent.stage === workflow.activeStage) {
     if (workflow.status === "needs-input") return "waiting on question";
     if (workflow.status === "needs-helper") return "waiting on helper";
     if (workflow.status === "blocked") {
       if (/\b(quota|spend|rate limit|limit reached)\b/i.test(event))
         return "quota limit";
-      if (/\b(provider|error|failed|timeout|authorization)\b/i.test(event))
+      if (
+        /\b(provider|authorization|timeout|unavailable)\b|\b5\d\d\b/i.test(
+          event,
+        )
+      )
         return `provider error: ${event}`;
     }
   }
