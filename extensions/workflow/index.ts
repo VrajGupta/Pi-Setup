@@ -716,7 +716,7 @@ export class FlowPanel {
       this.theme.fg("mdHeading", " snapshot"),
       ` ${displayText(this.ctx.cwd, "?")}`,
       ` route   ${routeText(state.route)}`,
-      ` mode    ${displayText(state.mode, "workflow")}`,
+      ` mode: ${state.mode === "free" ? "free" : "workflow"}`,
       ` why this route  ${routeReason(state.route)}`,
       ` status  ${displayText(state.status, "unknown")}${isKnownStage(state.activeStage) ? ` · ${state.activeStage}` : ""}`,
       ...(waiting ? [waiting] : []),
@@ -1359,7 +1359,7 @@ export default function workflow(pi: ExtensionAPI) {
   pi.registerCommand("mode", {
     description: "Set workflow routing mode (workflow | free)",
     handler: async (args, ctx) => {
-      const value = args.trim().toLowerCase();
+      const value = typeof args === "string" ? args.trim().toLowerCase() : "";
       if (value !== "workflow" && value !== "free") {
         ctx.ui.notify(
           `/mode expects workflow or free; current mode: ${mode}`,

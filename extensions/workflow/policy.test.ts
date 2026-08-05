@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
+import workflowExtension from "./index.ts";
 import {
   classifyRequest,
   parseControlEnvelope,
@@ -177,5 +186,133 @@ test("mode changes routing only, never exposes prompt text (INV-8)", () => {
       !JSON.stringify(decision).includes(secret),
       `${mode} mode leaked prompt text`,
     );
+  }
+});
+
+test("the mode command validates, changes only live state, and wires every route seam", async () => {
+  type Command = (
+    args: unknown,
+    ctx: { ui: { notify(message: string, type?: string): void } },
+  ) => Promise<void>;
+  type WorkflowTool = {
+    execute: (...args: unknown[]) => Promise<unknown>;
+  };
+  const commands = new Map<string, Command>();
+  const emitted: string[] = [];
+  let workflowTool: WorkflowTool | undefined;
+  const pi = {
+    on() {},
+    registerCommand(name: string, options: { handler: Command }) {
+      commands.set(name, options.handler);
+    },
+    registerShortcut() {},
+    registerTool(tool: WorkflowTool & { name: string }) {
+      if (tool.name === "workflow") workflowTool = tool;
+    },
+    events: {
+      on() {
+        return () => {};
+      },
+      emit(channel: string) {
+        emitted.push(channel);
+      },
+    },
+  };
+
+  workflowExtension(pi as never);
+  const command = commands.get("mode");
+  assert.ok(command);
+  const tool = workflowTool;
+  assert.ok(tool);
+  const notifications: [string, string | undefined][] = [];
+  const commandContext = {
+    ui: {
+      notify(message: string, type?: string) {
+        notifications.push([message, type]);
+      },
+    },
+  };
+  const route = async () => {
+    const result = await tool.execute(
+      "route",
+      {
+        action: "route",
+        prompt: "Add a payment webhook with idempotent retries",
+      },
+      undefined,
+      () => {},
+      {},
+    );
+    return (result as { details: { mode: string } }).details.mode;
+  };
+
+  assert.equal(await route(), "fleet");
+  for (const invalid of ["", "   ", "free-mode", undefined]) {
+    await command(invalid as unknown as string, commandContext);
+    assert.equal(notifications.at(-1)?.[1], "error");
+    assert.equal(await route(), "fleet");
+  }
+  await command(" FREE ", commandContext);
+  assert.equal(await route(), "direct");
+  assert.match(notifications.at(-1)?.[0] ?? "", /routing mode: free/);
+  await command("WORKFLOW", commandContext);
+  assert.equal(await route(), "fleet");
+  assert.match(notifications.at(-1)?.[0] ?? "", /routing mode: workflow/);
+  assert.equal(emitted.includes("vraj:subagent-bridge"), false);
+
+  const source = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
+  assert.equal(
+    [...source.matchAll(/classifyRequest\(([^\n]*)\)/g)].filter(
+      ([, args]) => !args.includes(", mode"),
+    ).length,
+    0,
+  );
+});
+
+test("session start uses the configured default instead of persisted live mode", async () => {
+  const directory = mkdtempSync(join(tmpdir(), "pi19-"));
+  const previousAgentDir = process.env.PI_CODING_AGENT_DIR;
+  process.env.PI_CODING_AGENT_DIR = directory;
+  try {
+    mkdirSync(join(directory, "workflows"));
+    writeFileSync(
+      join(directory, "settings.json"),
+      JSON.stringify({
+        workflow: { mode: "workflow", repositories: [directory] },
+      }),
+    );
+    writeFileSync(
+      join(directory, "workflows", "repo.json"),
+      JSON.stringify({ status: "running", mode: "free" }),
+    );
+
+    const states: Record<string, unknown>[] = [];
+    const hooks = new Map<string, (...args: unknown[]) => unknown>();
+    const pi = {
+      on(event: string, handler: (...args: unknown[]) => unknown) {
+        hooks.set(event, handler);
+      },
+      registerCommand() {},
+      registerShortcut() {},
+      registerTool() {},
+      events: {
+        on() {
+          return () => {};
+        },
+        emit(channel: string, value: unknown) {
+          if (channel === "vraj:workflow-state")
+            states.push(value as Record<string, unknown>);
+        },
+      },
+    };
+    workflowExtension(pi as never);
+    await hooks.get("session_start")?.({}, { mode: "tui", cwd: "/repo" });
+
+    assert.equal(states.at(-1)?.mode, "workflow");
+    assert.equal(states.at(-1)?.status, "recoverable");
+  } finally {
+    if (previousAgentDir === undefined) delete process.env.PI_CODING_AGENT_DIR;
+    else process.env.PI_CODING_AGENT_DIR = previousAgentDir;
+    rmSync(directory, { recursive: true, force: true });
   }
 });

@@ -131,19 +131,21 @@ test("Overview explains the route and only shows waiting on for waiting states",
 
 test("the overview renders the live routing mode as text (PI-19)", () => {
   for (const [mode, expected] of [
-    ["workflow", /mode\s+workflow/],
-    ["free", /mode\s+free/],
+    ["workflow", "mode: workflow"],
+    ["free", "mode: free"],
   ] as const) {
     const output = panel(state({ mode })).render(120).join("\n");
-    assert.match(output, expected);
+    assert.ok(output.includes(expected), `missing ${expected}`);
     // INV-11: the mode is spelled as text, not carried by colour alone.
-    assert.match(output, /mode\s+workflow|mode\s+free/);
+    assert.match(output, /mode: (workflow|free)/);
   }
-  // Absent mode defaults to the configured default (workflow).
-  const defaulted = panel(state({ mode: undefined }))
-    .render(120)
-    .join("\n");
-  assert.match(defaulted, /mode\s+workflow/);
+  // Absent or malformed state defaults to workflow, matching PI-18.
+  for (const mode of [undefined, "invalid"] as const) {
+    const output = panel(state({ mode: mode as WorkflowState["mode"] }))
+      .render(120)
+      .join("\n");
+    assert.match(output, /mode: workflow/);
+  }
 });
 
 test("panel rows fit widths 40 and 120", () => {
