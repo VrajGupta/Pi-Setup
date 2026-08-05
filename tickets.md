@@ -481,7 +481,7 @@ Status: **Planned** · Blocked-by: PI-10 · Phase 3
 
 ## PI-15 — Setup, rollback, and push-proof documentation
 
-Status: **Debugger Ready** · Reviewer FAIL (bounce 1/3: interrupted rollback retry can delete restored originals) · Blocked-by: PI-08 (Done) · Phase 2
+Status: **Review Ready** · Reviewer FAIL (bounce 1/3: interrupted rollback retry can delete restored originals); debugger repaired · Blocked-by: PI-08 (Done) · Phase 2
 
 **Why this exists.** `README.md` claims the installer "backs up current runtime resources", but `SETUP.md` (36 lines) documents no way to restore them, and no Windows path. Push proof itself already exists — `origin/main` and local `HEAD` are both `bb5d79e` — so this ticket documents how to reproduce that proof, and claims no new push.
 
@@ -498,6 +498,13 @@ Status: **Debugger Ready** · Reviewer FAIL (bounce 1/3: interrupted rollback re
 **Verification-command.** `test -f scripts/install-rollback.test.mjs && node --test --experimental-strip-types extensions/workflow/config-docs.test.ts scripts/install-rollback.test.mjs && npm run check`
 
 (The leading `test -f` is load-bearing: `node --test` silently ignores a missing file path and exits 0, so without it the gate is green before any work is done. Verified red today: exit 1.)
+
+**Debugger audit — reviewer bounce 1 (2026-08-05).**
+- Baseline exact gate was green: 9 tests passed and TypeScript was clean. Static checks had no errors.
+- Blocking invariant defect confirmed: consuming a saved entry erased the knowledge that the resource originally existed, so an interrupted retry could delete the restored target. The prior test covered only a fully completed repeat.
+- Fixed test-first at the documented rollback seam: an atomic `.rollback-manifest` directory records `present`/`absent` before any move. A consumed `present` entry with an existing target is treated as already restored; a missing target fails closed. The PowerShell procedure mirrors the same manifest and retry semantics.
+- Added one deterministic regression by injecting exit 73 immediately after the documented POSIX command moves `extensions`; the retry preserved its bytes, restored all other managed resources, removed the originally absent resource, preserved settings/auth/models/sessions, and remained safe to repeat.
+- No `extensions/` changes, secrets, fixed sleeps, or other ticket changes. Handoff: `docs/handoffs/2026-08-05-debugger-pi15-bounce-1.md`.
 
 ---
 

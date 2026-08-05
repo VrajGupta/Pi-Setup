@@ -95,6 +95,9 @@ test("install backup can be listed and the documented rollback restores isolated
     assert.match(text, /\$backupRoot = Join-Path \$agentDir "backups"/);
     assert.match(text, /Split-Path -Parent \$backup/);
     assert.match(text, /Remove-Item -LiteralPath \$target -Recurse -Force/);
+    assert.match(text, /\.rollback-manifest/);
+    assert.match(text, /\$name\.\$state/);
+    assert.match(text, /Rollback cannot resume/);
 
     if (process.platform !== "win32") {
       const listCommand = text.match(/```sh\n(ls -dt[\s\S]*?)\n```/)?.[1];
@@ -111,13 +114,13 @@ test("install backup can be listed and the documented rollback restores isolated
       });
       assert.equal(listed.trim(), backup);
 
-      const runRollback = (backupName) =>
+      const runRollback = (backupName, command = rollbackCommand) =>
         execFileSync(
           "sh",
           [
             "-eu",
             "-c",
-            rollbackCommand.replace("pi-agent-<timestamp>-<pid>", backupName),
+            command.replace("pi-agent-<timestamp>-<pid>", backupName),
           ],
           {
             cwd: root,
@@ -127,6 +130,20 @@ test("install backup can be listed and the documented rollback restores isolated
         );
 
       assert.throws(() => runRollback(`${basename(backup)}/../../outside`));
+      const interruptedRollback = rollbackCommand.replace(
+        '      mv "$saved" "$target"\n',
+        '      mv "$saved" "$target"\n      if [ "$name" = "extensions" ]; then exit 73; fi\n',
+      );
+      assert.notEqual(interruptedRollback, rollbackCommand);
+      assert.throws(
+        () => runRollback(basename(backup), interruptedRollback),
+        (error) => error.status === 73,
+      );
+      assert.equal(existsSync(join(backup, "extensions")), false);
+      assert.deepEqual(
+        readResource(agentDir, "extensions"),
+        originals.get("extensions"),
+      );
       runRollback(basename(backup));
 
       for (const name of existingResources) {
