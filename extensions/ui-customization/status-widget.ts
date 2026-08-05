@@ -335,9 +335,16 @@ function blockerSummary(
   blockedBy: readonly { readonly id: string; readonly satisfied: boolean }[],
   blocking: string,
 ): string {
-  if (blockedBy.length === 0) return "blk none";
+  if (!Array.isArray(blockedBy) || blockedBy.length === 0) return "blk none";
   if (blocking === "blocked (cycle)") return "blk cycle";
-  const parts = blockedBy.map((b) => `${b.id} ${b.satisfied ? "✓" : "·"}`);
+  const parts = blockedBy.map((b) => {
+    try {
+      const id = safeToken(b?.id, "?");
+      return `${id} ${b.satisfied ? "✓" : "·"}`;
+    } catch {
+      return "? ?";
+    }
+  });
   return `blk ${parts.join(" ")}`;
 }
 
@@ -378,13 +385,22 @@ function issueRows(
 
   if (displayed.length === 0) return [];
 
-  const cellData = displayed.map((r) => ({
-    id: r.id,
-    status: issueStatusLabel(r.status),
-    assignee: r.assignee ?? "—",
-    blk: blockerSummary(r.blockedBy, r.blocking),
-    title: safeToken(r.title, ""),
-  }));
+  const cellData = displayed
+    .map((r) => {
+      try {
+        if (!r || typeof r !== "object") return null;
+        return {
+          id: safeToken(r.id, "?"),
+          status: safeToken(issueStatusLabel(r.status), "?"),
+          assignee: safeToken(r.assignee, "—"),
+          blk: blockerSummary(r.blockedBy, r.blocking),
+          title: safeToken(r.title, "—"),
+        };
+      } catch {
+        return null;
+      }
+    })
+    .filter((c): c is NonNullable<typeof c> => c !== null);
 
   const idW = Math.max(...cellData.map((c) => visibleWidth(c.id)));
   const statusW = Math.max(...cellData.map((c) => visibleWidth(c.status)));
@@ -438,7 +454,11 @@ function issueSection(
         ),
       ];
     }
-    const records = Array.isArray(snapshot.records) ? snapshot.records : [];
+    const records = Array.isArray(snapshot.records)
+      ? snapshot.records.filter(
+          (r): r is NonNullable<typeof r> => r != null && typeof r === "object",
+        )
+      : [];
     const rule = issueRuleLine(records, snapshot.capturedAt, now, width);
     const rows = issueRows(records, width);
     return [rule, ...rows];
