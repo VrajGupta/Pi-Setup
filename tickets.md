@@ -909,7 +909,7 @@ Findings fixed test-first:
 
 ## PI-26 — Footer dedup, docs, and bounds/perf regression
 
-Status: **Review Ready** · Blocked-by: PI-23, PI-25 · GitHub issue #24
+Status: **Done** · Blocked-by: PI-23, PI-25 · GitHub issue #24
 
 **What to build.** Deduplicate the footer against the new surface (q1): rich status lives below the prompt; the footer keeps telemetry (cwd, runtime/model, usage, git/PR) and the workflow rail, with its 7-line cap unchanged. Document the surface, the exact mode and route labels, the `/mode` picker and completions, mode persistence, and the poll interval in `README.md` and `SYSTEM.md`; add `workflow.trackerPollMs` and `workflow.statusWidget.maxLines` to `settings.example.json`. Lock the INV-14 render budget and the amended INV-4 bounds in the suite.
 
