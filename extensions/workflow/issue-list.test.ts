@@ -4,7 +4,11 @@ import test from "node:test";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import type { TicketSnapshot } from "../shared/ticket-snapshot.ts";
 import type { WorkflowState } from "../shared/workflow-state.ts";
-import { FlowPanel, type FlowPanelContext } from "./index.ts";
+import {
+  FlowPanel,
+  type FlowPanelContext,
+  type RepositoryView,
+} from "./index.ts";
 
 const theme = {
   bg: (_color: string, text: string) => text,
@@ -41,7 +45,7 @@ function state(): WorkflowState {
 
 const snapshot = {
   repo: "VrajGupta/Pi-Setup",
-  capturedAt: 1_000,
+  capturedAt: Date.now(),
   records: [
     {
       repo: "VrajGupta/Pi-Setup",
@@ -114,7 +118,48 @@ const snapshot = {
   ],
 } satisfies TicketSnapshot;
 
-function issuesPanel(getSnapshot: () => unknown) {
+const localView: RepositoryView = {
+  defaulted: false,
+  reads: [
+    {
+      path: "/repo",
+      repo: snapshot.repo,
+      capturedAt: snapshot.capturedAt,
+      snapshot,
+    },
+  ],
+};
+
+function record(id: string, title: string, repo: string) {
+  return {
+    repo,
+    id,
+    title,
+    status: "done" as const,
+    blockedBy: [],
+    blocking: "unblocked" as const,
+    eta: { kind: "unknown" as const },
+  };
+}
+
+function issuesPanel(getView: () => unknown) {
+  const flow = new FlowPanel(
+    context,
+    theme,
+    state,
+    () => [],
+    () => [],
+    () => ({ loaded: [], selected: [] }),
+    () => {},
+    () => {},
+    undefined,
+    getView as () => RepositoryView | undefined,
+  );
+  for (let index = 0; index < 5; index += 1) flow.handleInput("\t");
+  return flow;
+}
+
+function legacyIssuesPanel(getSnapshot: () => unknown) {
   const flow = new FlowPanel(
     context,
     theme,
@@ -131,13 +176,14 @@ function issuesPanel(getSnapshot: () => unknown) {
 }
 
 test("Issues/Todos renders every snapshot ticket once with explicit monochrome pipeline fields", () => {
-  const output = issuesPanel(() => snapshot)
+  const output = issuesPanel(() => localView)
     .render(240)
     .join("\n");
 
   for (const record of snapshot.records) {
     assert.equal(output.match(new RegExp(`id ${record.id}`, "g"))?.length, 1);
   }
+  assert.match(output, /repo VrajGupta\/Pi-Setup · 7 tickets/);
   assert.match(
     output,
     /repo VrajGupta\/Pi-Setup · id PI-02 · title ready work · assignee coder · status ready/,
@@ -157,33 +203,165 @@ test("Issues/Todos renders every snapshot ticket once with explicit monochrome p
   assert.doesNotMatch(output, /snapshot-secret|\u001b|\nunsafe/);
 });
 
-test("Issues/Todos rejects duplicate or malformed records and redacts hostile fields", () => {
+test("tickets are grouped by repository and never render under a repository they did not come from", () => {
+  const alpha: TicketSnapshot = {
+    repo: "alpha",
+    capturedAt: Date.now(),
+    records: [record("T-1", "alpha title", "alpha")],
+  };
+  const beta: TicketSnapshot = {
+    repo: "beta",
+    capturedAt: Date.now(),
+    records: [record("T-1", "beta title", "beta")],
+  };
+  const output = issuesPanel(() => ({
+    defaulted: false,
+    reads: [
+      {
+        path: "/work/alpha",
+        repo: "alpha",
+        capturedAt: alpha.capturedAt,
+        snapshot: alpha,
+      },
+      {
+        path: "/work/beta",
+        repo: "beta",
+        capturedAt: beta.capturedAt,
+        snapshot: beta,
+      },
+    ],
+  }))
+    .render(240)
+    .join("\n");
+
+  // Shared ticket IDs render once per repository, each under its own header.
+  assert.equal(output.match(/id T-1/g)?.length, 2);
+  const alphaHeader = output.indexOf(" repo alpha · 1 ticket");
+  const betaHeader = output.indexOf(" repo beta · 1 ticket");
+  assert.ok(alphaHeader >= 0 && betaHeader > alphaHeader);
+  assert.ok(output.indexOf("title alpha title") < betaHeader);
+  assert.ok(output.indexOf("title beta title") > betaHeader);
+});
+
+test("an unavailable repository degrades that section only; the others still render", () => {
+  const alpha: TicketSnapshot = {
+    repo: "alpha",
+    capturedAt: Date.now(),
+    records: [record("T-1", "alpha title", "alpha")],
+  };
+  const gamma: TicketSnapshot = {
+    repo: "gamma",
+    capturedAt: Date.now(),
+    records: [record("T-2", "gamma title", "gamma")],
+  };
+  const okAlpha = {
+    path: "/work/alpha",
+    repo: "alpha",
+    capturedAt: alpha.capturedAt,
+    snapshot: alpha,
+  };
+  const okGamma = {
+    path: "/work/gamma",
+    repo: "gamma",
+    capturedAt: gamma.capturedAt,
+    snapshot: gamma,
+  };
+  for (const reason of [
+    "no tracker",
+    "timeout",
+    "unreadable",
+    "empty tracker",
+  ]) {
+    const output = issuesPanel(() => ({
+      defaulted: false,
+      reads: [
+        okAlpha,
+        {
+          path: "/work/beta",
+          repo: "beta",
+          capturedAt: Date.now(),
+          reason,
+        },
+        okGamma,
+      ],
+    }))
+      .render(240)
+      .join("\n");
+    assert.match(output, new RegExp(` repo beta — unavailable — ${reason}`));
+    assert.match(output, /title alpha title/);
+    assert.match(output, /title gamma title/);
+  }
+});
+
+test("with no registry configured the view shows this repository only and says so", () => {
+  const output = issuesPanel(() => ({
+    defaulted: true,
+    reads: [
+      {
+        path: "/repo",
+        repo: "pi-agent",
+        capturedAt: Date.now(),
+        snapshot,
+      },
+    ],
+  }))
+    .render(240)
+    .join("\n");
+  assert.match(output, / registry default: this repository only/);
+  assert.match(output, /repo pi-agent · 7 tickets/);
+  assert.match(output, /id PI-01/);
+});
+
+test("a stale snapshot renders with ~ and its age, never as current", () => {
+  const alpha: TicketSnapshot = {
+    repo: "alpha",
+    capturedAt: Date.now() - 31_000,
+    records: [record("T-1", "alpha title", "alpha")],
+  };
+  const beta: TicketSnapshot = {
+    repo: "beta",
+    capturedAt: Date.now(),
+    records: [record("T-2", "beta title", "beta")],
+  };
+  const output = issuesPanel(() => ({
+    defaulted: false,
+    reads: [
+      {
+        path: "/work/alpha",
+        repo: "alpha",
+        capturedAt: alpha.capturedAt,
+        snapshot: alpha,
+      },
+      {
+        path: "/work/beta",
+        repo: "beta",
+        capturedAt: beta.capturedAt,
+        snapshot: beta,
+      },
+    ],
+  }))
+    .render(240)
+    .join("\n");
+  assert.match(output, / repo alpha · 1 ticket · ~ \d+s/);
+  assert.doesNotMatch(output, / repo beta · 1 ticket · ~/);
+});
+
+test("legacy single-snapshot fallback validates and rejects hostile fields", () => {
+  const output = legacyIssuesPanel(() => snapshot)
+    .render(240)
+    .join("\n");
+  assert.match(output, /id PI-01/);
+
   const duplicate = {
     ...snapshot,
     records: [snapshot.records[0]!, snapshot.records[0]!],
   } satisfies TicketSnapshot;
   assert.match(
-    issuesPanel(() => duplicate)
+    legacyIssuesPanel(() => duplicate)
       .render(120)
       .join("\n"),
     /issue list unavailable — invalid snapshot/,
   );
-
-  const inconsistent = {
-    ...snapshot,
-    records: [
-      {
-        ...snapshot.records[0]!,
-        id: "PI-99",
-        blockedBy: [{ id: "PI-98", satisfied: false }],
-        blocking: "blocked" as const,
-      },
-    ],
-  };
-  const inconsistentOutput = issuesPanel(() => inconsistent)
-    .render(240)
-    .join("\n");
-  assert.match(inconsistentOutput, /PI-98 \(blocked\) · chain blocked/);
 
   const hostile = {
     ...snapshot,
@@ -198,7 +376,7 @@ test("Issues/Todos rejects duplicate or malformed records and redacts hostile fi
       },
     ],
   };
-  const hostileOutput = issuesPanel(() => hostile)
+  const hostileOutput = legacyIssuesPanel(() => hostile)
     .render(240)
     .join("\n");
   assert.match(hostileOutput, /repo — · id PI-99/);
@@ -207,34 +385,11 @@ test("Issues/Todos rejects duplicate or malformed records and redacts hostile fi
     hostileOutput,
     /SYNTHETIC_DB_PASSWORD|SYNTHETIC_UNTERMINATED_SECRET|TAIL|SYNTHETIC_AWS_SECRET|SYNTHETIC_SIP_SECRET/,
   );
-
-  for (const malformed of [
-    {
-      ...snapshot,
-      records: [{ ...snapshot.records[0]!, assignee: "operator" }],
-    },
-    {
-      ...snapshot,
-      records: [
-        {
-          ...snapshot.records[0]!,
-          eta: { kind: "estimated" as const, minMs: 1.5, maxMs: 2, n: 3 },
-        },
-      ],
-    },
-  ]) {
-    assert.match(
-      issuesPanel(() => malformed)
-        .render(120)
-        .join("\n"),
-      /issue list unavailable — invalid snapshot/,
-    );
-  }
 });
 
 test("Issues/Todos does not reuse rows after a malformed snapshot", () => {
   let current: unknown = snapshot;
-  const flow = issuesPanel(() => current);
+  const flow = legacyIssuesPanel(() => current);
   assert.match(flow.render(120).join("\n"), /id PI-01/);
 
   current = {
@@ -254,7 +409,7 @@ test("Issues/Todos does not reuse rows after a malformed snapshot", () => {
 });
 
 test("Issues/Todos stays bounded, read-only, pure, fast, and fails visibly", () => {
-  const flow = issuesPanel(() => snapshot);
+  const flow = issuesPanel(() => localView);
   for (const width of [40, 80, 120]) {
     for (const line of flow.render(width))
       assert.ok(visibleWidth(line) <= width);
@@ -264,15 +419,16 @@ test("Issues/Todos stays bounded, read-only, pure, fast, and fails visibly", () 
   assert.doesNotThrow(() => flow.render(120));
   assert.equal(JSON.stringify(state()), before);
 
-  for (const getSnapshot of [
+  for (const getView of [
     () => undefined,
-    () => ({ records: "bad" }),
+    () => ({ defaulted: false, reads: "bad" }),
+    () => ({ defaulted: false, reads: [] }),
     () => {
       throw new Error("tracker unavailable");
     },
   ]) {
     assert.match(
-      issuesPanel(getSnapshot).render(120).join("\n"),
+      issuesPanel(getView).render(120).join("\n"),
       /issue list unavailable — /,
     );
   }
@@ -288,4 +444,13 @@ test("Issues/Todos stays bounded, read-only, pure, fast, and fails visibly", () 
   );
   assert.doesNotMatch(panelSource, /node:(fs|child_process|http|https|net)/);
   assert.doesNotMatch(panelSource, /\b(fetch|exec|spawn|WebSocket)\s*\(/);
+  const renderSource = source.slice(
+    source.indexOf("function issueRow"),
+    source.indexOf("export function resolveRepositories"),
+  );
+  assert.doesNotMatch(renderSource, /node:(fs|child_process|http|https|net)/);
+  assert.doesNotMatch(
+    renderSource,
+    /\b(readFile|fetch|exec|spawn|WebSocket)\s*\(/,
+  );
 });

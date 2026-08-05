@@ -104,6 +104,21 @@ type FlowPanelTheme = Pick<
   "bg" | "fg" | "bold"
 >;
 
+/** One declared repository root plus the result of reading its tracker. */
+export interface RepositoryRead {
+  readonly path: string;
+  readonly repo: string;
+  readonly capturedAt: number;
+  readonly snapshot?: TicketSnapshot;
+  readonly reason?: string;
+}
+
+/** Cross-repository view input: reads plus whether the registry was defaulted. */
+export interface RepositoryView {
+  readonly defaulted: boolean;
+  readonly reads: readonly RepositoryRead[];
+}
+
 // Model- and agent-provided text is untrusted display data. Strip terminal
 // controls before trusted theme styling, then keep it on one physical row.
 // eslint-disable-next-line no-control-regex
@@ -349,18 +364,134 @@ function issueEta(record: TicketRecord) {
     : `eta ${record.eta.minMs}–${record.eta.maxMs}ms (n=${record.eta.n})`;
 }
 
-function issueList(snapshot: unknown) {
-  if (!isTicketSnapshot(snapshot))
-    return [" issue list unavailable — invalid snapshot"];
-  if (snapshot.reason !== undefined)
-    return [` issue list unavailable — ${issueField(snapshot.reason)}`];
-  return [
-    " issues / todos",
-    ...snapshot.records.map(
-      (record) =>
-        ` repo ${issueField(record.repo)} · id ${issueField(record.id)} · title ${issueField(record.title)} · assignee ${record.assignee ?? "—"} · status ${issueStatus(record.status)} · ${issueBlockers(record)} · ${issueEta(record)}`,
-    ),
-  ];
+function issueRow(record: TicketRecord) {
+  return ` repo ${issueField(record.repo)} · id ${issueField(record.id)} · title ${issueField(record.title)} · assignee ${record.assignee ?? "—"} · status ${issueStatus(record.status)} · ${issueBlockers(record)} · ${issueEta(record)}`;
+}
+
+function repositoryHeader(read: RepositoryRead, now: number) {
+  if (read.snapshot === undefined) {
+    return ` repo ${issueField(read.repo)} — unavailable — ${issueField(read.reason ?? "unknown")}`;
+  }
+  const count = read.snapshot.records.length;
+  const stale = now - read.capturedAt > REPOSITORY_STALENESS_MS;
+  return ` repo ${issueField(read.repo)} · ${count} ticket${count === 1 ? "" : "s"}${stale ? ` · ~ ${formatElapsed(now - read.capturedAt)}` : ""}`;
+}
+
+function repositoryRows(read: RepositoryRead) {
+  return read.snapshot === undefined ? [] : read.snapshot.records.map(issueRow);
+}
+
+function repositoryList(
+  defaulted: boolean,
+  reads: readonly RepositoryRead[],
+  sections: readonly (readonly string[])[],
+  now: number,
+) {
+  const lines = [" issues / todos"];
+  if (defaulted) lines.push(" registry default: this repository only");
+  reads.forEach((read, index) => {
+    lines.push(repositoryHeader(read, now));
+    lines.push(...(sections[index] ?? []));
+  });
+  return lines;
+}
+
+function isRepositoryRead(value: unknown): value is RepositoryRead {
+  if (
+    !isRecord(value) ||
+    typeof value.path !== "string" ||
+    typeof value.repo !== "string" ||
+    finiteNumber(value.capturedAt) === undefined
+  ) {
+    return false;
+  }
+  const hasSnapshot = value.snapshot !== undefined;
+  const hasReason = value.reason !== undefined;
+  if (hasSnapshot === hasReason) return false;
+  if (hasReason && typeof value.reason !== "string") return false;
+  return !hasSnapshot || isTicketSnapshot(value.snapshot);
+}
+
+function normalizeRepositoryRead(value: unknown): RepositoryRead {
+  if (isRepositoryRead(value)) return value;
+  const fallback = isRecord(value) ? value : {};
+  return {
+    path: typeof fallback.path === "string" ? fallback.path : "",
+    repo: typeof fallback.repo === "string" ? fallback.repo : "?",
+    capturedAt: finiteNumber(fallback.capturedAt) ?? 0,
+    reason: "invalid snapshot",
+  };
+}
+
+// The registry is declared in settings only; there is deliberately no
+// directory scan, glob, or auto-discovery of repositories here.
+export function resolveRepositories(
+  settings: unknown,
+  fallback: string,
+): { readonly defaulted: boolean; readonly paths: readonly string[] } {
+  const workflow = isRecord(settings) ? settings.workflow : undefined;
+  const raw = isRecord(workflow) ? workflow.repositories : undefined;
+  if (
+    Array.isArray(raw) &&
+    raw.length > 0 &&
+    raw.every((entry) => typeof entry === "string" && entry.trim().length > 0)
+  ) {
+    return {
+      defaulted: false,
+      paths: [...new Set(raw.map((entry) => (entry as string).trim()))],
+    };
+  }
+  return { defaulted: true, paths: [fallback] };
+}
+
+const REPOSITORY_READ_TIMEOUT = "repository read timed out";
+const REPOSITORY_STALENESS_MS = 30_000;
+
+export interface RepositoryReadOptions {
+  readonly readTracker?: (path: string) => Promise<string>;
+  readonly timeoutMs?: number;
+  readonly now?: () => number;
+}
+
+/** Bounded, read-only tracker read for one declared repository (off render). */
+export async function readRepositoryTracker(
+  declaredPath: string,
+  options: RepositoryReadOptions = {},
+): Promise<RepositoryRead> {
+  const readTracker =
+    options.readTracker ?? ((path: string) => readFile(path, "utf8"));
+  const timeoutMs = options.timeoutMs ?? 2_000;
+  const now = options.now ?? Date.now;
+  const path = declaredPath.startsWith("~/")
+    ? join(homedir(), declaredPath.slice(2))
+    : declaredPath;
+  const base = { path, repo: basename(path), capturedAt: now() };
+  let tracker: string;
+  try {
+    tracker = await Promise.race([
+      readTracker(join(path, "tickets.md")),
+      new Promise<never>((_resolve, reject) =>
+        setTimeout(() => reject(new Error(REPOSITORY_READ_TIMEOUT)), timeoutMs),
+      ),
+    ]);
+  } catch (error) {
+    if (error instanceof Error && error.message === REPOSITORY_READ_TIMEOUT)
+      return { ...base, reason: "timeout" };
+    if (isRecord(error) && error.code === "ENOENT")
+      return { ...base, reason: "no tracker" };
+    return { ...base, reason: "unreadable" };
+  }
+  try {
+    const snapshot = parseTicketSnapshot(tracker, {
+      repo: base.repo,
+      capturedAt: base.capturedAt,
+    });
+    if (snapshot.reason !== undefined)
+      return { ...base, reason: snapshot.reason };
+    return { ...base, snapshot };
+  } catch {
+    return { ...base, reason: "unreadable" };
+  }
 }
 
 export class FlowPanel {
@@ -385,8 +516,10 @@ export class FlowPanel {
   private readonly done: () => void;
   private readonly rerender: () => void;
   private readonly getTicketSnapshot: () => unknown;
-  private cachedTicketSnapshot: unknown;
-  private cachedIssueLines: string[] | undefined;
+  private readonly getRepositoryView: () => RepositoryView | undefined;
+  private cachedReads: readonly RepositoryRead[] | undefined;
+  private cachedNormalizedReads: readonly RepositoryRead[] | undefined;
+  private cachedSections: readonly string[][] | undefined;
 
   constructor(
     ctx: FlowPanelContext,
@@ -398,6 +531,7 @@ export class FlowPanel {
     done: () => void,
     rerender: () => void,
     getTicketSnapshot: () => unknown = () => undefined,
+    getRepositoryView: () => RepositoryView | undefined = () => undefined,
   ) {
     this.ctx = ctx;
     this.theme = theme;
@@ -408,6 +542,7 @@ export class FlowPanel {
     this.done = done;
     this.rerender = rerender;
     this.getTicketSnapshot = getTicketSnapshot;
+    this.getRepositoryView = getRepositoryView;
   }
 
   handleInput(data: string) {
@@ -522,7 +657,7 @@ export class FlowPanel {
       case 4:
         return this.session(state);
       case 5:
-        return this.issues();
+        return this.issues(now);
       default:
         return this.overview(state, agents, now);
     }
@@ -593,20 +728,57 @@ export class FlowPanel {
     ];
   }
 
-  private issues() {
+  private issues(now: number) {
     try {
-      const snapshot = this.getTicketSnapshot();
-      if (snapshot === this.cachedTicketSnapshot && this.cachedIssueLines)
-        return this.cachedIssueLines;
-      const lines = issueList(snapshot);
-      this.cachedTicketSnapshot = snapshot;
-      this.cachedIssueLines = lines;
-      return lines;
+      const view = this.readRepositoryView();
+      if (view === "invalid")
+        return [" issue list unavailable — invalid snapshot"];
+      if (view === undefined)
+        return [" issue list unavailable — snapshot unavailable"];
+      if (view.reads.length === 0)
+        return [" issue list unavailable — no repositories registered"];
+      if (
+        view.reads !== this.cachedReads ||
+        this.cachedSections === undefined
+      ) {
+        this.cachedReads = view.reads;
+        this.cachedNormalizedReads = view.reads.map(normalizeRepositoryRead);
+        this.cachedSections = this.cachedNormalizedReads.map(repositoryRows);
+      }
+      return repositoryList(
+        view.defaulted,
+        this.cachedNormalizedReads ?? [],
+        this.cachedSections ?? [],
+        now,
+      );
     } catch {
-      this.cachedTicketSnapshot = undefined;
-      this.cachedIssueLines = undefined;
+      this.cachedReads = undefined;
+      this.cachedNormalizedReads = undefined;
+      this.cachedSections = undefined;
       return [" issue list unavailable — snapshot unavailable"];
     }
+  }
+
+  private readRepositoryView(): RepositoryView | "invalid" | undefined {
+    const view = this.getRepositoryView();
+    if (view !== undefined) {
+      if (!isRecord(view) || !Array.isArray(view.reads)) return "invalid";
+      return { defaulted: view.defaulted === true, reads: view.reads };
+    }
+    const snapshot = this.getTicketSnapshot();
+    if (snapshot === undefined) return undefined;
+    if (!isTicketSnapshot(snapshot)) return "invalid";
+    return {
+      defaulted: false,
+      reads: [
+        {
+          path: this.ctx.cwd,
+          repo: snapshot.repo,
+          capturedAt: snapshot.capturedAt,
+          snapshot,
+        },
+      ],
+    };
   }
 
   private capabilities() {
@@ -846,7 +1018,7 @@ export default function workflow(pi: ExtensionAPI) {
   let context: ExtensionContext | undefined;
   let agents: WorkflowSubagentSummary[] = [];
   let agentsUpdatedAt = Date.now();
-  let ticketSnapshot: TicketSnapshot | undefined;
+  let repositoryView: RepositoryView = { defaulted: true, reads: [] };
   const usedCapabilities = new Set<string>();
   let requestRender: (() => void) | undefined;
   let lastEnvelope = "";
@@ -863,14 +1035,26 @@ export default function workflow(pi: ExtensionAPI) {
     publish();
   };
 
-  const refreshTicketSnapshot = async (ctx: ExtensionContext) => {
+  const readGlobalSettings = async (): Promise<unknown> => {
     try {
-      ticketSnapshot = parseTicketSnapshot(
-        await readFile(join(ctx.cwd, "tickets.md"), "utf8"),
-        { repo: basename(ctx.cwd), capturedAt: Date.now() },
+      return JSON.parse(
+        await readFile(join(getAgentDir(), "settings.json"), "utf8"),
       );
     } catch {
-      ticketSnapshot = undefined;
+      return undefined;
+    }
+  };
+
+  const refreshRepositoryView = async (ctx: ExtensionContext) => {
+    try {
+      const settings = await readGlobalSettings();
+      const { defaulted, paths } = resolveRepositories(settings, ctx.cwd);
+      const reads = await Promise.all(
+        paths.map((path) => readRepositoryTracker(path)),
+      );
+      repositoryView = { defaulted, reads };
+    } catch {
+      repositoryView = { defaulted: true, reads: [] };
     }
     requestRender?.();
   };
@@ -1081,7 +1265,8 @@ export default function workflow(pi: ExtensionAPI) {
           () => capabilitySnapshot(ctx),
           () => done(),
           () => tui.requestRender(),
-          () => ticketSnapshot,
+          () => undefined,
+          () => repositoryView,
         );
         requestRender = () => tui.requestRender();
         return panel;
@@ -1203,7 +1388,7 @@ export default function workflow(pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     context = ctx;
     usedCapabilities.clear();
-    await refreshTicketSnapshot(ctx);
+    await refreshRepositoryView(ctx);
     try {
       const saved = JSON.parse(
         await readFile(statePath(ctx.cwd), "utf8"),
@@ -1292,6 +1477,6 @@ export default function workflow(pi: ExtensionAPI) {
     stopSubagentState();
     requestRender = undefined;
     context = undefined;
-    ticketSnapshot = undefined;
+    repositoryView = { defaulted: true, reads: [] };
   });
 }

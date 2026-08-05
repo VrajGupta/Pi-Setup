@@ -11,7 +11,8 @@
   "steeringMode": "one-at-a-time",
   "followUpMode": "one-at-a-time",
   "workflow": {
-    "mode": "workflow"
+    "mode": "workflow",
+    "repositories": ["~/Work/pi-agent"]
   },
   "compaction": {
     "enabled": true,
