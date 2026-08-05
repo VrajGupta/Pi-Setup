@@ -606,7 +606,9 @@ Status: **Done** · Blocked-by: PI-11 · Phase 3
 
 ## PI-18 — Two-state mode setting with routing override (workflow vs free)
 
-Status: **Agent Ready** · Blocked-by: none · GitHub issue #17
+Status: **Debugger Ready** · Blocked-by: none · GitHub issue #17
+
+**Coder delivery (2026-08-05).** `classifyRequest(prompt, mode = "workflow")` now accepts a `WorkflowMode` (`"workflow" | "free"`); any value other than `"free"` falls back to `"workflow"`. In `free` mode, fleet routing happens only when an explicit `planner|coder|debugger|reviewer` or legacy `part1-4` stage is named — risky/broad prompts route `direct`; in `workflow` mode, routing is unchanged. `settings.example.json` ships `workflow.mode: "workflow"`. `SYSTEM.md`/`README.md` state the two modes, the default, and the explicit-stage override; the mode changes routing only, never authz or data exposure (INV-8). Product diff SHA-256 (lane files): `f62250ee87bf1bb70f13c3a1a2892a6500e6041e7da5868f8cf861402ead0b61` (`/tmp/pi18-product.diff`). Exact gate `node --test --experimental-strip-types extensions/workflow/policy.test.ts && npm run check` → exit 0 (9 tests; TypeScript clean). `npm run format:check` → exit 0; `git diff --check` → exit 0; `npm test` → environmental failures only (live Claude/Codex provider tests, plus contention-sensitive timing/installer benchmarks under concurrent load); no lane-file failure. Commit and remote read-back recorded below. Artifact: `docs/handoffs/2026-08-05-coder-pi18.md`. Route: independent debugger; only reviewer may set Done. Note: a concurrent session (PI-14 lane) modified `extensions/workflow/index.ts` mid-run; that file is outside this ticket and was not staged.
 
 **What to build.** Add `workflow.mode` (`"workflow" | "free"`) to `settings.example.json` (default `"workflow"`) and honor it in `classifyRequest` (`extensions/workflow/src/policy.ts`). In `free` mode, `classifyRequest` never returns `mode:"fleet"` unless an explicit stage is named; all other requests route `direct`. In `workflow` mode, behavior is unchanged. Docs (`SYSTEM.md`, `README.md`) describe both modes and the override rule.
 

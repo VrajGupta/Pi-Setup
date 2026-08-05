@@ -10,6 +10,9 @@
   "packages": ["git:github.com/DietrichGebert/ponytail"],
   "steeringMode": "one-at-a-time",
   "followUpMode": "one-at-a-time",
+  "workflow": {
+    "mode": "workflow"
+  },
   "compaction": {
     "enabled": true,
     "reserveTokens": 16384,

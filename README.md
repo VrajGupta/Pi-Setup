@@ -23,7 +23,7 @@ The installer backs up current runtime resources before linking this repo into `
 
 ## Workflow
 
-Normal requests are classified automatically. Small reversible work stays direct. Risky or broad work is routed to the fleet. Vraj messages only the coordinator; the initial task goes to a stage through `workflow start`, and subsequent user or decision text reaches stages solely through the coordinator's explicit `workflow send` relay. Use `/flow` or **F6** for the command center.
+Normal requests are classified automatically. Small reversible work stays direct. Risky or broad work is routed to the fleet. Routing mode is set by `workflow.mode` in `settings.example.json` (accepted values: `"workflow"`, the default, which auto-routes risky or broad work to the fleet; `"free"`, which routes everything direct unless an explicit `planner|coder|debugger|reviewer` or legacy `part1-4` stage is named). The explicit-stage override works in both modes; the mode changes routing only, never authz or data exposure. Vraj messages only the coordinator; the initial task goes to a stage through `workflow start`, and subsequent user or decision text reaches stages solely through the coordinator's explicit `workflow send` relay. Use `/flow` or **F6** for the command center.
 
 Stage rows show elapsed time, completed assistant turns (`1t` = one turn), and measured context-window use (`<1% ctx`, for example). Context use is not task-completion progress; unavailable usage shows no percentage.
 

@@ -44,6 +44,8 @@ export const STAGE_PROFILES = {
   }
 >;
 
+export type WorkflowMode = "workflow" | "free";
+
 export interface RouteDecision {
   mode: "direct" | "fleet";
   stage: StageName | null;
@@ -178,7 +180,17 @@ function findSkills(text: string) {
   return [...new Set(skills)];
 }
 
-export function classifyRequest(prompt: string): RouteDecision {
+/**
+ * Route a request. `mode` is the workflow setting `workflow.mode`:
+ * `"workflow"` (default) auto-routes risky/broad work to the fleet;
+ * `"free"` routes everything direct unless an explicit stage is named.
+ * Any value other than `"free"` falls back to `"workflow"`. The mode only
+ * changes routing, never authz or data exposure (INV-8).
+ */
+export function classifyRequest(
+  prompt: string,
+  mode: WorkflowMode = "workflow",
+): RouteDecision {
   const text = prompt.toLowerCase();
   const stage = explicitStage(text);
   const risk = hasTerm(text, RISK_TERMS);
@@ -186,7 +198,10 @@ export function classifyRequest(prompt: string): RouteDecision {
   const asksForExplanation = /^(why|what|how do i|explain|show me|list)\b/.test(
     text,
   );
-  const fleet = Boolean(stage) || risk || (broad && !asksForExplanation);
+  const fleet =
+    mode === "free"
+      ? Boolean(stage)
+      : Boolean(stage) || risk || (broad && !asksForExplanation);
 
   if (stage) {
     return {
@@ -214,9 +229,12 @@ export function classifyRequest(prompt: string): RouteDecision {
     mode: "direct",
     stage: null,
     confidence: asksForExplanation ? "high" : "medium",
-    reason: asksForExplanation
-      ? "explanatory or read-only request"
-      : "small reversible task",
+    reason:
+      mode === "free" && !stage
+        ? "free mode: no explicit stage named"
+        : asksForExplanation
+          ? "explanatory or read-only request"
+          : "small reversible task",
     skills: findSkills(text),
   };
 }

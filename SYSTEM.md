@@ -51,6 +51,8 @@ Keep added checks fast: target under 500ms per focused check in normal local run
 
 Use risk and ambiguity, not file count alone. Fleet work includes auth, permissions, tenant boundaries, billing, production data, migrations, providers, webhooks, secrets, security, privacy, destructive actions, broad features, and ambiguous multi-module work. Small explanations, inspections, and reversible one-file fixes may stay direct.
 
+Routing mode is `workflow.mode` (`"workflow"` default: risky/broad work auto-routes to the fleet; `"free"`: everything routes direct unless an explicit `planner|coder|debugger|reviewer` or legacy `part1-4` stage is named). The mode only changes routing, never authz or data exposure (INV-8).
+
 Show the compact route in your response. If confidence is high, proceed without asking about skills. Ask only if the skill/stage choice materially changes safety, scope, cost, or model selection.
 
 ## Stage control envelopes
