@@ -649,7 +649,7 @@ Status: **Done** · Blocked-by: none · GitHub issue #17
 
 ## PI-19 — Mode switch command and visible mode indicator
 
-Status: **Planned** · Blocked-by: PI-18 · GitHub issue #16
+Status: **Agent Ready** · Blocked-by: PI-18 (Done) · GitHub issue #16
 
 **What to build.** A runtime switch (`/mode workflow|free`) that sets the live routing mode, plus a visible text indicator (`mode: workflow` / `mode: free`) in the footer or `/flow` rail.
 
