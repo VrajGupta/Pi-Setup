@@ -698,7 +698,7 @@ Status: **Review Ready** · Blocked-by: none · GitHub issue #18
 - `npm run format:check` → **exit 0**. Final log: `/tmp/pi20-current-format.log`; clean-commit log: `/tmp/pi20-final-format.log`.
 - Header/footer regression: `node --test --experimental-strip-types extensions/ui-customization/footer.test.ts extensions/ui-customization/header.test.ts` → **exit 0**. Log: `/tmp/pi20-final-ui-regression.log`.
 - `npm test` → **exit 1**, 265/268 passed. Only live Claude monthly-spend-limit/interrupt tests and the live Codex completion failed; outside this lane. Log: `/tmp/pi20-npm-test-final.log`.
-- `git diff --check` → exit 0 before delivery. Product diff SHA-256: `643002b1ac20bc2b76d0544ee1978e4c8a53fe5ec51729d13ffd4c442054a8c4` (`/tmp/pi20-debugger-product-committed.diff`). Commit: `9748cc3` (`fix(ui-customization): harden status widget bounds`, `Refs: #18`). Handoff: `docs/handoffs/2026-08-05-debugger-pi20.md`.
+- `git diff --check` → exit 0 before delivery. Product diff SHA-256: `643002b1ac20bc2b76d0544ee1978e4c8a53fe5ec51729d13ffd4c442054a8c4` (`/tmp/pi20-debugger-product-committed.diff`). Implementation commit: `9748cc3` (`fix(ui-customization): harden status widget bounds`, `Refs: #18`). Documentation/tracker commit: `13e9cfbe24c4302b29ac8b9693c27d068feca01b`; fetched `origin/main` and `git ls-remote --heads origin main` read the same SHA. Handoff: `docs/handoffs/2026-08-05-debugger-pi20.md`; push proof: `/tmp/pi20-push-readback.txt`.
 
 The ticket is **Review Ready**, not Done. Only the independent reviewer may set Done.
 
@@ -736,9 +736,18 @@ Status: **Planned** · Blocked-by: PI-20 · GitHub issue #19
 
 ## PI-22 — Fixed-interval off-render tracker poll (INV-13)
 
-Status: **Debugger Ready** · Blocked-by: none · GitHub issue #20
+Status: **Review Ready** · Blocked-by: none · GitHub issue #20
 
 **Coder delivery (2026-08-05).** Added `extensions/workflow/tracker-poll.ts` (single-flight fixed-interval off-render poll, interval clamped to [2000, 300000] default 10000, timeout preserves prior snapshot with reason, stop clears timer) plus deterministic fake-timer tests covering interval clamping, single-flight (fixed a module defect where the read timeout cleared in-flight state and allowed overlapping reads), failed-read reason preservation, and stop behavior. Exact gate `node --test --experimental-strip-types extensions/workflow/tracker-poll.test.ts extensions/workflow/issue-list.test.ts && npm run check` → exit 0 (12 tests; tsc clean); `npm run format:check` exit 0.
+
+**Debugger audit (2026-08-05).**
+- Baseline exact gate was green, but the rewritten tests did not prove timeout semantics, synchronous read throws, malformed results, complete interval clamping, timer cancellation, unref behavior, or poll read-only purity.
+- Red-team fixes were test-first: timeout keeps the previous `capturedAt` and reason `timeout` without clearing in-flight; a slow read cannot overlap a later tick; thrown, rejected, malformed, and empty-error reads degrade to non-empty reasons; reasoned or foreign-repository results cannot replace the prior repository records; all interval inputs clamp to [2000, 300000] with default 10000; `stop()` cancels the recurring and active timeout timers; both timer classes are unref'd; poll source has no write/commit/push or filesystem/network path.
+- Added deterministic fake-timer coverage for 18 targeted tests, including 10 slow intervals, 5 settled fixed intervals, settings.example `workflow.trackerPollMs`, timeout snapshot preservation, per-repository isolation, and timer cleanup. `extensions/workflow/issue-list.test.ts` remains the existing staleness/unavailable/purity coverage and was not changed.
+- Evidence: exact gate `node --test --experimental-strip-types extensions/workflow/tracker-poll.test.ts extensions/workflow/issue-list.test.ts && npm run check` → exit 0 (18 tests; tsc clean); `npm run format:check` → exit 0; `npm test` → exit 1 (263/266 pass; 2 live Claude monthly-spend-limit failures and 1 live Codex backend failure outside this lane).
+- Owned code/settings diff SHA-256 from `9748cc3` → `fc48b0b8c9efdfbbba0bd162c8396762d9ca30b7dd1694d2dbdab92039a41ecf`.
+- Project #12 PI-22 item was moved `Debugging` → `Review Ready` and read back; handoff: `docs/handoffs/2026-08-05-debugger-pi22.md`.
+- No unfixed PI-22 defect. Tracker-poll wiring into the later status-surface lifecycle remains outside this lane; `stop()` is the shutdown-safe seam for its caller.
 
 **What to build.** `extensions/workflow/tracker-poll.ts`: `startTrackerPoll({ intervalMs, read, now, setTimer })` returning `{ getSnapshot(), stop() }`. Fixed interval read once from `workflow.trackerPollMs` (default 10000, clamped `[2000, 300000]`), single-flight (a tick during an in-flight read is skipped, not queued), bounded read timeout, each completed read stored with `capturedAt` and an optional reason, timer `unref`'d and cleared on `session_shutdown`. Timers are injected so tests use a fake clock and never a real sleep. Consumes `extensions/shared/ticket-snapshot.ts` as a read-only dependency (INV-3, INV-10).
 
