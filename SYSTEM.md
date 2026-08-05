@@ -33,8 +33,8 @@ Keep added checks fast: target under 500ms per focused check in normal local run
 - Stage profiles use capability tiers while retaining concrete defaults: planner (high planning/reasoning) uses Opus 5 / Claude; coder (high implementation) uses DeepSeek V4 Flash / OpenCodeGo; debugger (max adversarial debugging) uses GPT-5.6 Luna / OpenAI; reviewer (high independent review) uses Grok 4.5 / OpenRouter.
 - **Approved model map (human-pinned, 2026-08-05):**
   - planner — Claude Opus 5, Claude Code harness (Claude subscription); may use Sonnet 5 / Haiku 5 for planning when OpenRouter quota is reached.
-  - coder — DeepSeek V4 Flash, OpenCodeGo subscription; when OpenRouter quota is reached, coder runs as Haiku 5 subagents orchestrated by Opus 5.
-  - debugger — GPT-5.6 Luna, OpenAI subscription; fallback GPT-5.6 Luna via OpenRouter, then via OpenCodeGo subscription when OpenRouter quota is reached.
+  - coder — DeepSeek V4 Flash via OpenRouter; fallback OpenCodeGo subscription when OpenRouter quota is reached.
+  - debugger — GPT-5.6 Luna via OpenRouter; fallback OpenAI subscription, then OpenCodeGo subscription when OpenRouter quota is reached.
   - reviewer — Grok 4.5 via OpenRouter; fallback Grok 4.5 via OpenCodeGo subscription when the OpenRouter daily limit is reached.
 - **Model changes require approval.** If a stage model changes or a fallback is used, the coordinator tells Vraj first and does not switch until Vraj approves; the accepted model is then recorded in the durable handoff. Never silently substitute a pinned default.
 - Resolve each tier through environment-level model/harness aliases and ordered fallbacks when a default is unavailable. A fallback is valid only when it preserves the required capability tier and maker/checker separation with a compatible harness, effort, and auth route; record the exact model ID, harness, tier, and fallback reason in the durable handoff. Never silently substitute a pinned default; if no acceptable configured fallback or auth route exists, stop and surface it.

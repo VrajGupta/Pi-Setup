@@ -40,9 +40,9 @@ Fallbacks (prefer the primary route; a fallback is used only when the primary is
 unavailable and is always reported to Vraj before being accepted):
 
 - **planner:** Claude Code with Claude subscription (Opus 5 / Sonnet 5 / Haiku 5; no OpenRouter).
-- **coder:** DeepSeek V4 Flash via OpenCodeGo subscription; when OpenRouter quota is reached, coding runs as Haiku 5 subagents orchestrated by Opus 5.
-- **debugger:** OpenAI subscription (GPT-5.6 Luna); if the subscription has no usage or the limit is reached, use GPT-5.6 Luna via OpenRouter; if OpenRouter quota is also reached, use GPT-5.6 Luna via the OpenCodeGo subscription.
-- **reviewer:** Grok 4.5 via OpenRouter; if the OpenRouter daily limit is reached, use Grok 4.5 via the OpenCodeGo subscription.
+- **coder:** DeepSeek V4 Flash via OpenRouter; fallback OpenCodeGo subscription when OpenRouter quota is reached.
+- **debugger:** GPT-5.6 Luna via OpenRouter; fallback OpenAI subscription, then OpenCodeGo subscription when OpenRouter quota is reached.
+- **reviewer:** Grok 4.5 via OpenRouter; fallback OpenCodeGo subscription when the OpenRouter daily limit is reached.
 
 These match `STAGE_PROFILES` in `extensions/workflow/src/policy.ts`, which is the pinned source of truth.
 
