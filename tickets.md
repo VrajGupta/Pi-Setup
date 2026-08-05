@@ -423,9 +423,11 @@ Status: **Done** · Blocked-by: none · Phase 3 · Priority 1 · *Amended 2026-0
 
 ## PI-16 — Stage rows explain silence instead of showing a bare number (INV-1, INV-5, INV-6)
 
-Status: **Debugger Ready** · Blocked-by: PI-11 · Phase 3 · Priority 2
+Status: **Review Ready** · Blocked-by: PI-11 · Phase 3 · Priority 2
 
 **Coder delivery (2026-08-05).** Added closed reasons (`working`, waiting, provider/quota error, stale bridge, or `reason unknown`) to the footer and `/flow` stage rows. Reasons are terminal-safe/redacted, stale rows lead with `~`, unknown readings omit `%`, and throwing reason getters retain the base footer. Product diff SHA-256: `11d8b3e752d3eec606fe340deb7c0c18fc14c3afb2ab81f12f285de15f43f80d`. Exact gate `node --test --experimental-strip-types extensions/ui-customization/footer.test.ts extensions/workflow/flow-panel.test.ts && npm run check && npm test` → exit 0 (41 focused tests; 214 Node tests; 22 Vitest tests). `npm run format:check` → exit 0. Project #12 issue #3 read back **Debugger Ready**. Artifact: `docs/handoffs/2026-08-05-coder-pi16.md`; gate log: `/tmp/pi16-gate.log`.
+
+**Debugger audit (2026-08-05, acting debugger — pinned stage harness unavailable).** Independent red-team pass: baseline gate exit 0 (41 focused; tsc clean; full 214+22). Probes against production seams: closed reason vocabulary with `reason unknown` fallback; stale row renders `~` + reason (never bare pair); indeterminate reading renders no `%` on the stage row; throwing `reasonFor`/reading getter still yields the 3 base lines; `Authorization: Bearer …` in a provider-error reason renders `[REDACTED]`; lines fit widths 20/60/80/200. No new defect found; coder tests already cover the closed set, stale prefix, redaction, throwing getters, and width bounds. No PI-13/PI-17 lane file changed. Artifact: `docs/handoffs/2026-08-05-debugger-pi16.md`. Project #12 issue #3 read back **Review Ready**. Only the independent reviewer may set Done.
 
 **Why this exists.** The user observed a planner row reading roughly `15m · 1t · 0%` — fifteen minutes of wall clock, one turn, and a number that reads as "no progress". Elapsed time alone is not a status. A row that cannot say anything useful must say *why*.
 
