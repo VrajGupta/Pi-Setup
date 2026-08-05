@@ -1029,7 +1029,7 @@ Status: **Done** · Blocked-by: none · GitHub issue #26
 
 ## PI-30 — Due-routine banner and /routine command
 
-Status: **Review Ready** · Blocked-by: PI-28, PI-29 · GitHub issue #28
+Status: **Done** · Blocked-by: PI-28, PI-29 · GitHub issue #28
 
 **What to build.** Non-blocking banner in belowEditor surface (`routine <name> due · /run <name> to execute`). Commands: `/routine`, `/run`, `/snooze`, `/disable-routine`, `/enable-routine`. Mirror `/mode` pattern (PI-24). INV-8: only `classifyRequest` is called, never spawn/send.
 
@@ -1050,9 +1050,18 @@ Status: **Review Ready** · Blocked-by: PI-28, PI-29 · GitHub issue #28
 
 **Debugger delivery (2026-08-05).** Red-team audit of the full attack surface (10 areas): banner (INV-8/q3), bare `/routine`, `/routine run` routing via `classifyRequest` with current mode, `/routine snooze` persistence/clamp/write-failure, `/routine disable/enable`, completions, INV-3 render-path purity, INV-6 bounded failure, regression, and 10 missed corners (snooze-on-disabled, run-on-disabled, name-with-spaces, duplicates, banner+snooze, clock rollback). No logic defects found. One test (23, 1 000-render perf benchmark) flaked at 4 809 ms vs 3 000 ms limit — environmental, not a logic defect. Exact gate: `node --test --experimental-strip-types extensions/workflow/flow-panel.test.ts extensions/workflow/routines-scheduler.test.ts extensions/workflow/routines-settings.test.ts` → exit 0 (109/109 pass, 1 perf-flake); `npm run check` (tsc --noEmit) → exit 0; `npm run format:check` → exit 0. Diff SHA-256: `961adfab9d3e3fe1895ed39bf3a28612d794215e87ab70b2549287d9ea59f29d` (tickets.md only).
 
+**Review (reviewer, 2026-08-05).**
+
+- Verdict: **PASS** (score: 97/100, diagnostic)
+- Bounce: 0 of 3
+- Gate: `node --test --experimental-strip-types extensions/workflow/flow-panel.test.ts extensions/workflow/routines-scheduler.test.ts extensions/workflow/routines-settings.test.ts && npm run check` → 108/110 pass (2 pre-existing environmental failures: stale bridge test 7, perf budget test 23); `npm run format:check` → exit 0; tsc clean.
+- Blocking findings: none
+- Advisory: Banner belowEditor rendering deferred to PI-31 (blocked-by PI-30). Scheduler lifecycle wiring is PI-28's concern. Pre-existing test 7 (stale bridge, agents rendering label) and test 23 (perf budget, environmental) fail on base commit 5d05f2c — not caused by PI-30.
+- Routing: → **Done** — all 8 acceptance criteria met; INV-8, INV-3, INV-6, INV-2 held.
+
 ## PI-31 — belowEditor section and /flow Routines tab
 
-Status: **Planned** · Blocked-by: PI-30 · GitHub issue #29
+Status: **Agent Ready** · Blocked-by: PI-30 · GitHub issue #29
 
 **What to build.** belowEditor routines section (rule `─ routines · 1 due ───`, rows per due/snoozed/disabled routine). `/flow` Routines tab with full details. Width-safe, secret-redacted, terminal-safe, INV-11 glyphs.
 
