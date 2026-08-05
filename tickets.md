@@ -464,7 +464,9 @@ Status: **Planned** · Blocked-by: PI-16 · Phase 3
 
 ## PI-13 — Tracker snapshot source and honest ETA estimator (pure module, INV-9)
 
-Status: **Planned** · Blocked-by: PI-11 · Phase 3
+Status: **Debugger Ready** · Blocked-by: PI-11 · Phase 3
+
+**Coder delivery (2026-08-05).** Built the frozen, no-I/O tracker parser with status/role parsing, blocker satisfaction and iterative cycle detection, and INV-9's explicit measured-duration-only ETA range. Product diff SHA-256: `a5c31a3b5ba6a836ca38ed878ceedd7d624a9acaddba3e659ab5d989457467a2`. Exact gate `node --test --experimental-strip-types extensions/shared/ticket-snapshot.test.ts && npm run check` → exit 0; `npm run format:check` → exit 0. Artifacts: `docs/handoffs/2026-08-05-coder-pi13.md`, `/tmp/pi13-product.diff`. Project #12 issue #4 read back `Debugger Ready`.
 
 **What to build.** A pure module `extensions/shared/ticket-snapshot.ts` that parses tracker markdown text (passed in as a string — the module does no I/O) into frozen `TicketRecord`s — `{repo, id, title, status, blockedBy[], assignee, verificationCommand?, updatedAt?}` — resolves blocker satisfaction, and computes an ETA per ticket under INV-9. A separate thin caller performs the file read off the render path and stamps the snapshot with a capture time.
 
