@@ -302,7 +302,9 @@ The `git diff --quiet` clause is the INV-8 guard: it compares the ticket branch 
 
 ## PI-10 — `/flow` issue todo list with live ticket statuses
 
-Status: **Review Ready** · Blocked-by: PI-12 (Done), PI-13 (Done) · Phase 3 · *Amended 2026-08-04 (addendum plan): adds repository, assignee, and honest ETA columns.*
+Status: **Done** · Blocked-by: PI-12 (Done), PI-13 (Done) · Phase 3 · *Amended 2026-08-04 (addendum plan): adds repository, assignee, and honest ETA columns.*
+
+**Reviewer final (2026-08-05): PASS (94/100).** Gate exit 0 (26/26; tsc clean). All criteria met; no blocking findings. Routing: → **Done** — Project #12 read back Done; issue #7 closed.
 
 **Coder delivery (2026-08-05).** Added a read-only `Issues` tab backed by PI-13's cached snapshot, captured at `session_start` (off the render path). Each ticket has one width-bounded, terminal-safe/redacted row with repo, ID, title, role assignee, text status, blocker satisfaction, and PI-13 ETA; malformed/unavailable snapshots render a bounded unavailable line. Product diff SHA-256: `92d2c111e82dc21f19e4af86a67fddcda799ad0003f7add965b9bc19fcca8fc3` (`/tmp/pi10-product.diff`). Exact gate `node --test --experimental-strip-types extensions/workflow/issue-list.test.ts extensions/workflow/flow-panel.test.ts && npm run check` → exit 0 (24 tests; TypeScript clean). `npm run format:check` → exit 0; `npm test` → exit 0 (226 Node tests, 22 Vitest tests); `git diff --check` → exit 0. Project #12 issue #7 moved `Agent Ready` → `Coding` → `Debugger Ready`; both states read back. Artifact: `docs/handoffs/2026-08-05-coder-pi10.md`.
 
