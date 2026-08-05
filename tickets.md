@@ -327,7 +327,7 @@ read happens off the render path.
 
 ## PI-11 — Retro-gate the orchestrator-only + honest-telemetry continuation (`bb5d79e`)
 
-Status: **Review Ready** · Blocked-by: none · Phase 3 · Priority 1 · *Amended 2026-08-05 (human decision): the shared-formatter sub-1% rounding residual is accepted display precision for this ticket; all safety, input-routing, and unknown-telemetry requirements stay hard. See the amendment section in `docs/2026-08-04-flow-todo-crossrepo-and-docs.md`.*
+Status: **Done** · Blocked-by: none · Phase 3 · Priority 1 · *Amended 2026-08-05 (human decision): the shared-formatter sub-1% rounding residual is accepted display precision for this ticket; all safety, input-routing, and unknown-telemetry requirements stay hard. See the amendment section in `docs/2026-08-04-flow-todo-crossrepo-and-docs.md`.*
 
 **Why this exists.** Commit `bb5d79e` ("fix: keep user messages with orchestrator") is the current HEAD and the current `origin/main`. It removed the workflow `input` steering hook and `canSteerStage`, changed stage-row progress to `<1% ctx`, and made zero Claude usage report unknown — but it has no ticket, no debugger audit, and no reviewer verdict. **The commit is preserved. No reset, rebase, revert, or force-push is authorized.** This ticket retro-gates it forward-only and closes the remaining gaps the user re-reported on 2026-08-04: the Pi `steeringMode` setting and the header `STEER` affordance still imply direct stage steering.
 
@@ -360,6 +360,13 @@ Status: **Review Ready** · Blocked-by: none · Phase 3 · Priority 1 · *Amende
 - Baseline gate exit 0: 63 focused tests, `npm run check` clean, 204 Node tests, 22 Vitest tests. `npm run format:check` exit 0.
 - No new defect found. All prior bounce findings remain fixed at their production seams. No PI-16/12/10/14 implementation file changed (only `.claude/agents/debugger-pi-agent.md` on-lane profile repoint + tracker).
 - Routing: **Review Ready**. Handoff: `docs/handoffs/2026-08-05-debugger-pi11.md`. Only the independent reviewer may set Done.
+
+**Reviewer verdict (2026-08-05): PASS (96/100, diagnostic only).**
+
+- Gate: exact amended PI-11 verification command → exit 0 (63 focused tests, TypeScript clean, 204 Node tests, 22 Vitest tests).
+- All amended criteria met: orchestrator-only explicit relay, legacy settings migration, no steering affordance, unknown telemetry without `%`, shipped sub-1% stage rows as `<1% ctx`, and coordinator-only documentation.
+- The accepted `extensions/shared/context-utilization.ts` residual is unchanged in `f298172..6807047`; no PI-16/12/10/14 implementation file changed and no invariant regression was found.
+- Blocking findings: none. Routing: → **Done**.
 
 **Debugger audit (2026-08-04).**
 
