@@ -118,6 +118,11 @@ const ESCAPE_PATTERN = /\u001b(?:[()][0-2A-Z]|[ -/]*[@-~])/g;
 // the next non-indented line or another sensitive header.
 const SENSITIVE_HEADER_PATTERN =
   /\b(Authorization|Cookie)[ \t]*:[ \t]*[^\r\n]*?(?:\r?\n[ \t]+[^\r\n]*?)*(?=\r?\n(?![ \t])|[ \t]+\b(?:Authorization|Cookie)[ \t]*:|$)/gi;
+const SECRET_ASSIGNMENT_PATTERN =
+  /(["']?(?:api[_-]?key|access[_-]?key|access[_-]?token|aws[_-]?access[_-]?key[_-]?id|authorization|cookie|credential|key|password|passwd|private[_-]?key|secret|token|[a-z][a-z0-9_-]*[_-](?:key|token|secret|password|passwd|credential|url|uri)(?:[_-][a-z0-9]+)?)["']?\s*[:=]\s*)(?:"(?:\\[\s\S]|[^"\\])*"|'(?:\\[\s\S]|[^'\\])*'|["'][^\r\n]*|[^\s,;}]+)/gi;
+const URI_PATTERN = /\b[a-z][a-z0-9+.-]*:\/{1,2}[^\s]+/gi;
+const ROOTLESS_CREDENTIAL_URI_PATTERN =
+  /\b[a-z][a-z0-9+.-]*:[^/\s:@]+:[^@\s]+@[^\s]+/gi;
 
 function stringify(value: unknown, fallback = "") {
   try {
@@ -135,14 +140,13 @@ function redactSecrets(text: string) {
       /\b(sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9_]{12,}|eyJ[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,})\b/g,
       "[REDACTED]",
     )
-    .replace(
-      /(["']?(?:api[_-]?key|access[_-]?key|authorization|cookie|credential|password|passwd|private[_-]?key|secret|token)["']?\s*[:=]\s*)(["']?)[^\s,;}]+\2/gi,
-      "$1[REDACTED]",
-    )
+    .replace(SECRET_ASSIGNMENT_PATTERN, "$1[REDACTED]")
     .replace(
       /([?&](?:api[_-]?key|access[_-]?token|key|secret|token)=)[^&#\s]+/gi,
       "$1[REDACTED]",
-    );
+    )
+    .replace(ROOTLESS_CREDENTIAL_URI_PATTERN, "[URL]")
+    .replace(URI_PATTERN, "[URL]");
 }
 
 function displayText(value: unknown, fallback = "") {
@@ -247,13 +251,26 @@ function isTicketRecord(value: unknown): value is TicketRecord {
   ) {
     return false;
   }
+  const blockerIds = new Set<string>();
   if (
     !value.blockedBy.every(
       (blocker) =>
         isRecord(blocker) &&
         typeof blocker.id === "string" &&
+        blocker.id.trim().length > 0 &&
+        !blockerIds.has(blocker.id) &&
+        blockerIds.add(blocker.id) &&
         typeof blocker.satisfied === "boolean",
     )
+  ) {
+    return false;
+  }
+  const hasUnsatisfiedBlocker = value.blockedBy.some(
+    (blocker) => isRecord(blocker) && blocker.satisfied === false,
+  );
+  if (
+    (value.blocking === "unblocked" && hasUnsatisfiedBlocker) ||
+    (value.blocking === "blocked" && !hasUnsatisfiedBlocker)
   ) {
     return false;
   }
@@ -264,8 +281,10 @@ function isTicketRecord(value: unknown): value is TicketRecord {
   return (
     value.eta.kind === "estimated" &&
     minMs !== undefined &&
+    Number.isSafeInteger(minMs) &&
     minMs > 0 &&
     maxMs !== undefined &&
+    Number.isSafeInteger(maxMs) &&
     maxMs >= minMs &&
     n !== undefined &&
     Number.isSafeInteger(n) &&
@@ -274,14 +293,21 @@ function isTicketRecord(value: unknown): value is TicketRecord {
 }
 
 function isTicketSnapshot(value: unknown): value is TicketSnapshot {
-  return (
-    isRecord(value) &&
-    typeof value.repo === "string" &&
-    finiteNumber(value.capturedAt) !== undefined &&
-    Array.isArray(value.records) &&
-    value.records.every(isTicketRecord) &&
-    (value.reason === undefined || typeof value.reason === "string")
-  );
+  if (
+    !isRecord(value) ||
+    typeof value.repo !== "string" ||
+    finiteNumber(value.capturedAt) === undefined ||
+    !Array.isArray(value.records) ||
+    (value.reason !== undefined && typeof value.reason !== "string")
+  ) {
+    return false;
+  }
+  const ids = new Set<string>();
+  for (const record of value.records) {
+    if (!isTicketRecord(record) || ids.has(record.id)) return false;
+    ids.add(record.id);
+  }
+  return true;
 }
 
 function issueField(value: unknown) {
@@ -326,7 +352,7 @@ function issueEta(record: TicketRecord) {
 function issueList(snapshot: unknown) {
   if (!isTicketSnapshot(snapshot))
     return [" issue list unavailable — invalid snapshot"];
-  if (snapshot.reason)
+  if (snapshot.reason !== undefined)
     return [` issue list unavailable — ${issueField(snapshot.reason)}`];
   return [
     " issues / todos",
@@ -359,6 +385,8 @@ export class FlowPanel {
   private readonly done: () => void;
   private readonly rerender: () => void;
   private readonly getTicketSnapshot: () => unknown;
+  private cachedTicketSnapshot: unknown;
+  private cachedIssueLines: string[] | undefined;
 
   constructor(
     ctx: FlowPanelContext,
@@ -567,8 +595,16 @@ export class FlowPanel {
 
   private issues() {
     try {
-      return issueList(this.getTicketSnapshot());
+      const snapshot = this.getTicketSnapshot();
+      if (snapshot === this.cachedTicketSnapshot && this.cachedIssueLines)
+        return this.cachedIssueLines;
+      const lines = issueList(snapshot);
+      this.cachedTicketSnapshot = snapshot;
+      this.cachedIssueLines = lines;
+      return lines;
     } catch {
+      this.cachedTicketSnapshot = undefined;
+      this.cachedIssueLines = undefined;
       return [" issue list unavailable — snapshot unavailable"];
     }
   }

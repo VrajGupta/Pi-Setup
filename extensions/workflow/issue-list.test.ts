@@ -157,6 +157,102 @@ test("Issues/Todos renders every snapshot ticket once with explicit monochrome p
   assert.doesNotMatch(output, /snapshot-secret|\u001b|\nunsafe/);
 });
 
+test("Issues/Todos rejects duplicate or malformed records and redacts hostile fields", () => {
+  const duplicate = {
+    ...snapshot,
+    records: [snapshot.records[0]!, snapshot.records[0]!],
+  } satisfies TicketSnapshot;
+  assert.match(
+    issuesPanel(() => duplicate)
+      .render(120)
+      .join("\n"),
+    /issue list unavailable — invalid snapshot/,
+  );
+
+  const inconsistent = {
+    ...snapshot,
+    records: [
+      {
+        ...snapshot.records[0]!,
+        id: "PI-99",
+        blockedBy: [{ id: "PI-98", satisfied: false }],
+        blocking: "blocked" as const,
+      },
+    ],
+  };
+  const inconsistentOutput = issuesPanel(() => inconsistent)
+    .render(240)
+    .join("\n");
+  assert.match(inconsistentOutput, /PI-98 \(blocked\) · chain blocked/);
+
+  const hostile = {
+    ...snapshot,
+    records: [
+      {
+        ...snapshot.records[0]!,
+        repo: "",
+        id: "PI-99",
+        title:
+          'DATABASE_URL=postgres://user:SYNTHETIC_DB_PASSWORD@db.example/app password="SYNTHETIC_UNTERMINATED_SECRET TAIL\nAWS_ACCESS_KEY_ID=SYNTHETIC_AWS_SECRET\nsip:user:SYNTHETIC_SIP_SECRET@example.test',
+        assignee: undefined,
+      },
+    ],
+  };
+  const hostileOutput = issuesPanel(() => hostile)
+    .render(240)
+    .join("\n");
+  assert.match(hostileOutput, /repo — · id PI-99/);
+  assert.match(hostileOutput, /assignee —/);
+  assert.doesNotMatch(
+    hostileOutput,
+    /SYNTHETIC_DB_PASSWORD|SYNTHETIC_UNTERMINATED_SECRET|TAIL|SYNTHETIC_AWS_SECRET|SYNTHETIC_SIP_SECRET/,
+  );
+
+  for (const malformed of [
+    {
+      ...snapshot,
+      records: [{ ...snapshot.records[0]!, assignee: "operator" }],
+    },
+    {
+      ...snapshot,
+      records: [
+        {
+          ...snapshot.records[0]!,
+          eta: { kind: "estimated" as const, minMs: 1.5, maxMs: 2, n: 3 },
+        },
+      ],
+    },
+  ]) {
+    assert.match(
+      issuesPanel(() => malformed)
+        .render(120)
+        .join("\n"),
+      /issue list unavailable — invalid snapshot/,
+    );
+  }
+});
+
+test("Issues/Todos does not reuse rows after a malformed snapshot", () => {
+  let current: unknown = snapshot;
+  const flow = issuesPanel(() => current);
+  assert.match(flow.render(120).join("\n"), /id PI-01/);
+
+  current = {
+    ...snapshot,
+    get records(): never {
+      throw new Error("snapshot corrupted");
+    },
+  };
+  assert.match(
+    flow.render(120).join("\n"),
+    /issue list unavailable — snapshot unavailable/,
+  );
+  assert.match(
+    flow.render(120).join("\n"),
+    /issue list unavailable — snapshot unavailable/,
+  );
+});
+
 test("Issues/Todos stays bounded, read-only, pure, fast, and fails visibly", () => {
   const flow = issuesPanel(() => snapshot);
   for (const width of [40, 80, 120]) {
