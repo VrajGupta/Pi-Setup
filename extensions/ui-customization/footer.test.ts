@@ -296,14 +296,22 @@ test("the module imports no fs, subprocess, or network APIs", () => {
 
 test("the shipped index.ts footer wrapper performs no render-path I/O", () => {
   const source = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
-  // The wrapper may read files at setup time, but the render path itself must
-  // stay free of fs/subprocess/network calls (INV-3). Restrict the scan to the
-  // footer render/update region and forbid calls inside the render closure.
+  // The wrapper may import node:os/node:path for identity, but render-path
+  // purity (INV-3) is unprovable if any I/O-capable module can be imported at
+  // all: an imported binding could be called inside render while a region
+  // scan only searches for the module-specifier text. Forbid the modules
+  // module-wide so the invariant is mutation-proof.
+  assert.doesNotMatch(
+    source,
+    /from\s+["']node:(fs|child_process|http|https|net)/,
+  );
   assert.doesNotMatch(source, /\b(fetch|XMLHttpRequest|WebSocket)\s*\(/);
-  assert.doesNotMatch(source, /from\s+["']node:(child_process|http|https|net)/);
+  // And no I/O binding call may appear in the footer render region.
   const renderRegion = source.slice(source.indexOf("setFooter"), source.length);
-  assert.doesNotMatch(renderRegion, /node:(fs|child_process|http|https|net)/);
-  assert.doesNotMatch(renderRegion, /\b(fetch|XMLHttpRequest|WebSocket)\s*\(/);
+  assert.doesNotMatch(
+    renderRegion,
+    /\b(readFileSync|writeFileSync|readdirSync|execSync|spawn|exec|fetch|XMLHttpRequest|WebSocket)\s*\(/,
+  );
 });
 
 test("unknown stages are omitted, duplicate stages remain distinct, and input order is preserved", () => {
