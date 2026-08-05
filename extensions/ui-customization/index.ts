@@ -27,7 +27,12 @@ import {
   type WorkflowSubagentSummary,
 } from "../shared/workflow-state.ts";
 import { columns, renderFooter } from "./footer.ts";
-import { renderStatusWidget, type StatusWidgetState } from "./status-widget.ts";
+import {
+  renderStatusWidget,
+  type StatusWidgetAgent,
+  type StatusWidgetContext,
+  type StatusWidgetState,
+} from "./status-widget.ts";
 
 const STAGES: StageName[] = ["planner", "coder", "debugger", "reviewer"];
 
@@ -290,18 +295,54 @@ export default function uiCustomization(pi: ExtensionAPI) {
       };
     });
 
-    // Register the belowEditor status widget (PI-20).
-    // The widget is initialized with empty input lines for now; later tickets will
-    // populate it with mode, route, stage, and issue rows.
+    // Register the belowEditor status widget (PI-20, enriched by PI-21).
     ctx.ui.setWidget?.(
       "vraj-status",
       (_tui, _theme) => {
         return {
           render(width: number) {
+            const now = Date.now();
+            const stageAgents: StatusWidgetAgent[] = [];
+            for (const agent of agents) {
+              if (
+                !agent.stage ||
+                !(STAGES as readonly string[]).includes(agent.stage)
+              )
+                continue;
+              const context: StatusWidgetContext =
+                typeof agent.contextTokens === "number" &&
+                Number.isFinite(agent.contextTokens) &&
+                agent.contextTokens > 0 &&
+                typeof agent.contextWindow === "number" &&
+                Number.isFinite(agent.contextWindow) &&
+                agent.contextWindow > 0
+                  ? {
+                      kind: "measured" as const,
+                      percent:
+                        (agent.contextTokens / agent.contextWindow) * 100,
+                    }
+                  : { kind: "unknown" as const };
+              stageAgents.push({
+                stage: agent.stage,
+                status: agent.status,
+                backend: agent.backend,
+                model: agent.modelLabel ?? "?",
+                startedAt: agent.startedAt,
+                at: agentsAt,
+                turns: agent.turns,
+                context,
+              });
+            }
             return renderStatusWidget({
               width,
               maxLines: undefined,
               inputLines: [],
+              mode: workflow.mode,
+              route: workflow.route,
+              activeStage: workflow.activeStage,
+              workflowStatus: workflow.status,
+              now,
+              agents: stageAgents,
             });
           },
           invalidate() {},

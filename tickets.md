@@ -720,7 +720,7 @@ The ticket is **Review Ready**, not Done. Only the independent reviewer may set 
 
 ## PI-21 — Rich mode/route/stage rows with tabular alignment (INV-11)
 
-Status: **Agent Ready** · Blocked-by: PI-20 · GitHub issue #19
+Status: **Debugger Ready** · Blocked-by: PI-20 · GitHub issue #19
 
 **What to build.** The rich mode/route/stage content: section rule, a `columns()` line with the mode label left and the route label right, the stage rail, and one row per tracked stage agent (glyph, stage, `backend/model`, elapsed, turns, `% ctx`). Labels are exactly `mode workflow` / `mode free (manual)` and `route direct` / `route fleet/<stage>` (q7). A pure `layoutColumns` helper computes each numeric column width once per render from the widest cell measured with `visibleWidth`, and right-aligns every numeric cell (tabular numbers). Telemetry stays measured-only: unknown renders `?` with no `%`, sub-1 % positive renders `<1%`, stale readings carry `~` plus age. Width degradation: `< 100` drops `backend/model`; `< 60` collapses the rail to the active stage.
 
@@ -734,7 +734,9 @@ Status: **Agent Ready** · Blocked-by: PI-20 · GitHub issue #19
 - At width 80 the `backend/model` column is absent while the other cells remain; at width 50 the rail contains only the active stage.
 - PI-20 bounds still hold for the enriched output.
 
-**Verification-command.** `node --test --experimental-strip-types extensions/ui-customization/status-widget.test.ts && npm run check`
+**Coder delivery (2026-08-05).** Added mode/route row builders, a stage rail with active/complete/pending glyphs, and per-agent rows with tabular-column alignment to the belowEditor widget. Mode labels `mode workflow` / `mode free (manual)`; route labels `route direct` / `route fleet/<stage>`; rail shows `◉` active, `✓` complete, `·` pending; agent rows export `layoutColumns` for right-aligned numeric cells. Width degradation: `< 100` drops backend/model, `< 60` collapses rail to active stage. INV-1: unmeasured context renders `? ctx`, sub-1% renders `<1% ctx`, no `0%`. INV-2: secret tokens redacted, control chars stripped. INV-5: stale readings show `~` plus age. INV-11: all four glyphs `✓◉·×` distinguishable without colour. INV-6: throwing getters degrade to bounded base lines. PI-20's maxLines ceiling and overflow line preserved. 38 targeted tests pass; `tsc --noEmit` clean; `npm run format:check` clean. Product diff SHA-256: `0ddbf383589c288044a51ea406660a614d27a43dd6ba5d10a9789678490ff20f`. Full `npm test`: 286/290 pass; 4 environmental failures (live Claude/Codex backends, 10k-line tracker timing) outside this lane. Artifact: `docs/handoffs/2026-08-05-coder-pi21.md`. Route: **Debugger Ready** — independent debugger; only reviewer may set Done.
+
+---
 
 ## PI-22 — Fixed-interval off-render tracker poll (INV-13)
 
