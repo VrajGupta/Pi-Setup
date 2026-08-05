@@ -47,7 +47,7 @@ import {
   type WorkflowMode,
 } from "./src/policy.ts";
 import { assembleWorkflowSystemPrompt } from "./prompt-assembly.ts";
-import { persistWorkflowMode } from "./settings-mode.ts";
+import { persistWorkflowMode, validateWorkflowMode } from "./settings-mode.ts";
 
 const REASONING_LEVELS = [
   "off",
@@ -1130,13 +1130,6 @@ export default function workflow(pi: ExtensionAPI) {
     }
   };
 
-  // Mirrors policy.ts's normalizeWorkflowMode: only "free" is special; any
-  // absent, invalid, or otherwise non-"free" value means the default mode.
-  const modeFromSettings = (settings: unknown): WorkflowMode => {
-    const workflow = isRecord(settings) ? settings.workflow : undefined;
-    return isRecord(workflow) && workflow.mode === "free" ? "free" : "workflow";
-  };
-
   const refreshRepositoryView = async (ctx: ExtensionContext) => {
     try {
       const settings = await readGlobalSettings();
@@ -1528,7 +1521,11 @@ export default function workflow(pi: ExtensionAPI) {
     usedCapabilities.clear();
     await refreshRepositoryView(ctx);
     const settings = await readGlobalSettings();
-    mode = modeFromSettings(settings);
+    const workflow = isRecord(settings) ? settings.workflow : undefined;
+    const raw = isRecord(workflow) ? workflow.mode : undefined;
+    const { mode: m, warning } = validateWorkflowMode(raw);
+    mode = m;
+    if (warning) ctx.ui.notify(warning, "warning");
     try {
       const saved = JSON.parse(
         await readFile(statePath(ctx.cwd), "utf8"),

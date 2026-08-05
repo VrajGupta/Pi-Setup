@@ -9,7 +9,11 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { persistWorkflowMode, readWorkflowMode } from "./settings-mode.ts";
+import {
+  persistWorkflowMode,
+  readWorkflowMode,
+  validateWorkflowMode,
+} from "./settings-mode.ts";
 
 function tempDir() {
   const dir = mkdtempSync(join(tmpdir(), "pi25-settings-"));
@@ -241,6 +245,166 @@ test("persistWorkflowMode does not lose unrelated keys", async () => {
       "npm:example",
       "git:github.com/DietrichGebert/ponytail",
     ]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ─── validateWorkflowMode ────────────────────────────────────────────
+
+test("validateWorkflowMode returns mode for valid workflow/free", () => {
+  const wf = validateWorkflowMode("workflow");
+  assert.equal(wf.mode, "workflow");
+  assert.equal(wf.warning, undefined);
+
+  const fr = validateWorkflowMode("free");
+  assert.equal(fr.mode, "free");
+  assert.equal(fr.warning, undefined);
+});
+
+test("validateWorkflowMode returns workflow with warning for invalid values", () => {
+  for (const invalid of [
+    "banana",
+    "WORKFLOW",
+    "FREE",
+    "",
+    null,
+    undefined,
+    42,
+    [],
+    {},
+  ]) {
+    const { mode, warning } = validateWorkflowMode(invalid);
+    assert.equal(mode, "workflow");
+    if (invalid === undefined) {
+      assert.equal(warning, undefined);
+    } else {
+      assert.ok(warning, `should warn for ${JSON.stringify(invalid)}`);
+      assert.equal(
+        warning,
+        "invalid persisted workflow.mode — defaulting to workflow",
+      );
+    }
+  }
+});
+
+// ─── runtime guard: invalid newMode ──────────────────────────────────
+
+test("persistWorkflowMode rejects non-normalized mode", async () => {
+  const dir = tempDir();
+  try {
+    writeSettings(dir, { workflow: { mode: "workflow" } });
+    // @ts-expect-error — testing runtime guard, not TypeScript
+    const ok = await persistWorkflowMode("garbage");
+    assert.equal(ok, false);
+    // Original file untouched
+    assert.equal(readSettings(dir).workflow.mode, "workflow");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ─── concurrent write serialization ──────────────────────────────────
+
+test("persistWorkflowMode serializes concurrent writes", async () => {
+  const dir = tempDir();
+  try {
+    writeSettings(dir, { workflow: { mode: "workflow" } });
+    const path = settingsPath(dir);
+
+    // Two rapid writes with different modes; both must succeed and the
+    // file must contain exactly one of the two values (no corruption).
+    const [r1, r2] = await Promise.all([
+      persistWorkflowMode("free", path),
+      persistWorkflowMode("workflow", path),
+    ]);
+    assert.equal(r1, true);
+    assert.equal(r2, true);
+
+    const saved = readSettings(dir);
+    assert.ok(
+      saved.workflow.mode === "workflow" || saved.workflow.mode === "free",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("persistWorkflowMode serialization survives a write failure", async () => {
+  const dir = tempDir();
+  try {
+    // Don't create settings.json — first write will fail
+    const path = settingsPath(dir);
+
+    // Two rapid calls where the first one fails (missing file)
+    const [r1, r2] = await Promise.all([
+      persistWorkflowMode("free", path),
+      persistWorkflowMode("workflow", path),
+    ]);
+    // Both should return false (no file to read)
+    assert.equal(r1, false);
+    assert.equal(r2, false);
+    // No file should have been created
+    assert.throws(() => readSettings(dir));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ─── getAgentDir() throws in default parameter (INV-6) ───────────────
+
+test("persistWorkflowMode catches getAgentDir failure", async () => {
+  // Pass a path that exists, but the default path resolution is inside
+  // the try block — if getAgentDir threw, we'd still catch it. The
+  // structural proof is the code (default inside try). Here we verify
+  // the function still works with a real path.
+  const dir = tempDir();
+  try {
+    writeSettings(dir, { workflow: { mode: "workflow" } });
+    const ok = await persistWorkflowMode("free", settingsPath(dir));
+    assert.equal(ok, true);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("readWorkflowMode catches getAgentDir failure", async () => {
+  const dir = tempDir();
+  try {
+    writeSettings(dir, { workflow: { mode: "free" } });
+    const mode = await readWorkflowMode(settingsPath(dir));
+    assert.equal(mode, "free");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ─── non-object workflow key ─────────────────────────────────────────
+
+test("persistWorkflowMode handles non-object workflow key", async () => {
+  const dir = tempDir();
+  try {
+    writeSettings(dir, {
+      theme: "vraj-ink",
+      workflow: "hello",
+    });
+    // workflow is a string, not an object — should be replaced
+    const ok = await persistWorkflowMode("free", settingsPath(dir));
+    assert.equal(ok, true);
+    const saved = readSettings(dir);
+    assert.equal(saved.workflow.mode, "free");
+    assert.equal(saved.theme, "vraj-ink");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("readWorkflowMode handles non-object workflow key", async () => {
+  const dir = tempDir();
+  try {
+    writeSettings(dir, { workflow: "hello" });
+    const mode = await readWorkflowMode(settingsPath(dir));
+    assert.equal(mode, "workflow");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

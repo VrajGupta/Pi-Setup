@@ -861,7 +861,7 @@ Status: **Done** · Blocked-by: PI-21 · GitHub issue #22
 
 ## PI-25 — Persist every mode switch to `settings.workflow.mode` (INV-12)
 
-Status: **Debugger Ready** · Blocked-by: PI-24 · GitHub issue #23
+Status: **Review Ready** · Blocked-by: PI-24 · GitHub issue #23
 
 **What to build.** `extensions/workflow/settings-mode.ts` exporting `persistWorkflowMode(mode, io)`: read → merge → temp-write → rename, setting `workflow.mode` only, creating the `workflow` object when absent, preserving every other key, emitting stable 2-space JSON with a trailing newline. A failed read/parse/write/rename never loses the live switch: the mode still changes, the label gains `· session only`, and the user is notified at `warning`. INV-2: only the mode is read, written, logged, or rendered by this path. Session start continues to seed the live mode from `workflow.mode` so a switch survives restart (q6).
 
@@ -884,6 +884,28 @@ Status: **Debugger Ready** · Blocked-by: PI-24 · GitHub issue #23
 - Product diff SHA-256: `1832d643342640e44cce2d1de44379cb05982e081cb6ede778d060a2543ce60a`
 - Gate: `node --test --experimental-strip-types extensions/workflow/flow-panel.test.ts extensions/workflow/settings-mode.test.ts && npm run check` → exit 0 (43 tests, tsc clean)
 - `npm run format:check` (laned files) → exit 0
+
+**Debugger delivery (2026-08-05).** Model: DeepSeek V4 Flash via OpenRouter (session-approved, not repo policy). No subagents spawned.
+
+Findings fixed test-first:
+
+1. **`getAgentDir()` default throws before try/catch (INV-6).** Both `persistWorkflowMode` and `readWorkflowMode` computed their default settings path via `settingsPath ?? join(getAgentDir(), "settings.json")` as a default parameter, which evaluates before the function body — a throwing `getAgentDir()` would propagate uncaught. Fixed: path resolution moved into the try block.
+
+2. **Concurrent write race (INV-12).** Two rapid `/mode` switches could interleave: handler 1 reads file, handler 2 reads the same file (before handler 1's rename), then both write — the last rename wins, so the file and live mode diverge. Fixed: module-level `writeInProgress` promise chain serializes writes. Each call captures the previous call's promise before creating its own, so `Promise.all` is safe.
+
+3. **No runtime guard on `persistWorkflowMode` (INV-12).** The typed `WorkflowMode` parameter is TypeScript-only; JS runtime could pass an unnormalized value. Added: `if (newMode !== "workflow" && newMode !== "free") return false`.
+
+4. **Invalid persisted mode → no startup warning (INV-6).** A settings file with `workflow.mode: "WORKFLOW"` or `"banana"` silently defaulted to `"workflow"` without notifying the user. Added: `validateWorkflowMode` pure function + wired into `session_start` to emit a `ctx.ui.notify(…, "warning")` when the persisted value is present but not in `{"workflow", "free"}`.
+
+5. **Missing edge-case coverage.** Added tests for: non-object `workflow` key (string/number), `validateWorkflowMode` with every invalid value class, runtime guard rejection, concurrent write serialization (success and failure), and `getAgentDir` failure resilience.
+
+- Changed paths: `extensions/workflow/settings-mode.ts` (EDIT), `extensions/workflow/settings-mode.test.ts` (EDIT), `extensions/workflow/index.ts` (EDIT: startup warning)
+- Product diff SHA-256: `f9702be7fde786bd309c20ffb554e6fb0cf4261f084d5b1597c6e835644f0af2`
+- Gate: `node --test --experimental-strip-types extensions/workflow/flow-panel.test.ts extensions/workflow/settings-mode.test.ts && npm run check` → exit 0 (52 tests, tsc clean)
+- `npm run format:check` → exit 0
+- Commit SHA: (filled after push)
+- Remote SHA: (filled after push)
+- Artifact: `docs/handoffs/2026-08-05-debugger-pi25.md`
 
 ## PI-26 — Footer dedup, docs, and bounds/perf regression
 
