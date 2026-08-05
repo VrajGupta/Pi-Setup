@@ -1110,3 +1110,250 @@ test("PI-23: 1000 renders with 200 issue rows at width 200 complete under 2000ms
     `1000 renders took ${elapsed}ms, expected < 2000ms`,
   );
 });
+
+// ── Debugger PI-23: INV-2 redaction of all user-controlled cells ──
+
+test("PI-23 debugger: INV-2 secret-shaped assignee redacted, control chars stripped", () => {
+  const result = renderStatusWidget(
+    state({
+      ticketSnapshot: snapshot([
+        issue({
+          assignee: "sk-abc12345678901234567890",
+        }),
+        issue({
+          id: "PI-24",
+          assignee: "coder\u001b[31mhacked\u001b[0m",
+        }),
+      ]),
+      now: 100_000,
+    }),
+  );
+  const all = result.join(" ");
+  assert.ok(
+    !all.includes("sk-abc12345678901234567890"),
+    "secret-shaped assignee redacted",
+  );
+  assert.ok(!all.includes("\u001b[31m"), "ANSI escape stripped from assignee");
+});
+
+test("PI-23 debugger: INV-2 control chars stripped from status and id", () => {
+  const result = renderStatusWidget(
+    state({
+      ticketSnapshot: snapshot([
+        issue({
+          id: "PI-\u001b[31mXSS\u001b[0m",
+          status: "\u001b[31mcoding\u001b[0m",
+        }),
+      ]),
+      now: 100_000,
+    }),
+  );
+  const all = result.join(" ");
+  assert.ok(!all.includes("\u001b[31m"), "ANSI escape stripped from id/status");
+  assert.ok(!all.includes("XSS"), "control-stripped id text may vanish");
+});
+
+test("PI-23 debugger: INV-2 blocker id redacted for secret patterns", () => {
+  const result = renderStatusWidget(
+    state({
+      ticketSnapshot: snapshot([
+        issue({
+          blockedBy: [{ id: "sk-abc12345678901234567890", satisfied: false }],
+          blocking: "blocked",
+        }),
+      ]),
+      now: 100_000,
+    }),
+  );
+  const all = result.join(" ");
+  assert.ok(
+    !all.includes("sk-abc12345678901234567890"),
+    "secret-shaped blocker id redacted",
+  );
+});
+
+test("PI-23 debugger: INV-2 control chars stripped from blocker id", () => {
+  const result = renderStatusWidget(
+    state({
+      ticketSnapshot: snapshot([
+        issue({
+          blockedBy: [{ id: "PI-\u001b[31mXSS\u001b[0m", satisfied: false }],
+          blocking: "blocked",
+        }),
+      ]),
+      now: 100_000,
+    }),
+  );
+  const all = result.join(" ");
+  assert.ok(!all.includes("\u001b[31m"), "ANSI stripped from blocker id");
+});
+
+// ── Debugger PI-23: INV-6 per-record isolation ──
+
+test("PI-23 debugger: one malformed record does not nuke all issue rows", () => {
+  const result = renderStatusWidget(
+    state({
+      ticketSnapshot: snapshot([
+        issue({ id: "PI-21", status: "agent-ready", assignee: "coder" }),
+        // Malformed: null blockedBy causes blockerSummary to throw
+        {
+          id: "PI-42",
+          title: "bad record",
+          status: "coding",
+          assignee: "coder",
+          blockedBy: null as never,
+          blocking: "blocked",
+        },
+        issue({ id: "PI-23", status: "planned", assignee: "planner" }),
+      ]),
+      now: 100_000,
+    }),
+  );
+  // Good rows still render
+  assert.ok(
+    result.find((l) => l.includes("PI-21")),
+    "PI-21 row present",
+  );
+  assert.ok(
+    result.find((l) => l.includes("PI-23")),
+    "PI-23 row present",
+  );
+  // No "issues unavailable" degradation
+  assert.ok(
+    !result.find((l) => l.includes("issues unavailable")),
+    "no section-wide degradation",
+  );
+});
+
+test("PI-23 debugger: null blockedBy record renders as normal row with blk none", () => {
+  const result = renderStatusWidget(
+    state({
+      ticketSnapshot: snapshot([
+        {
+          id: "PI-42",
+          title: "bad",
+          status: "coding",
+          assignee: "coder",
+          blockedBy: null as never,
+          blocking: "blocked",
+        },
+      ]),
+      now: 100_000,
+    }),
+  );
+  // Row renders with null blockedBy handled as blk none
+  assert.ok(
+    result.find((l) => l.includes("PI-42")),
+    "PI-42 row present",
+  );
+  assert.ok(
+    result.find((l) => l.includes("blk none")),
+    "blk none present",
+  );
+});
+
+// ── Debugger PI-23: empty title placeholder (INV-10) ──
+
+test("PI-23 debugger: empty title renders '\u2014' placeholder", () => {
+  const result = renderStatusWidget(
+    state({
+      width: 100,
+      ticketSnapshot: snapshot([
+        issue({ id: "PI-23", title: "", assignee: "planner" }),
+      ]),
+      now: 100_000,
+    }),
+  );
+  const row = result.find((l) => l.includes("PI-23"));
+  assert.ok(row, "row present");
+  assert.ok(row!.includes("\u2014"), "em-dash placeholder for empty title");
+});
+
+// ── Debugger PI-23: only-done records ──
+
+test("PI-23 debugger: only-done records show in rule but no rows", () => {
+  const result = renderStatusWidget(
+    state({
+      ticketSnapshot: snapshot([
+        issue({ id: "PI-20", status: "done", assignee: "reviewer" }),
+        issue({ id: "PI-08", status: "dropped", assignee: "reviewer" }),
+      ]),
+      now: 100_000,
+    }),
+  );
+  assert.equal(result.length, 4); // 3 base + 1 rule
+  assert.match(result[3], /issues · 0 active · 2 done/);
+  assert.ok(!result.find((l) => l.includes("PI-20")), "done excluded");
+});
+
+// ── Debugger PI-23: only-active records ──
+
+test("PI-23 debugger: only-active records all show", () => {
+  const result = renderStatusWidget(
+    state({
+      ticketSnapshot: snapshot([
+        issue({ id: "PI-21", status: "coding", assignee: "coder" }),
+        issue({ id: "PI-23", status: "planned", assignee: "planner" }),
+      ]),
+      now: 100_000,
+    }),
+  );
+  assert.ok(
+    result.find((l) => l.includes("PI-21")),
+    "PI-21 present",
+  );
+  assert.ok(
+    result.find((l) => l.includes("PI-23")),
+    "PI-23 present",
+  );
+  assert.equal(result.length, 6); // 3 base + 1 rule + 2 rows
+});
+
+// ── Debugger PI-23: wide glyphs at small width ──
+
+test("PI-23 debugger: wide glyphs (CJK) in title at width 60 are width-safe", () => {
+  const result = renderStatusWidget(
+    state({
+      width: 60,
+      ticketSnapshot: snapshot([
+        issue({
+          id: "PI-23",
+          title:
+            "\u5df2\u6839\u636e\u9700\u6c42\u6dfb\u52a0\u4e86\u4e2d\u6587\u6807\u9898\u548c\u5bbd\u655e\u7684\u7a7a\u767d",
+          assignee: "coder",
+          blockedBy: [{ id: "PI-21", satisfied: true }],
+          blocking: "unblocked",
+        }),
+      ]),
+      now: 100_000,
+    }),
+  );
+  for (const line of result) {
+    assert.ok(
+      visibleWidth(line) <= 60,
+      `line "${line}" has visible width ${visibleWidth(line)}`,
+    );
+  }
+});
+
+test("PI-23 debugger: wide glyphs in collapsed mode at width 50", () => {
+  const result = renderStatusWidget(
+    state({
+      width: 50,
+      ticketSnapshot: snapshot([
+        issue({
+          id: "PI-23",
+          title: "\u2713 \u25c9 \u00b7 \u00d7 \u5bbd \u5df2 \u6d4b",
+          assignee: "coder",
+        }),
+      ]),
+      now: 100_000,
+    }),
+  );
+  for (const line of result) {
+    assert.ok(
+      visibleWidth(line) <= 50,
+      `line "${line}" has visible width ${visibleWidth(line)}`,
+    );
+  }
+});
