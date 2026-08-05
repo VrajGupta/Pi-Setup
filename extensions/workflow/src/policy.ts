@@ -14,8 +14,8 @@ export const STAGE_PROFILES = {
   },
   coder: {
     harness: "pi",
-    model: "openai-codex/gpt-5.6-terra",
-    defaultReasoning: "xhigh",
+    model: "opencode-go/deepseek-v4-flash",
+    defaultReasoning: "high",
     color: "cyan",
     label: "build",
   },
@@ -28,8 +28,8 @@ export const STAGE_PROFILES = {
   },
   reviewer: {
     harness: "pi",
-    model: "openai-codex/gpt-5.6-sol",
-    defaultReasoning: "medium",
+    model: "openrouter/x-ai/grok-4.5",
+    defaultReasoning: "high",
     color: "mint",
     label: "review",
   },

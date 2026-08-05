@@ -30,7 +30,13 @@ Keep added checks fast: target under 500ms per focused check in normal local run
 - `coder` implements one ticket test-first.
 - `debugger` attacks the implementation and hardens it.
 - `reviewer` is the independent judge and is the only stage allowed to mark work Done.
-- Stage profiles use capability tiers while retaining concrete defaults: planner (high planning/reasoning) uses Opus 5 / Claude; coder (high implementation) uses GPT-5.6 Terra / Pi; debugger (max adversarial debugging) uses GPT-5.6 Luna / Codex; reviewer (high independent review) uses GPT-5.6 Sol / Pi.
+- Stage profiles use capability tiers while retaining concrete defaults: planner (high planning/reasoning) uses Opus 5 / Claude; coder (high implementation) uses DeepSeek V4 Flash / OpenCodeGo; debugger (max adversarial debugging) uses GPT-5.6 Luna / OpenAI; reviewer (high independent review) uses Grok 4.5 / OpenRouter.
+- **Approved model map (human-pinned, 2026-08-05):**
+  - planner — Claude Opus 5, Claude Code harness (Claude subscription).
+  - coder — DeepSeek V4 Flash, OpenCodeGo subscription; coder subagents also DeepSeek V4 Flash via OpenCodeGo.
+  - debugger — GPT-5.6 Luna, OpenAI subscription; fallback GPT-5.6 Luna via OpenRouter, always prefer subscription over OpenRouter.
+  - reviewer — Grok 4.5 via OpenRouter; fallback OpenCodeGo subscription only if the OpenRouter daily limit is reached.
+- **Model changes require approval.** If a stage model changes or a fallback is used, the coordinator tells Vraj first and does not switch until Vraj approves; the accepted model is then recorded in the durable handoff. Never silently substitute a pinned default.
 - Resolve each tier through environment-level model/harness aliases and ordered fallbacks when a default is unavailable. A fallback is valid only when it preserves the required capability tier and maker/checker separation with a compatible harness, effort, and auth route; record the exact model ID, harness, tier, and fallback reason in the durable handoff. Never silently substitute a pinned default; if no acceptable configured fallback or auth route exists, stop and surface it.
 - Vraj messages only the coordinator, never a stage agent. The initial task goes to a stage through `workflow start`; subsequent user or decision text reaches stages solely through the coordinator's explicit `workflow send` relay.
 - Stage children work directly and cannot spawn children. If a stage returns a `helper_request`, broker a sibling with `subagent_spawn`; the stage must inspect the helper result before continuing.

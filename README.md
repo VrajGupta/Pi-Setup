@@ -31,10 +31,18 @@ Stage profiles:
 
 | Stage | Harness | Model | Default effort |
 | --- | --- | --- | --- |
-| planner | Claude Code | Opus | high |
-| coder | Pi | GPT-5.6 Terra | xhigh |
-| debugger | Codex | GPT-5.6 Luna | max |
-| reviewer | Pi | GPT-5.6 Sol | medium |
+| planner | Claude Code | Opus 5 | high |
+| coder | Pi (OpenCodeGo) | DeepSeek V4 Flash | high |
+| debugger | Codex (OpenAI) | GPT-5.6 Luna | max |
+| reviewer | Pi (OpenRouter) | Grok 4.5 | high |
+
+Fallbacks (prefer the primary route; a fallback is used only when the primary is
+unavailable and is always reported to Vraj before being accepted):
+
+- **planner:** Claude Code with Claude subscription (no fallback).
+- **coder:** OpenCodeGo subscription; subagents also use DeepSeek V4 Flash via OpenCodeGo.
+- **debugger:** OpenAI subscription (GPT-5.6 Luna); if the subscription has no usage or the limit is reached, use GPT-5.6 Luna via OpenRouter — always prefer subscription over OpenRouter.
+- **reviewer:** Grok 4.5 via OpenRouter; if the OpenRouter daily limit is reached, use the OpenCodeGo subscription only.
 
 These match `STAGE_PROFILES` in `extensions/workflow/src/policy.ts`, which is the pinned source of truth.
 
