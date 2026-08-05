@@ -649,7 +649,9 @@ Status: **Done** · Blocked-by: none · GitHub issue #17
 
 ## PI-19 — Mode switch command and visible mode indicator
 
-Status: **Review Ready** · Blocked-by: PI-18 (Done) · GitHub issue #16
+Status: **Done** · Blocked-by: PI-18 (Done) · GitHub issue #16
+
+**Reviewer final (2026-08-05): PASS (93/100).** Gate exit 0 (61/61; tsc clean). All criteria met; no blocking findings. Routing: → **Done** — Project #12 read back Done; issue #16 closed.
 
 **Coder delivery (2026-08-05).** Added session-scoped live mode to `WorkflowState` (`mode?: "workflow" | "free"`, default `"workflow"`), a `/mode workflow|free` command that updates the live mode and notifies (never classifies/routes/starts a fleet stage by itself), wired the live mode into every `classifyRequest(prompt, mode)` call site, initialized it from `workflow.mode` in settings at session start (never restored from persisted state), and added a `mode: workflow|free` line to the `/flow` overview (text, INV-11). Added flow-panel regression: mode indicator renders as text for `workflow`/`free`, absent mode defaults to `workflow`. Exact gate `node --test --experimental-strip-types extensions/workflow/policy.test.ts extensions/workflow/flow-panel.test.ts extensions/ui-customization/footer.test.ts && npm run check` → exit 0 (59 focused tests; tsc clean); `npm run format:check` exit 0. Product diff SHA-256: computed at handoff. Project #12 issue #16 moved `Agent Ready` → `Coding` → `Debugger Ready`, read back. Artifact: `docs/handoffs/2026-08-05-coder-pi19.md`.
 
