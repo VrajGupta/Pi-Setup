@@ -720,7 +720,7 @@ The ticket is **Review Ready**, not Done. Only the independent reviewer may set 
 
 ## PI-21 — Rich mode/route/stage rows with tabular alignment (INV-11)
 
-Status: **Review Ready** · Blocked-by: PI-20 · GitHub issue #19
+Status: **Done** · Blocked-by: PI-20 · GitHub issue #19
 
 **What to build.** The rich mode/route/stage content: section rule, a `columns()` line with the mode label left and the route label right, the stage rail, and one row per tracked stage agent (glyph, stage, `backend/model`, elapsed, turns, `% ctx`). Labels are exactly `mode workflow` / `mode free (manual)` and `route direct` / `route fleet/<stage>` (q7). A pure `layoutColumns` helper computes each numeric column width once per render from the widest cell measured with `visibleWidth`, and right-aligns every numeric cell (tabular numbers). Telemetry stays measured-only: unknown renders `?` with no `%`, sub-1 % positive renders `<1%`, stale readings carry `~` plus age. Width degradation: `< 100` drops `backend/model`; `< 60` collapses the rail to the active stage.
 
@@ -773,7 +773,7 @@ Status: **Done** · Blocked-by: none · GitHub issue #20
 
 ## PI-23 — Rich issue/todo rows in the belowEditor surface
 
-Status: **Planned** · Blocked-by: PI-21, PI-22 · GitHub issue #21
+Status: **Agent Ready** · Blocked-by: PI-21, PI-22 · GitHub issue #21
 
 **What to build.** Named issue rows in the surface (q3): a counts-and-staleness section rule (`─ issues · 4 active · 12 done · ~ 12s ─…`) and one row per active-window ticket in the order named id → status word → assignee role → truncated title → blocker summary, each blocker rendered as its id plus a satisfied/unsatisfied glyph. Active statuses sort before `planned`; `done`/`dropped`/`canceled`/`duplicate` are excluded from rows and summarised in the rule. Truncation with `…`, full values reachable in `/flow` → Issues. At `width < 60` a row collapses to `PI-nn status blk-summary`. Missing or failed snapshots render `issues unavailable — <reason>` (INV-5, INV-10).
 
@@ -791,7 +791,7 @@ Status: **Planned** · Blocked-by: PI-21, PI-22 · GitHub issue #21
 
 ## PI-24 — `/mode` native picker, completions, and warning-on-invalid
 
-Status: **Planned** · Blocked-by: PI-21 · GitHub issue #22
+Status: **Agent Ready** · Blocked-by: PI-21 · GitHub issue #22
 
 **What to build.** Replace the string-only `/mode` handler (`extensions/workflow/index.ts:1359-1374`). Bare `/mode` opens `ctx.ui.select` with exactly two labelled options (`workflow — auto-route risky or broad work to the fleet`, `free (manual) — everything direct unless a stage is named`); cancelling changes nothing. `getArgumentCompletions` offers `workflow` and `free` filtered case-insensitively. Invalid input notifies at severity `warning`, never `error`, and names the current mode. A successful switch updates the live mode, republishes state, and the widget's mode label immediately reflects it (q5, q7). INV-8: no `/mode` path classifies, routes, starts a stage, or emits a spawn/send on the subagent bridge.
 
