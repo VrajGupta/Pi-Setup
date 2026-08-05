@@ -470,7 +470,9 @@ Status: **Debugger Ready** · Blocked-by: PI-16 (Done) · Phase 3
 
 ## PI-13 — Tracker snapshot source and honest ETA estimator (pure module, INV-9)
 
-Status: **Review Ready** · Blocked-by: PI-11 · Phase 3
+Status: **Done** · Blocked-by: PI-11 · Phase 3
+
+**Reviewer final (2026-08-05): PASS (96/100).** Gate exit 0 (9/9 tests; tsc clean; 30.28 ms parse). All criteria met; bounce-1 fix confirmed at `ticket-snapshot.ts:270-285` with regression `ticket-snapshot.test.ts:241-250`. No blocking findings. Routing: → **Done** — Project #12 read back Done; issue #4 closed.
 
 **Coder delivery (2026-08-05).** Built the frozen, no-I/O tracker parser with status/role parsing, blocker satisfaction and iterative cycle detection, and INV-9's explicit measured-duration-only ETA range. Product diff SHA-256: `a5c31a3b5ba6a836ca38ed878ceedd7d624a9acaddba3e659ab5d989457467a2`. Exact gate `node --test --experimental-strip-types extensions/shared/ticket-snapshot.test.ts && npm run check` → exit 0; `npm run format:check` → exit 0. Artifacts: `docs/handoffs/2026-08-05-coder-pi13.md`, `/tmp/pi13-product.diff`. Project #12 issue #4 read back `Debugger Ready`.
 
