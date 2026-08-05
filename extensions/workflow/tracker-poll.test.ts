@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import type { TicketSnapshot } from "../shared/ticket-snapshot.ts";
 import { startTrackerPoll } from "./tracker-poll.ts";
@@ -6,15 +7,22 @@ import { startTrackerPoll } from "./tracker-poll.ts";
 /**
  * Deterministic fake timer: callbacks are captured and fired manually, so
  * tests never sleep on wall-clock intervals (a 300 s clamp would otherwise
- * take minutes). The module calls the global clearTimeout, so stop() is
- * asserted behaviorally (no new reads after stop) rather than by timer count.
+ * take minutes). It also models cancellation so stop() can prove no timers
+ * remain scheduled.
  */
 function fakeTimer() {
   let nextId = 1;
   const pending = new Map<number, { cb: () => void; dueAt: number }>();
+  const delays: number[] = [];
+  let clearCount = 0;
+  let unrefCount = 0;
   let now = 1_000_000;
   return {
     now: () => now,
+    delays,
+    pendingCount: () => pending.size,
+    clearCount: () => clearCount,
+    unrefCount: () => unrefCount,
     // Fire timers in chronological order, cascading newly-scheduled ones.
     advance: (ms: number) => {
       const target = now + ms;
@@ -38,8 +46,18 @@ function fakeTimer() {
     },
     setTimer: (cb: () => void, delayMs: number) => {
       const id = nextId++;
+      delays.push(delayMs);
       pending.set(id, { cb, dueAt: now + delayMs });
-      return { id, unref: () => {} } as unknown as NodeJS.Timeout;
+      return {
+        id,
+        unref: () => {
+          unrefCount++;
+        },
+      } as unknown as NodeJS.Timeout;
+    },
+    clearTimer: (handle: NodeJS.Timeout) => {
+      const { id } = handle as unknown as { id: number };
+      if (pending.delete(id)) clearCount++;
     },
   };
 }
@@ -50,48 +68,98 @@ function snapshot(repo: string, capturedAt: number): TicketSnapshot {
   return { repo, capturedAt, records: [] };
 }
 
+function record(repo: string, id: string) {
+  return {
+    repo,
+    id,
+    title: id,
+    status: "planned" as const,
+    blockedBy: [],
+    blocking: "unblocked" as const,
+    eta: { kind: "unknown" as const },
+  };
+}
+
+test("settings example exposes the default tracker poll interval", () => {
+  const settings = JSON.parse(
+    readFileSync(
+      new URL("../../settings.example.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.equal(settings.workflow.trackerPollMs, 10000);
+});
+
+test("tracker poll stays read-only and off the render path", () => {
+  const source = readFileSync(
+    new URL("./tracker-poll.ts", import.meta.url),
+    "utf8",
+  );
+  assert.doesNotMatch(source, /node:(fs|child_process|http|https|net)/);
+  assert.doesNotMatch(source, /\b(writeFile|rename|exec|spawn)\s*\(/);
+  assert.doesNotMatch(source, /git\s+(commit|push)/i);
+});
+
 test("tracker poll: interval clamps to [2000, 300000], default 10000", async () => {
   for (const [input, expected] of [
+    [-1, 2000],
     [0, 2000],
     [1000, 2000],
     [2000, 2000],
     [10000, 10000],
     [300000, 300000],
     [1_000_000_000, 300000],
+    [Infinity, 10000],
+    [-Infinity, 10000],
+    ["2000", 10000],
+    [null, 10000],
     [undefined, 10000],
     [NaN, 10000],
   ] as const) {
     const clock = fakeTimer();
-    let readCount = 0;
-    const read = async () => {
-      readCount++;
-      return snapshot("test", clock.now());
-    };
+    const read = async () => snapshot("test", clock.now());
     const poll = startTrackerPoll({
-      intervalMs: input as number,
+      intervalMs: input as unknown as number,
       read,
       now: clock.now,
       setTimer: clock.setTimer,
+      clearTimer: clock.clearTimer,
     });
-    // Advance one interval at a time, letting each read settle, so
-    // single-flight does not suppress the later ticks.
-    for (let i = 0; i < 3; i++) {
-      clock.advance(expected);
-      await flush();
-      await flush();
-    }
+    assert.equal(clock.delays[0], expected, `input ${input}`);
+    clock.advance(expected);
+    await flush();
+    await flush();
     const snap = poll.getSnapshot();
     poll.stop();
     assert.ok(snap, `input ${input} should have produced a snapshot`);
-    assert.ok(
-      readCount >= 2,
-      `input ${input}: expected >=2 reads in 3 intervals, got ${readCount}`,
-    );
     assert.ok(snap.capturedAt >= 1_000_000, `input ${input}`);
   }
 });
 
-test("tracker poll: single-flight prevents overlapping reads", async () => {
+test("tracker poll: each settled interval invokes one read", async () => {
+  const clock = fakeTimer();
+  let readCount = 0;
+  const read = async () => {
+    readCount++;
+    return snapshot("test", clock.now());
+  };
+  const poll = startTrackerPoll({
+    intervalMs: 2000,
+    read,
+    now: clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+  });
+  for (let interval = 0; interval < 5; interval++) {
+    clock.advance(2000);
+    await flush();
+    await flush();
+  }
+  assert.equal(readCount, 5);
+  poll.stop();
+});
+
+test("tracker poll: single-flight prevents overlapping reads for 10 intervals", async () => {
   const clock = fakeTimer();
   let activeReads = 0;
   let maxActive = 0;
@@ -110,15 +178,14 @@ test("tracker poll: single-flight prevents overlapping reads", async () => {
     read,
     now: clock.now,
     setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
   });
-  clock.advance(2000);
-  await flush();
+  for (let interval = 0; interval < 10; interval++) {
+    clock.advance(2000);
+    await flush();
+  }
   assert.equal(activeReads, 1);
-  // A second tick must not start a second read while the first is in flight.
-  clock.advance(2000);
-  await flush();
-  assert.equal(activeReads, 1, "overlapping read started");
-  assert.equal(maxActive, 1);
+  assert.equal(maxActive, 1, "overlapping read started");
   release?.();
   await flush();
   poll.stop();
@@ -137,6 +204,7 @@ test("tracker poll: failed read keeps previous snapshot with reason", async () =
     read,
     now: clock.now,
     setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
   });
   clock.advance(2000);
   await flush();
@@ -149,25 +217,168 @@ test("tracker poll: failed read keeps previous snapshot with reason", async () =
   poll.stop();
 });
 
-test("tracker poll: stop prevents further reads", async () => {
+test("tracker poll: unavailable or foreign repositories never replace prior records", async () => {
   const clock = fakeTimer();
-  let readCount = 0;
-  const read = async () => {
-    readCount++;
-    return snapshot("test", clock.now());
+  let calls = 0;
+  const first = {
+    ...snapshot("alpha", clock.now()),
+    records: [record("alpha", "PI-1")],
+  } satisfies TicketSnapshot;
+  const foreign = {
+    ...snapshot("beta", clock.now()),
+    records: [record("beta", "PI-2")],
+  } satisfies TicketSnapshot;
+  const read = () => {
+    calls++;
+    if (calls === 1) return Promise.resolve(first);
+    if (calls === 2)
+      return Promise.resolve({ ...foreign, reason: "unavailable" });
+    return Promise.resolve(foreign);
   };
   const poll = startTrackerPoll({
     intervalMs: 2000,
     read,
     now: clock.now,
     setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+  });
+
+  clock.advance(2000);
+  await flush();
+  const stored = poll.getSnapshot();
+  assert.ok(stored);
+  clock.advance(2000);
+  await flush();
+  const unavailable = poll.getSnapshot();
+  assert.ok(unavailable);
+  assert.equal(unavailable.repo, "alpha");
+  assert.equal(unavailable.capturedAt, stored.capturedAt);
+  assert.deepEqual(unavailable.records, stored.records);
+  assert.equal(unavailable.reason, "unavailable");
+
+  clock.advance(2000);
+  await flush();
+  const foreignSuccess = poll.getSnapshot();
+  assert.ok(foreignSuccess);
+  assert.equal(foreignSuccess.repo, "alpha");
+  assert.deepEqual(foreignSuccess.records, stored.records);
+  assert.equal(foreignSuccess.reason, "repository changed");
+  poll.stop();
+});
+
+test("tracker poll: timeout preserves the prior snapshot and stays single-flight", async () => {
+  const clock = fakeTimer();
+  let calls = 0;
+  let resolveSlow: ((value: TicketSnapshot) => void) | undefined;
+  const slow = new Promise<TicketSnapshot>((resolve) => {
+    resolveSlow = resolve;
+  });
+  const read = () => {
+    calls++;
+    return calls === 2 ? slow : Promise.resolve(snapshot("test", clock.now()));
+  };
+  const poll = startTrackerPoll({
+    intervalMs: 2000,
+    read,
+    now: clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+  });
+
+  clock.advance(2000);
+  await flush();
+  const first = poll.getSnapshot();
+  assert.ok(first);
+  const firstCapturedAt = first.capturedAt;
+
+  clock.advance(2000);
+  await flush();
+  clock.advance(2000);
+  await flush();
+  const timedOut = poll.getSnapshot();
+  assert.ok(timedOut);
+  assert.equal(calls, 2);
+  assert.equal(timedOut.capturedAt, firstCapturedAt);
+  assert.equal(timedOut.repo, "test");
+  assert.equal(timedOut.reason, "timeout");
+
+  resolveSlow?.(snapshot("test", clock.now()));
+  await flush();
+  clock.advance(2000);
+  await flush();
+  assert.equal(
+    calls,
+    3,
+    "a settled timed-out read should permit the next tick",
+  );
+  poll.stop();
+});
+
+test("tracker poll: thrown and malformed reads become non-empty reasoned failures", async () => {
+  const clock = fakeTimer();
+  let calls = 0;
+  const read = () => {
+    calls++;
+    if (calls === 2) throw new Error();
+    if (calls === 3) return null as unknown as Promise<TicketSnapshot>;
+    return Promise.resolve(snapshot("test", clock.now()));
+  };
+  const poll = startTrackerPoll({
+    intervalMs: 2000,
+    read,
+    now: clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+  });
+
+  clock.advance(2000);
+  await flush();
+  const first = poll.getSnapshot();
+  assert.ok(first);
+
+  assert.doesNotThrow(() => clock.advance(2000));
+  await flush();
+  const thrown = poll.getSnapshot();
+  assert.ok(thrown);
+  assert.equal(thrown.capturedAt, first.capturedAt);
+  assert.equal(thrown.reason, "unknown error");
+
+  assert.doesNotThrow(() => clock.advance(2000));
+  await flush();
+  const malformed = poll.getSnapshot();
+  assert.ok(malformed);
+  assert.equal(malformed.capturedAt, first.capturedAt);
+  assert.equal(malformed.reason, "invalid snapshot");
+  poll.stop();
+});
+
+test("tracker poll: stop clears scheduled timers and prevents further reads", async () => {
+  const clock = fakeTimer();
+  let readCount = 0;
+  let release: (() => void) | undefined;
+  const read = () => {
+    readCount++;
+    return new Promise<TicketSnapshot>((resolve) => {
+      release = () => resolve(snapshot("test", clock.now()));
+    });
+  };
+  const poll = startTrackerPoll({
+    intervalMs: 2000,
+    read,
+    now: clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
   });
   clock.advance(2000);
   await flush();
-  const afterStart = readCount;
-  assert.ok(afterStart >= 1);
+  assert.equal(readCount, 1);
+  assert.ok(clock.unrefCount() >= 3);
   poll.stop();
+  assert.equal(clock.pendingCount(), 0, "timers leaked after stop");
+  release?.();
+  await flush();
   clock.advance(20_000);
   await flush();
-  assert.equal(readCount, afterStart, "reads continued after stop");
+  assert.equal(readCount, 1, "reads continued after stop");
+  assert.ok(clock.clearCount() >= 2, "stop did not clear all timers");
 });

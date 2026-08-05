@@ -12,6 +12,7 @@
   "followUpMode": "one-at-a-time",
   "workflow": {
     "mode": "workflow",
+    "trackerPollMs": 10000,
     "repositories": ["~/Work/pi-agent"]
   },
   "compaction": {
