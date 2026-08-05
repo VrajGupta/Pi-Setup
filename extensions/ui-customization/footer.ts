@@ -9,6 +9,15 @@ import type { WorkflowSubagentSummary } from "../shared/workflow-state.ts";
 export const MAX_STAGE_ROWS = 4;
 
 const STAGE_ORDER = ["planner", "coder", "debugger", "reviewer"] as const;
+const REASONS = [
+  "working",
+  "waiting on question",
+  "waiting on helper",
+  "provider error",
+  "quota limit",
+  "stale bridge",
+  "reason unknown",
+] as const;
 
 export interface FooterTheme {
   fg(color: string, text: string): string;
@@ -27,6 +36,7 @@ export interface FooterState {
   agents: readonly WorkflowSubagentSummary[];
   statuses: readonly string[];
   readingFor: (agent: WorkflowSubagentSummary) => ProgressReading;
+  reasonFor?: (agent: WorkflowSubagentSummary) => string;
 }
 
 function normalizeWidth(width: unknown) {
@@ -46,6 +56,25 @@ function oneLine(value: unknown, fallback = "") {
   return stringify(value, fallback)
     .replace(/\r\n?|\n/g, " ")
     .replace(/\t/g, " ");
+}
+
+function reasonText(value: unknown) {
+  const text = oneLine(value)
+    .replace(/\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)/g, "")
+    .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "")
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, "")
+    .replace(/\bAuthorization\s*:\s*.*/gi, "Authorization: [REDACTED]")
+    .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, "$1 [REDACTED]")
+    .replace(
+      /\b(api[_-]?key|access[_-]?token|key|secret|token)\s*[:=]\s*[^\s,;]+/gi,
+      "$1=[REDACTED]",
+    )
+    .trim();
+  const reason = REASONS.find(
+    (candidate) => text === candidate || text.startsWith(`${candidate}:`),
+  );
+  return reason ? text : "reason unknown";
 }
 
 function paint(theme: FooterTheme | undefined, color: string, text: unknown) {
@@ -156,6 +185,7 @@ function stageRow(
   now: number,
   width: number,
   theme: FooterTheme,
+  state: FooterState,
 ) {
   const elapsed = formatElapsed(safeElapsed(now, agent.startedAt));
   const stage = displayToken(agent.stage, "?");
@@ -167,10 +197,11 @@ function stageRow(
     validReading && reading.kind === "measured"
       ? ` · ${reading.percent > 0 && reading.percent < 1 ? "<1" : Math.round(reading.percent)}% ctx`
       : "";
-  const text = `${statusGlyph(agent.status)} ${stage} ${backend}/${model} · ${elapsed} · ${turns}t${progress}`;
   const stale = !validReading || !isFiniteNumber(now) || isStale(reading, now);
+  const reason = reasonText(state.reasonFor?.(agent) ?? "reason unknown");
+  const text = `${stale ? "~ " : ""}${reason} · ${statusGlyph(agent.status)} ${stage} ${backend}/${model} · ${elapsed} · ${turns}t${progress}`;
   const rendered = stale
-    ? paint(theme, "dim", `~ ${text}`)
+    ? paint(theme, "dim", text)
     : paint(theme, "text", text);
   return safeTruncate(rendered, width);
 }
@@ -220,7 +251,14 @@ export function renderFooter(state: FooterState) {
         )
         .slice(0, MAX_STAGE_ROWS);
       const rows = stageAgents.map(({ agent }) =>
-        stageRow(agent, state.readingFor(agent), state.now, width, state.theme),
+        stageRow(
+          agent,
+          state.readingFor(agent),
+          state.now,
+          width,
+          state.theme,
+          state,
+        ),
       );
       const statuses = Array.isArray(state.statuses)
         ? statusLines(state.statuses, width)

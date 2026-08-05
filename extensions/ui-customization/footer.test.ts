@@ -160,18 +160,54 @@ test("a fresh reading has no ~ prefix", () => {
   assert.ok(!lines[3].includes("~"));
 });
 
-test("a throwing reading getter still returns the 3 base lines", () => {
-  const lines = renderFooter(
+test("stage rows keep a closed, redacted reason when stale or indeterminate", () => {
+  const stale = renderFooter(
     state({
+      width: 200,
+      now: 100_000,
       agents: [agent({ stage: "coder" })],
-      statuses: ["ignored on failure"],
+      readingFor: () => buildReading({ source: "stage", at: 60_000 }),
+      reasonFor: () =>
+        "provider error: \u001b[2JAuthorization: Bearer synthetic-secret-token",
+    }),
+  )[3];
+  assert.match(stale, /^~ provider error/);
+  assert.match(stale, /\[REDACTED\]/);
+  assert.doesNotMatch(stale, /synthetic-secret-token|%|\u001b/);
+
+  const unknown = renderFooter(
+    state({
+      width: 200,
+      agents: [agent({ stage: "coder" })],
+      reasonFor: () => "unrecognised internal state",
+    }),
+  )[3];
+  assert.match(unknown, /reason unknown/);
+});
+
+test("a throwing reading or reason getter still returns the 3 base lines", () => {
+  for (const overrides of [
+    {
       readingFor: () => {
         throw new Error("boom");
       },
-    }),
-  );
-  assert.equal(lines.length, 3);
-  assert.ok(lines[0].includes("~/repo"));
+    },
+    {
+      reasonFor: () => {
+        throw new Error("boom");
+      },
+    },
+  ]) {
+    const lines = renderFooter(
+      state({
+        agents: [agent({ stage: "coder" })],
+        statuses: ["ignored on failure"],
+        ...overrides,
+      }),
+    );
+    assert.equal(lines.length, 3);
+    assert.ok(lines[0].includes("~/repo"));
+  }
 });
 
 test("stage rows sort planner → reviewer regardless of input order", () => {
@@ -284,7 +320,7 @@ test("empty and unicode model labels use a safe fallback and ANSI width is measu
   };
   const lines = renderFooter(
     state({
-      width: 20,
+      width: 80,
       theme: ansiTheme,
       agents: [
         agent({ stage: "planner", modelLabel: "" }),
@@ -294,7 +330,7 @@ test("empty and unicode model labels use a safe fallback and ANSI width is measu
   );
 
   assert.ok(lines[3].includes("pi/?"));
-  for (const line of lines) assert.ok(visibleWidth(line) <= 20);
+  for (const line of lines) assert.ok(visibleWidth(line) <= 80);
 });
 
 test("non-finite timestamps, counters, clocks, and readings degrade without fabricated output", () => {

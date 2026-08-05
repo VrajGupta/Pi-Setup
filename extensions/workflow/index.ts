@@ -362,7 +362,7 @@ export class FlowPanel {
       case 1:
         return this.workflow(state);
       case 2:
-        return this.agents(agents, now, agentsUpdatedAt);
+        return this.agents(state, agents, now, agentsUpdatedAt);
       case 3:
         return this.capabilities();
       case 4:
@@ -418,6 +418,7 @@ export class FlowPanel {
   }
 
   private agents(
+    state: WorkflowState,
     agents: Record<string, unknown>[],
     now: number,
     agentsUpdatedAt: number,
@@ -432,7 +433,7 @@ export class FlowPanel {
             stageIndex(a.agent.stage) - stageIndex(b.agent.stage) ||
             a.index - b.index,
         )
-        .map(({ agent }) => agentText(agent, now, agentsUpdatedAt)),
+        .map(({ agent }) => agentText(agent, state, now, agentsUpdatedAt)),
     ];
   }
 
@@ -541,8 +542,32 @@ function formatElapsed(elapsedMs: unknown) {
   return `${Math.floor(minutes / 60)}h${minutes % 60}m`;
 }
 
+function stageReason(
+  agent: Record<string, unknown>,
+  state: WorkflowState,
+  stale: boolean,
+) {
+  const event = displayText(state.lastEvent);
+  if (agent.status === "error") return `provider error: ${event}`;
+  if (agent.stage === state.activeStage) {
+    if (state.status === "needs-input") return "waiting on question";
+    if (state.status === "needs-helper") return "waiting on helper";
+    if (state.status === "blocked") {
+      if (/\b(quota|spend|rate limit|limit reached)\b/i.test(event))
+        return "quota limit";
+      if (/\b(provider|error|failed|timeout|authorization)\b/i.test(event))
+        return `provider error: ${event}`;
+    }
+  }
+  if (stale) return "stale bridge";
+  return agent.stage === state.activeStage && state.status === "running"
+    ? "working"
+    : "reason unknown";
+}
+
 function agentText(
   agent: Record<string, unknown>,
+  state: WorkflowState,
   now: number,
   agentsUpdatedAt: number,
 ) {
@@ -559,8 +584,10 @@ function agentText(
     stageAgent && reading.kind === "measured"
       ? ` · ${reading.percent > 0 && reading.percent < 1 ? "<1" : Math.round(reading.percent)}% ctx`
       : "";
-  const stale = reading.kind === "indeterminate" || isStale(reading, now);
-  return `${stale ? " ~" : " "} ${statusGlyph(agent.status)} ${stageAgent ? agent.stage : "helper"} · ${displayText(agent.id, "?")} · ${displayText(agent.title, "?")} · ${displayText(agent.backend, "?")}/${displayText(agent.modelLabel, "?") || "?"} · ${formatElapsed(safeElapsed(now, agent.startedAt))} · ${safeTurns(agent.turns)}t${progress}`;
+  const bridgeStale = isStale(reading, now);
+  const stale = reading.kind === "indeterminate" || bridgeStale;
+  const reason = stageAgent ? stageReason(agent, state, bridgeStale) : "";
+  return `${stale ? " ~ " : " "}${reason ? `${reason} · ` : ""}${statusGlyph(agent.status)} ${stageAgent ? agent.stage : "helper"} · ${displayText(agent.id, "?")} · ${displayText(agent.title, "?")} · ${displayText(agent.backend, "?")}/${displayText(agent.modelLabel, "?") || "?"} · ${formatElapsed(safeElapsed(now, agent.startedAt))} · ${safeTurns(agent.turns)}t${progress}`;
 }
 
 function rail(activeStage: StageName | null, status: WorkflowState["status"]) {

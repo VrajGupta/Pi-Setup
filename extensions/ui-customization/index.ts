@@ -90,6 +90,31 @@ function activityGlyph(activity: Activity) {
   return "○";
 }
 
+function stageReason(
+  agent: WorkflowSubagentSummary,
+  workflow: WorkflowState,
+  agentsAt: number,
+  now: number,
+) {
+  const event = workflow.lastEvent;
+  if (agent.status === "error") return `provider error: ${event}`;
+  if (agent.stage === workflow.activeStage) {
+    if (workflow.status === "needs-input") return "waiting on question";
+    if (workflow.status === "needs-helper") return "waiting on helper";
+    if (workflow.status === "blocked") {
+      if (/\b(quota|spend|rate limit|limit reached)\b/i.test(event))
+        return "quota limit";
+      if (/\b(provider|error|failed|timeout|authorization)\b/i.test(event))
+        return `provider error: ${event}`;
+    }
+  }
+  if (!Number.isFinite(agentsAt) || now - agentsAt > 30_000)
+    return "stale bridge";
+  return agent.stage === workflow.activeStage && workflow.status === "running"
+    ? "working"
+    : "reason unknown";
+}
+
 function titleFor(
   ctx: ExtensionContext,
   workflow: WorkflowState,
@@ -251,6 +276,7 @@ export default function uiCustomization(pi: ExtensionAPI) {
                 elapsedMs: now - agent.startedAt,
                 turns: agent.turns,
               }),
+            reasonFor: (agent) => stageReason(agent, workflow, agentsAt, now),
           });
         },
       };

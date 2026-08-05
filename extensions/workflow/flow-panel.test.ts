@@ -180,6 +180,44 @@ test("stage readings label measured context and omit percent when indeterminate"
   assert.doesNotMatch(indeterminate.render(120).join("\n"), /%/);
 });
 
+test("stage rows use only closed, redacted reasons for silence", () => {
+  const stale = panel(
+    state({ status: "running", activeStage: "coder" }),
+    [agent({ stage: "coder" })],
+    { getAgentsUpdatedAt: () => Date.now() - 30_001 },
+  );
+  agentsTab(stale);
+  assert.match(stale.render(200).join("\n"), /~ stale bridge/);
+
+  for (const [status, reason] of [
+    ["needs-input", "waiting on question"],
+    ["needs-helper", "waiting on helper"],
+  ] as const) {
+    const waiting = panel(state({ status, activeStage: "coder" }), [
+      agent({ stage: "coder" }),
+    ]);
+    agentsTab(waiting);
+    assert.match(waiting.render(200).join("\n"), new RegExp(reason));
+  }
+
+  const providerError = panel(
+    state({
+      status: "blocked",
+      activeStage: "coder",
+      lastEvent: "Authorization: Bearer synthetic-secret-token",
+    }),
+    [agent({ stage: "coder", status: "error" })],
+  );
+  agentsTab(providerError);
+  const errorOutput = providerError.render(200).join("\n");
+  assert.match(errorOutput, /provider error.*\[REDACTED\]/);
+  assert.doesNotMatch(errorOutput, /synthetic-secret-token/);
+
+  const unknown = panel(state(), [agent({ stage: "coder" })]);
+  agentsTab(unknown);
+  assert.match(unknown.render(200).join("\n"), /reason unknown/);
+});
+
 test("FlowPanel rendering contains no filesystem, network, or subprocess call", () => {
   const source = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
   const panelSource = source.slice(
