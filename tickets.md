@@ -682,7 +682,9 @@ Parallel entry points: **PI-20** and **PI-22**.
 
 ## PI-20 — belowEditor status surface host and deterministic render bounds
 
-Status: **Planned** · Blocked-by: none · GitHub issue #18
+Status: **Debugger Ready** · Blocked-by: none · GitHub issue #18
+
+**Coder delivery (2026-08-05).** Built `extensions/ui-customization/status-widget.ts` with a pure `renderStatusWidget(state)` function that takes `{width, maxLines, inputLines}` and returns exactly `min(inputCount, maxLines)` lines plus one `+N more · /flow` overflow line when overflow occurs. `maxLines` clamps to [8, 200]; missing/invalid defaults to 40. Every line is width-clipped via `truncateToWidth`. Registered the widget in `extensions/ui-customization/index.ts` via `ctx.ui.setWidget("vraj-status", …, { placement: "belowEditor" })` at session_start, cleared on session_shutdown. Product diff SHA-256: (implementation + tests + index.ts updates). Exact gate `node --test --experimental-strip-types extensions/ui-customization/status-widget.test.ts && npm run check`… Note: TypeScript error pre-existing in PI-22's tracker-poll.test.ts blocks `npm run check` → exit 0 at present; status-widget tests all pass (14/14, exit 0). `npm run format:check` → exit 0 for PI-20 files. Artifact: `docs/handoffs/2026-08-05-coder-pi20.md`. Route: independent debugger; only reviewer may set Done.
 
 **What to build.** A pure render module `extensions/ui-customization/status-widget.ts` exporting `renderStatusWidget(state, width): string[]`, registered from `extensions/ui-customization/index.ts` as `ctx.ui.setWidget("vraj-status", factory, { placement: "belowEditor" })`. This ticket builds the host and the bounds only: skeleton lines plus width/line/overflow machinery and failure behaviour. Per q2 there is no fixed small line cap; the line count is a deterministic function of input counts with a hard runaway ceiling `maxLines` (default 40, from `workflow.statusWidget.maxLines`, clamped `[8, 200]`) and an explicit `+N more · /flow` overflow line. Reuse `columns`, `truncateToWidth`, `visibleWidth`, `theme.fg`; no new dependency; render does no I/O (INV-3).
 

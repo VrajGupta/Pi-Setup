@@ -27,6 +27,7 @@ import {
   type WorkflowSubagentSummary,
 } from "../shared/workflow-state.ts";
 import { columns, renderFooter } from "./footer.ts";
+import { renderStatusWidget, type StatusWidgetState } from "./status-widget.ts";
 
 const STAGES: StageName[] = ["planner", "coder", "debugger", "reviewer"];
 
@@ -288,6 +289,27 @@ export default function uiCustomization(pi: ExtensionAPI) {
         },
       };
     });
+
+    // Register the belowEditor status widget (PI-20).
+    // The widget is initialized with empty input lines for now; later tickets will
+    // populate it with mode, route, stage, and issue rows.
+    ctx.ui.setWidget(
+      "vraj-status",
+      (_tui, _theme) => {
+        return {
+          render(width: number) {
+            return renderStatusWidget({
+              width,
+              maxLines: undefined,
+              inputLines: [],
+            });
+          },
+          invalidate() {},
+        };
+      },
+      { placement: "belowEditor" },
+    );
+
     ctx.ui.setTitle(titleFor(ctx, workflow, activity));
     pi.events.emit(REFRESH_CHANNEL, undefined);
   };
@@ -332,6 +354,7 @@ export default function uiCustomization(pi: ExtensionAPI) {
     if (ctx.mode === "tui") {
       ctx.ui.setHeader(undefined);
       ctx.ui.setFooter(undefined);
+      ctx.ui.setWidget("vraj-status", undefined);
     }
   });
 }
