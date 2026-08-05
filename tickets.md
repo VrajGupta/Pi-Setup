@@ -481,7 +481,7 @@ Status: **Planned** · Blocked-by: PI-10 · Phase 3
 
 ## PI-15 — Setup, rollback, and push-proof documentation
 
-Status: **Review Ready** · Reviewer FAIL (bounce 1/3: interrupted rollback retry can delete restored originals); debugger repaired · Blocked-by: PI-08 (Done) · Phase 2
+Status: **Debugger Ready** · Reviewer FAIL (bounce 2/3: rollback deletes an originally present installer-unchanged resource) · Blocked-by: PI-08 (Done) · Phase 2
 
 **Why this exists.** `README.md` claims the installer "backs up current runtime resources", but `SETUP.md` (36 lines) documents no way to restore them, and no Windows path. Push proof itself already exists — `origin/main` and local `HEAD` are both `bb5d79e` — so this ticket documents how to reproduce that proof, and claims no new push.
 
@@ -505,6 +505,12 @@ Status: **Review Ready** · Reviewer FAIL (bounce 1/3: interrupted rollback retr
 - Fixed test-first at the documented rollback seam: an atomic `.rollback-manifest` directory records `present`/`absent` before any move. A consumed `present` entry with an existing target is treated as already restored; a missing target fails closed. The PowerShell procedure mirrors the same manifest and retry semantics.
 - Added one deterministic regression by injecting exit 73 immediately after the documented POSIX command moves `extensions`; the retry preserved its bytes, restored all other managed resources, removed the originally absent resource, preserved settings/auth/models/sessions, and remained safe to repeat.
 - No `extensions/` changes, secrets, fixed sleeps, or other ticket changes. Handoff: `docs/handoffs/2026-08-05-debugger-pi15-bounce-1.md`.
+
+**Reviewer re-review (2026-08-05): FAIL (72/100, diagnostic only) · Bounce 2 of 3.**
+- Exact gate passed: 9 tests and `tsc --noEmit`, exit 0. Formatting and diff checks passed; PowerShell was unavailable and inspected statically.
+- Blocking correctness finding: `scripts/install.mjs:205-208` leaves an already-correct managed symlink unchanged and writes no backup entry, while `SETUP.md:54-60,77-78` classifies every missing backup entry as originally absent. Trigger: install with `~/.pi/agent/extensions` already linked to this checkout, then run the documented rollback. Result: rollback deletes that originally present symlink; the independent production-seam probe exited 1 with `extensions_exists_after_rollback=false`.
+- The interrupted-retry regression is deterministic and passes; originally absent removal, path rejection, non-restored state, scope, no-sleep, and secret-shape checks passed.
+- Routing: → **Debugger Ready** for a test-first distinction between installer-unchanged and originally absent resources, mirrored in POSIX and PowerShell. Review: `docs/handoffs/2026-08-05-reviewer-pi15-bounce-2.md`.
 
 ---
 
