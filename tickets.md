@@ -954,6 +954,7 @@ Planner spec: `docs/2026-08-05-routines-spec.md`. See issue #25 for the acceptan
 
 Spec: `docs/2026-08-05-routines-spec.md` · Locked decisions q1–q8 (planner defaults, autonomous run 2026-08-05).
 GitHub issue mirror: `PI-28 → #27` · `PI-29 → #26` · `PI-30 → #28` · `PI-31 → #29` · `PI-32 → #30`.
+PI-31 (#29) is **Done** — reviewer verdict PASS at `bf29074` on 2026-08-05.
 All five entered GitHub Project #12 as `Planned` and were read back. Only `/reviewer` may move a ticket to `Done`.
 
 Dependency order: `{PI-28, PI-29} → PI-30 → PI-31 → PI-32`.
@@ -1061,7 +1062,7 @@ Status: **Done** · Blocked-by: PI-28, PI-29 · GitHub issue #28
 
 ## PI-31 — belowEditor section and /flow Routines tab
 
-Status: **Review Ready** · Blocked-by: PI-30 · GitHub issue #29
+**Status: Done** (reviewer PASS at `bf29074`, 2026-08-05) · Blocked-by: PI-30 · GitHub issue #29
 
 **What to build.** belowEditor routines section (rule `─ routines · 1 due ───`, rows per due/snoozed/disabled routine). `/flow` Routines tab with full details. Width-safe, secret-redacted, terminal-safe, INV-11 glyphs.
 
@@ -1083,7 +1084,7 @@ Status: **Review Ready** · Blocked-by: PI-30 · GitHub issue #29
 
 ## PI-32 — Lifecycle wiring, docs, and regression
 
-Status: **Planned** · Blocked-by: PI-31 · GitHub issue #30
+Status: **Agent Ready** · Blocked-by: PI-31 (Done) · GitHub issue #30
 
 **What to build.** Wire scheduler + commands into `session_start`/`session_shutdown`. Document routines in `README.md`, `SYSTEM.md`, `settings.example.json`. INV-14 render budget holds with routines section. Closing gate.
 
