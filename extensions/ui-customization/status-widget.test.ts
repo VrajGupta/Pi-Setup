@@ -372,6 +372,130 @@ test("registers belowEditor widget, cleans it up, and keeps header/footer usable
   assert.equal(widgets.at(-1)?.content, undefined);
 });
 
+// ── PI-36: published ticket snapshots reach the widget ──
+
+test("PI-36: emitted snapshots render issue rows; malformed values keep the prior view", () => {
+  const listeners = new Map<string, Set<(value: unknown) => void>>();
+  const hooks = new Map<string, (...args: unknown[]) => void>();
+  const widgets: Array<{ key: string; content: unknown; options?: unknown }> =
+    [];
+  const theme = { fg: (_color: string, text: string) => text };
+  const pi = {
+    events: {
+      on(channel: string, handler: (value: unknown) => void) {
+        const set = listeners.get(channel) ?? new Set();
+        set.add(handler);
+        listeners.set(channel, set);
+        return () => set.delete(handler);
+      },
+      emit(channel: string, value: unknown) {
+        for (const handler of listeners.get(channel) ?? []) handler(value);
+      },
+    },
+    on(event: string, handler: (...args: unknown[]) => void) {
+      hooks.set(event, handler);
+    },
+    getThinkingLevel() {
+      return "high";
+    },
+  };
+  const context = {
+    mode: "tui",
+    cwd: "/repo",
+    ui: {
+      theme,
+      setHeader() {},
+      setFooter() {},
+      setWidget(key: string, content: unknown, options?: unknown) {
+        widgets.push({ key, content, options });
+      },
+      setTitle() {},
+    },
+  };
+
+  uiCustomization(pi as never);
+  hooks.get("session_start")?.({}, context);
+  const widget = (
+    widgets[0].content as (...args: unknown[]) => {
+      render(width: number): string[];
+    }
+  )({ requestRender() {} }, theme);
+
+  // No snapshot published yet → no issues section (the live gap PI-36 closes).
+  assert.equal(
+    widget.render(80).find((line) => line.includes("issues")),
+    undefined,
+  );
+
+  // One completed poll read publishes a snapshot → rows render (INV-10).
+  pi.events.emit("vraj:ticket-snapshot", {
+    repo: "pi",
+    capturedAt: 100_000,
+    records: [
+      issue({
+        id: "PI-36",
+        status: "coding",
+        assignee: "coder",
+        title: "wire the poll",
+      }),
+      issue({ id: "PI-35", status: "done", assignee: "reviewer" }),
+    ],
+  });
+  const rendered = widget.render(80);
+  assert.ok(rendered.find((l) => l.includes("issues · 1 active · 1 done")));
+  assert.ok(rendered.find((l) => l.includes("PI-36")));
+  assert.ok(rendered.find((l) => l.includes("wire the poll")));
+  assert.equal(
+    rendered.find((l) => l.includes("PI-35")),
+    undefined,
+    "done tickets are counted, not listed",
+  );
+
+  // A reasoned snapshot renders exactly the unavailable line (INV-10).
+  pi.events.emit("vraj:ticket-snapshot", {
+    repo: "pi",
+    capturedAt: 100_000,
+    records: [],
+    reason: "timeout",
+  });
+  const unavailable = widget.render(80);
+  assert.ok(
+    unavailable.find((l) => l.includes("issues unavailable — timeout")),
+  );
+  assert.equal(
+    unavailable.find((l) => l.includes("PI-36")),
+    undefined,
+  );
+
+  // Malformed/throwing published values leave the prior view in place (INV-6).
+  for (const bad of [
+    null,
+    "nope",
+    {},
+    { capturedAt: "100" },
+    { capturedAt: 100_000, records: "bad" },
+    { capturedAt: 100_000, reason: 42 },
+  ]) {
+    pi.events.emit("vraj:ticket-snapshot", bad);
+  }
+  const afterMalformed = widget.render(80);
+  assert.ok(
+    afterMalformed.find((l) => l.includes("issues unavailable — timeout")),
+    "previous snapshot survives malformed publishes",
+  );
+
+  // session_shutdown clears the listener; later publishes are no-ops.
+  hooks.get("session_shutdown")?.({}, context);
+  pi.events.emit("vraj:ticket-snapshot", {
+    repo: "pi",
+    capturedAt: 100_000,
+    records: [issue({ id: "PI-99" })],
+  });
+  assert.equal(widgets.length, 2, "widget cleared, nothing re-registered");
+  assert.equal(widgets.at(-1)?.content, undefined);
+  assert.doesNotThrow(() => widget.render(80));
+});
+
 // ── PI-21: mode / route rows ────────────────────────────
 
 test("mode row: renders exactly 'mode workflow' or 'mode free (manual)'", () => {

@@ -1216,7 +1216,7 @@ behaviours in text.
 
 ## PI-36 — Wire the tracker poll to the belowEditor issue list (INV-10, INV-13)
 
-Status: **Agent Ready** · Blocked-by: none · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
+Status: **Debugger Ready** · Blocked-by: none · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
 
 **What to build.** Close the live gap that makes the todo list render nothing today.
 `extensions/ui-customization/index.ts:110` declares `ticketSnapshot` but nothing ever assigns it,

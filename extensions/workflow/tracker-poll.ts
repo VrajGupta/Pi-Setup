@@ -78,6 +78,9 @@ function reasonFrom(error: unknown) {
  * @param now - Injected clock for testing (returns epoch ms).
  * @param setTimer - Injected timer function for testing.
  * @param clearTimer - Matching timer cancellation function for testing.
+ * @param onSnapshot - Called with the snapshot after every completed read
+ *   (success or reasoned failure), so a consumer can publish it off the render
+ *   path without polling getSnapshot() itself.
  * @returns Poll object with getSnapshot() and stop().
  */
 export function startTrackerPoll({
@@ -86,12 +89,14 @@ export function startTrackerPoll({
   now,
   setTimer,
   clearTimer = (handle: NodeJS.Timeout) => clearTimeout(handle),
+  onSnapshot,
 }: {
   intervalMs: unknown;
   read: () => Promise<TicketSnapshot>;
   now: () => number;
   setTimer: (callback: () => void, delayMs: number) => NodeJS.Timeout;
   clearTimer?: (handle: NodeJS.Timeout) => void;
+  onSnapshot?: (snapshot: TrackerPollSnapshot) => void;
 }): TrackerPoll {
   const clampedInterval = clampInterval(intervalMs, 2000, 300000, 10000);
   const readTimeoutMs = clampedInterval;
@@ -123,6 +128,7 @@ export function startTrackerPoll({
           records: [],
           reason: safeReason,
         };
+    onSnapshot?.(snapshot);
   };
 
   const storeResult = (result: TicketSnapshot) => {
@@ -139,6 +145,7 @@ export function startTrackerPoll({
       capturedAt: now(),
       records: result.records,
     };
+    onSnapshot?.(snapshot);
   };
 
   const settle = (

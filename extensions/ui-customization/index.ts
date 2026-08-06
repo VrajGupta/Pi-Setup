@@ -30,6 +30,7 @@ import {
   renderStatusWidget,
   type StatusWidgetAgent,
   type StatusWidgetContext,
+  type StatusWidgetIssueRecord,
   type StatusWidgetRoutineRecord,
   type StatusWidgetSnapshotView,
   type StatusWidgetState,
@@ -98,6 +99,33 @@ function titleFor(
   return `${glyph} π ${formatDirectory(ctx.cwd)} · ${stage}`;
 }
 
+/**
+ * Validate a channel value as the widget's snapshot view. Rejects malformed
+ * shapes so a bad publish never replaces the previous snapshot (INV-6); the
+ * widget additionally isolates malformed individual records at render time.
+ */
+function asStatusWidgetSnapshotView(
+  value: unknown,
+): StatusWidgetSnapshotView | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const v = value as Record<string, unknown>;
+  if (typeof v.capturedAt !== "number" || !Number.isFinite(v.capturedAt))
+    return undefined;
+  if (v.reason !== undefined && typeof v.reason !== "string") return undefined;
+  if (v.records !== undefined && !Array.isArray(v.records)) return undefined;
+  const view: StatusWidgetSnapshotView = {
+    capturedAt: v.capturedAt,
+    records: Array.isArray(v.records)
+      ? v.records.filter(
+          (r): r is StatusWidgetIssueRecord =>
+            r != null && typeof r === "object",
+        )
+      : [],
+    ...(typeof v.reason === "string" ? { reason: v.reason } : {}),
+  };
+  return view;
+}
+
 export default function uiCustomization(pi: ExtensionAPI) {
   let modelInfo = emptyModelInfoState();
   let gitInfo = emptyGitInfoState();
@@ -153,6 +181,15 @@ export default function uiCustomization(pi: ExtensionAPI) {
       refresh();
     },
   );
+  // Ticket snapshot (PI-36): the workflow extension emits each completed
+  // off-render tracker poll read; the widget only renders it (INV-10, INV-3).
+  const TICKET_SNAPSHOT_CHANNEL = "vraj:ticket-snapshot";
+  const stopTicketListener = pi.events.on(TICKET_SNAPSHOT_CHANNEL, (value) => {
+    const view = asStatusWidgetSnapshotView(value);
+    if (view === undefined) return;
+    ticketSnapshot = view;
+    refresh();
+  });
 
   const install = (ctx: ExtensionContext) => {
     if (ctx.mode !== "tui") return;
@@ -306,6 +343,7 @@ export default function uiCustomization(pi: ExtensionAPI) {
     agents = [];
     agentsAt = 0;
     activity = "idle";
+    ticketSnapshot = undefined;
     install(ctx);
   });
   pi.on("agent_start", (_event, ctx) => {
@@ -335,7 +373,9 @@ export default function uiCustomization(pi: ExtensionAPI) {
     stopSubagentListener();
     stopRefreshListener();
     stopRoutinesListener();
+    stopTicketListener();
     routinesSnapshot = undefined;
+    ticketSnapshot = undefined;
     activeTui = undefined;
     currentContext = undefined;
     if (ctx.mode === "tui") {
