@@ -56,6 +56,51 @@ Mode labels are `mode free (manual)` (everything direct unless a stage is named)
 
 The current mode persists across restarts via `workflow.mode` in settings. The tracker poll interval (`workflow.trackerPollMs`, default 10000) and the surface runaway ceiling (`workflow.statusWidget.maxLines`, default 40) are configurable in `settings.example.json`.
 
+## Routines
+
+Periodic scheduled prompts (like Claude Code routines) are configured under `workflow.routines` in settings. Each routine has a name, a prompt/task template, and a schedule (fixed interval in ms, with optional `at` minutes-of-day for time-of-day pinning). The scheduler is single-flight per routine and runs off the render path (INV-10, INV-13).
+
+### Commands
+
+- `/routine` — bare picker of available (enabled, not snoozed) routines.
+- `/routine run <name>` — classify the routine's prompt and execute it.
+- `/routine snooze <name> [minutes]` — skip N minutes (default 60, max 10080).
+- `/routine disable <name>` — disable the routine.
+- `/routine enable <name>` — re-enable.
+
+### Surface
+
+Due routines appear as a `─ routines · N due ─` section in the belowEditor widget, with name, schedule summary, and status token (`due now`, `~5m`, `snoozed (30m)`, `disabled`). The `/flow` Routines tab shows the full list with prompt previews.
+
+### Scheduler semantics
+
+- **Interval:** `scheduleMs` (ms, clamped `[60000, 604800000]`).
+- **at:** optional minutes-of-day (0–1439) for time-of-day pinning. When both `scheduleMs` and `at` are present, the first fire aligns to the next `at` minute; subsequent fires use the interval from that anchor.
+- **Snooze:** skip until `snoozedUntil` passes.
+- **Disable:** remove from the active list; re-enable restores it.
+- **Concurrency:** single-flight per routine; a slow handler never overlaps.
+- **Failure:** per-routine isolation; a broken routine never kills the scheduler.
+
+Routine definitions are stored in `settings.json` → `workflow.routines`. The scheduler starts at session start and stops on session shutdown (no leaked timers, INV-18). Settings changes via `/routine` refresh the scheduler without leaking timers.
+
+Example settings block:
+
+```json
+{
+  "workflow": {
+    "routines": [
+      {
+        "name": "standup",
+        "scheduleMs": 86400000,
+        "at": [540],
+        "prompt": "Summarize yesterday's work",
+        "enabled": true
+      }
+    ]
+  }
+}
+```
+
 ## Checks
 
 ```sh

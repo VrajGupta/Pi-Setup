@@ -1084,7 +1084,7 @@ Status: **Done** · Blocked-by: PI-28, PI-29 · GitHub issue #28
 
 ## PI-32 — Lifecycle wiring, docs, and regression
 
-Status: **Agent Ready** · Blocked-by: PI-31 (Done) · GitHub issue #30
+Status: **Debugger Ready** · Blocked-by: PI-31 (Done) · GitHub issue #30
 
 **What to build.** Wire scheduler + commands into `session_start`/`session_shutdown`. Document routines in `README.md`, `SYSTEM.md`, `settings.example.json`. INV-14 render budget holds with routines section. Closing gate.
 
@@ -1099,3 +1099,5 @@ Status: **Agent Ready** · Blocked-by: PI-31 (Done) · GitHub issue #30
 - `npm test`, `npm run check`, `npm run format:check` all exit 0.
 
 **Verification-command.** `npm test && npm run check && npm run format:check`
+
+**Coder delivery (2026-08-05).** Changed paths: `extensions/workflow/index.ts`, `extensions/ui-customization/index.ts`, `extensions/workflow/flow-panel.test.ts`, `README.md`, `SYSTEM.md`, `tickets.md`, `docs/handoffs/2026-08-05-coder-pi32.md`. Diff SHA-256: `405c23e0e6e539ea3412db8b93bbe9706ac235e2bd5fe91419f23da02fa1fbe7`. Exact gate `node --test --experimental-strip-types extensions/ui-customization/status-widget.test.ts extensions/workflow/flow-panel.test.ts extensions/workflow/routines-scheduler.test.ts extensions/workflow/routines-settings.test.ts && npm run check` → exit 0 (196 tests; TypeScript clean). `npm run format:check` → exit 0. `npm test` → exit 1 (2 known environmental failures: live Codex completion test, PI-13 benchmark — outside lane).

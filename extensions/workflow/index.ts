@@ -28,6 +28,13 @@ import {
   type WorkflowReasoningEffort,
   type WorkflowSubagentSummary,
 } from "../shared/workflow-state.ts";
+import {
+  DEFAULT_ROUTINE_INTERVAL_MS,
+  startRoutineScheduler,
+  type RoutineDefinition as SchedulerRoutine,
+  type RoutineScheduler,
+} from "./routines-scheduler.ts";
+import type { StatusWidgetRoutineRecord } from "../ui-customization/status-widget.ts";
 import { buildReading, isStale } from "../shared/stage-progress.ts";
 import {
   parseTicketSnapshot,
@@ -1285,6 +1292,134 @@ function isFlowInput(value: unknown): value is FlowInput {
   );
 }
 
+// The routines snapshot channel carries an off-render, read-only summary from
+// the workflow extension to the belowEditor widget (ui-customization).
+export const ROUTINES_SNAPSHOT_CHANNEL = "vraj:routines-snapshot";
+
+/**
+ * Build the read-only widget summary for every configured routine from the
+ * scheduler's snapshot (INV-10: off-render producer never writes; the widget
+ * only reads). `dueAt` is the last-due time for a due routine, the snooze
+ * release time for a snoozed routine, or an estimated next-due otherwise.
+ */
+export function buildRoutinesSnapshot(
+  scheduler: RoutineScheduler,
+  routines: readonly RoutineDefinition[],
+  now: number,
+): readonly StatusWidgetRoutineRecord[] {
+  const stateByName = new Map(
+    scheduler.getSnapshot().routines.map((r) => [r.name, r]),
+  );
+  const records: StatusWidgetRoutineRecord[] = [];
+  for (const def of routines) {
+    if (def === null || typeof def !== "object") continue;
+    const st = stateByName.get(def.name);
+    const enabled = def.enabled !== false;
+    const snoozedUntil = finiteNumber(def.snoozedUntil);
+    let dueAt: number;
+    if (st?.isDue) {
+      dueAt = now;
+    } else if (snoozedUntil !== undefined && snoozedUntil > now) {
+      dueAt = snoozedUntil;
+    } else {
+      const last = finiteNumber(st?.lastFiredAt);
+      const interval = finiteNumber(def.scheduleMs);
+      dueAt =
+        last !== undefined && interval !== undefined
+          ? last + interval
+          : now + (interval ?? DEFAULT_ROUTINE_INTERVAL_MS);
+    }
+    records.push({
+      name: def.name,
+      schedule: scheduleSummary(def),
+      enabled,
+      ...(snoozedUntil !== undefined ? { snoozedUntil } : {}),
+      dueAt,
+    });
+  }
+  return records;
+}
+
+export interface RoutinesLifecycleOptions {
+  readonly now?: () => number;
+  readonly setTimer?: (callback: () => void, delayMs: number) => NodeJS.Timeout;
+  readonly clearTimer?: (handle: NodeJS.Timeout) => void;
+  readonly onSnapshot?: (
+    snapshot: readonly StatusWidgetRoutineRecord[],
+  ) => void;
+  readonly onDue?: (routine: SchedulerRoutine) => void | Promise<void>;
+}
+
+export interface RoutinesLifecycle {
+  /** Start (or restart) the scheduler from a routine list; emits a snapshot. */
+  start(routines: readonly RoutineDefinition[]): void;
+  /** Stop the scheduler and clear state; emits an empty snapshot. */
+  stop(): void;
+  /** Alias of start — reflects a settings change into the running scheduler. */
+  refresh(routines: readonly RoutineDefinition[]): void;
+  /** Off-render widget summary at an optional timestamp. */
+  snapshot(now?: number): readonly StatusWidgetRoutineRecord[];
+}
+
+/**
+ * Minimal scheduler lifecycle with injected timers/clock (mirrors
+ * tracker-poll/routines-scheduler). A settings refresh restarts the scheduler
+ * (stop clears the old timer, so there is no leak, INV-18) and recomputes
+ * next-due from the updated definitions. No routines → idle, no timer.
+ */
+export function createRoutinesLifecycle(
+  options: RoutinesLifecycleOptions = {},
+): RoutinesLifecycle {
+  const clock = options.now ?? Date.now;
+  const setTimer =
+    options.setTimer ??
+    ((callback: () => void, delay: number) => setTimeout(callback, delay));
+  const clearTimer =
+    options.clearTimer ?? ((handle: NodeJS.Timeout) => clearTimeout(handle));
+  let scheduler: RoutineScheduler | undefined;
+  let routines: readonly RoutineDefinition[] = [];
+
+  const emit = () => {
+    const snapshot = scheduler
+      ? buildRoutinesSnapshot(scheduler, routines, clock())
+      : [];
+    options.onSnapshot?.(snapshot);
+  };
+  const stop = () => {
+    scheduler?.stop();
+    scheduler = undefined;
+    routines = [];
+    options.onSnapshot?.([]);
+  };
+  const start = (next: readonly RoutineDefinition[]) => {
+    stop();
+    routines = next;
+    if (next.length === 0) {
+      options.onSnapshot?.([]);
+      return;
+    }
+    scheduler = startRoutineScheduler({
+      routines: next,
+      now: clock,
+      setTimer,
+      clearTimer,
+      onDue: (routine) => {
+        options.onDue?.(routine);
+        emit();
+      },
+    });
+    emit();
+  };
+  return {
+    start,
+    stop,
+    refresh: start,
+    snapshot(ts = clock()) {
+      return scheduler ? buildRoutinesSnapshot(scheduler, routines, ts) : [];
+    },
+  };
+}
+
 export default function workflow(pi: ExtensionAPI) {
   let state = emptyWorkflowState();
   // Live routing mode (PI-19): session-scoped, initialized from the configured
@@ -1299,6 +1434,7 @@ export default function workflow(pi: ExtensionAPI) {
   let requestRender: (() => void) | undefined;
   let lastEnvelope = "";
   let configuredRoutines: readonly RoutineDefinition[] = [];
+  let routinesLifecycle: RoutinesLifecycle | undefined;
 
   const publish = () => {
     state = { ...state, updatedAt: Date.now() };
@@ -1461,6 +1597,22 @@ export default function workflow(pi: ExtensionAPI) {
       `routine ${routine.name} → ${decision.mode}${decision.stage ? `/${decision.stage}` : ""} · ${decision.reason}`,
       "info",
     );
+  };
+
+  const startRoutineLifecycle = () => {
+    routinesLifecycle?.stop();
+    routinesLifecycle = createRoutinesLifecycle({
+      now: Date.now,
+      setTimer: (callback, delay) => setTimeout(callback, delay),
+      clearTimer: (handle) => clearTimeout(handle),
+      onSnapshot: (snapshot) => {
+        pi.events.emit(ROUTINES_SNAPSHOT_CHANNEL, [...snapshot]);
+      },
+      onDue: (routine) => {
+        context?.ui.notify(routineBanner(routine.name), "info");
+      },
+    });
+    routinesLifecycle.start(configuredRoutines);
   };
 
   const handleEnvelope = async (envelope: ControlEnvelope) => {
@@ -1712,6 +1864,7 @@ export default function workflow(pi: ExtensionAPI) {
       }
       const persisted = await persistSettingsFile(merged.settings);
       configuredRoutines = [...result.routines];
+      routinesLifecycle?.refresh(configuredRoutines);
       const label =
         outcome.kind === "snooze"
           ? `snoozed for ${outcome.minutes}m`
@@ -1831,6 +1984,7 @@ export default function workflow(pi: ExtensionAPI) {
     configuredRoutines = readRoutines(
       isRecord(settings) ? settings : {},
     ).routines;
+    startRoutineLifecycle();
     if (warning) ctx.ui.notify(warning, "warning");
     try {
       const saved = JSON.parse(
@@ -1920,6 +2074,8 @@ export default function workflow(pi: ExtensionAPI) {
   });
 
   pi.on("session_shutdown", () => {
+    routinesLifecycle?.stop();
+    routinesLifecycle = undefined;
     stopSubagentState();
     requestRender = undefined;
     context = undefined;

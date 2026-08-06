@@ -11,13 +11,23 @@ import {
   MODE_COMPLETIONS,
   normalizeModeCommand,
   applyRoutineUpdate,
+  buildRoutinesSnapshot,
   classifyRoutinePrompt,
+  createRoutinesLifecycle,
   normalizeRoutineCommand,
   routineBanner,
   routineCompletions,
   type FlowPanelContext,
   type RoutineCommandOutcome,
+  type RoutinesLifecycle,
 } from "./index.ts";
+import {
+  startRoutineScheduler,
+  type RoutineDefinition as SchedulerRoutine,
+  type RoutineScheduler,
+} from "./routines-scheduler.ts";
+import type { RoutineDefinition } from "./routines-settings.ts";
+import type { StatusWidgetRoutineRecord } from "../ui-customization/status-widget.ts";
 
 const theme = {
   bg: (_color: string, text: string) => text,
@@ -1016,4 +1026,221 @@ test("PI-31 debugger: Routines tab skips null entries instead of crashing", () =
   assert.doesNotThrow(() => flow.render(120));
   const out = flow.render(120).join("\n");
   assert.match(out, /good/);
+});
+
+// ─── PI-32 lifecycle wiring ────────────────────────────────
+
+function fakeTimer() {
+  let now = 1_000_000;
+  let nextId = 1;
+  const pending = new Map<number, { cb: () => void; dueAt: number }>();
+  return {
+    now: () => now,
+    advance: (ms: number) => {
+      const target = now + ms;
+      let guard = 0;
+      while (guard++ < 100_000) {
+        let nextIdToFire: number | undefined;
+        let nextDue = Infinity;
+        for (const [id, entry] of pending) {
+          if (entry.dueAt <= target && entry.dueAt < nextDue) {
+            nextDue = entry.dueAt;
+            nextIdToFire = id;
+          }
+        }
+        if (nextIdToFire === undefined) break;
+        const entry = pending.get(nextIdToFire);
+        pending.delete(nextIdToFire);
+        now = Math.max(now, nextDue);
+        entry?.cb();
+      }
+      now = target;
+    },
+    setTimer: (cb: () => void, delayMs: number) => {
+      const id = nextId++;
+      pending.set(id, { cb, dueAt: now + delayMs });
+      return { id, unref: () => {} } as unknown as NodeJS.Timeout;
+    },
+    clearTimer: (handle: NodeJS.Timeout) => {
+      const { id } = handle as unknown as { id: number };
+      pending.delete(id);
+    },
+    pendingCount: () => pending.size,
+  };
+}
+
+function def(overrides: Partial<RoutineDefinition> = {}): RoutineDefinition {
+  return {
+    name: "test",
+    scheduleMs: 60_000,
+    prompt: "say hello",
+    enabled: true,
+    ...overrides,
+  };
+}
+
+const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+test("PI-32: createRoutinesLifecycle.start starts scheduler and emits snapshot", async () => {
+  const clock = fakeTimer();
+  let snapshot: readonly StatusWidgetRoutineRecord[] | undefined;
+  const life = createRoutinesLifecycle({
+    now: clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+    onSnapshot: (snap) => {
+      snapshot = snap;
+    },
+  });
+  life.start([def()]);
+  assert.ok(clock.pendingCount() > 0, "scheduler timer should be active");
+  assert.ok(snapshot !== undefined, "initial snapshot should be emitted");
+  assert.equal(snapshot!.length, 1);
+  assert.equal(snapshot![0].name, "test");
+  assert.equal(snapshot![0].enabled, true);
+  life.stop();
+});
+
+test("PI-32: createRoutinesLifecycle.start with no routines is idle, no crash", () => {
+  const clock = fakeTimer();
+  let snapshot: readonly StatusWidgetRoutineRecord[] | undefined;
+  const life = createRoutinesLifecycle({
+    now: clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+    onSnapshot: (snap) => {
+      snapshot = snap;
+    },
+  });
+  life.start([]);
+  assert.equal(clock.pendingCount(), 0, "no timer with empty routines");
+  assert.deepEqual(snapshot, []);
+  life.stop();
+});
+
+test("PI-32: createRoutinesLifecycle.stop clears scheduler and emits empty snapshot", () => {
+  const clock = fakeTimer();
+  const snapshots: StatusWidgetRoutineRecord[][] = [];
+  const life = createRoutinesLifecycle({
+    now: clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+    onSnapshot: (snap) => {
+      snapshots.push(snap as StatusWidgetRoutineRecord[]);
+    },
+  });
+  life.start([def()]);
+  // start() calls stop() internally (emits []) then emits the real snapshot
+  assert.equal(snapshots.length, 2);
+  assert.deepEqual(snapshots[0], []);
+  assert.equal(snapshots[1].length, 1);
+  assert.equal(snapshots[1][0].name, "test");
+  life.stop();
+  assert.equal(clock.pendingCount(), 0, "no leaked timers after stop");
+  assert.equal(snapshots.length, 3);
+  assert.deepEqual(snapshots[2], []);
+});
+
+test("PI-32: refresh restarts scheduler with updated routines", async () => {
+  const clock = fakeTimer();
+  const dueRoutines: string[] = [];
+  const life = createRoutinesLifecycle({
+    now: clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+    onDue: (r) => {
+      dueRoutines.push(r.name);
+    },
+  });
+  life.start([def({ name: "standup", scheduleMs: 60_000 })]);
+  clock.advance(60_000);
+  await flush();
+  assert.deepEqual(dueRoutines, ["standup"]);
+
+  // Refresh: shorter interval for weekly, verify standup disabled
+  life.refresh([
+    def({ name: "standup", scheduleMs: 60_000, enabled: false }),
+    def({ name: "weekly", scheduleMs: 60_000 }),
+  ]);
+  dueRoutines.length = 0;
+  clock.advance(60_000);
+  await flush();
+  assert.deepEqual(
+    dueRoutines,
+    ["weekly"],
+    "disabled standup should not fire; weekly should fire",
+  );
+  life.stop();
+});
+
+test("PI-32: buildRoutinesSnapshot produces read-only summary per routine", () => {
+  const clock = fakeTimer();
+  const scheduler = startRoutineScheduler({
+    routines: [def({ name: "a", scheduleMs: 60_000 })],
+    now: clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+  });
+  const snap = buildRoutinesSnapshot(
+    scheduler,
+    [def({ name: "a", scheduleMs: 60_000 })],
+    clock.now(),
+  );
+  assert.equal(snap.length, 1);
+  assert.equal(snap[0].name, "a");
+  assert.equal(snap[0].enabled, true);
+  assert.ok(
+    typeof snap[0].dueAt === "number" && Number.isFinite(snap[0].dueAt),
+  );
+  assert.ok(typeof snap[0].schedule === "string");
+  scheduler.stop();
+});
+
+test("PI-32: buildRoutinesSnapshot handles undefined-safe routines", () => {
+  const clock = fakeTimer();
+  const scheduler = startRoutineScheduler({
+    routines: [],
+    now: clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+  });
+  // Empty routines → empty snapshot
+  assert.deepEqual(buildRoutinesSnapshot(scheduler, [], clock.now()), []);
+  // Null entry → skipped
+  const snap = buildRoutinesSnapshot(
+    scheduler,
+    [null as never, def({ name: "b", scheduleMs: 60_000 })],
+    clock.now(),
+  );
+  assert.equal(snap.length, 1);
+  assert.equal(snap[0].name, "b");
+  scheduler.stop();
+});
+
+test("PI-32: buildRoutinesSnapshot with throwing scheduler produces bounded fallback", () => {
+  const throwing = {
+    getSnapshot: () => {
+      throw new Error("boom");
+    },
+    getDueRoutineNames: () => [],
+  } as unknown as RoutineScheduler;
+  assert.throws(() => buildRoutinesSnapshot(throwing, [], 1000), /boom/);
+});
+
+test("PI-32: createRoutinesLifecycle.snapshot returns current state without side effects", () => {
+  const clock = fakeTimer();
+  const life = createRoutinesLifecycle({
+    now: clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+  });
+  // No scheduler → empty
+  assert.deepEqual(life.snapshot(clock.now()), []);
+  life.start([def()]);
+  const snap = life.snapshot(clock.now());
+  assert.equal(snap.length, 1);
+  assert.equal(snap[0].name, "test");
+  life.stop();
+  // After stop → empty
+  assert.deepEqual(life.snapshot(clock.now()), []);
 });

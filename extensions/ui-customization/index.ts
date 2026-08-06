@@ -137,6 +137,22 @@ export default function uiCustomization(pi: ExtensionAPI) {
     refresh();
   });
   const stopRefreshListener = pi.events.on(REFRESH_CHANNEL, refresh);
+  // Routines snapshot (PI-31/32): the workflow extension emits an off-render,
+  // read-only summary; the widget only renders it (INV-10, INV-3).
+  const ROUTINES_SNAPSHOT_CHANNEL = "vraj:routines-snapshot";
+  const stopRoutinesListener = pi.events.on(
+    ROUTINES_SNAPSHOT_CHANNEL,
+    (value) => {
+      const records = Array.isArray(value)
+        ? value.filter(
+            (r): r is StatusWidgetRoutineRecord =>
+              r != null && typeof r === "object",
+          )
+        : undefined;
+      routinesSnapshot = records;
+      refresh();
+    },
+  );
 
   const install = (ctx: ExtensionContext) => {
     if (ctx.mode !== "tui") return;
@@ -318,6 +334,8 @@ export default function uiCustomization(pi: ExtensionAPI) {
     stopWorkflowListener();
     stopSubagentListener();
     stopRefreshListener();
+    stopRoutinesListener();
+    routinesSnapshot = undefined;
     activeTui = undefined;
     currentContext = undefined;
     if (ctx.mode === "tui") {
