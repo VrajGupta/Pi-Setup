@@ -13,7 +13,11 @@ import type {
 import type { Component, Focusable, TUI } from "@earendil-works/pi-tui";
 import { Input, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { redactSecrets } from "../../../summaries/src/transcript.ts";
-import { formatElapsed, type SubagentSnapshot } from "../domain.ts";
+import {
+  formatElapsed,
+  type SubagentSnapshot,
+  type SubagentStatus,
+} from "../domain.ts";
 import { formatContextUtilization } from "../format.ts";
 import type { SubagentReadModel } from "../manager.ts";
 import { buildTranscriptLines, sanitizeText } from "./transcript.ts";
@@ -183,6 +187,31 @@ export async function openSubagentPicker(
 
 // --- Dashboard (fullscreen overlay) ----------------------------------------------
 
+const SUBAGENT_STATUS_RANK: Record<SubagentStatus, number> = {
+  running: 0,
+  done: 1,
+  error: 2,
+};
+
+/**
+ * Deterministic dashboard ordering (PI-35): `running` first, then `done`,
+ * then `error`, tie-broken by the snapshot's `createdAt` (the started-at
+ * timestamp in this domain model) ascending, then by `id` ascending.
+ * The input array is not mutated.
+ */
+export function sortSubagents(
+  subs: ReadonlyArray<SubagentSnapshot>,
+): ReadonlyArray<SubagentSnapshot> {
+  return [...subs].sort((a, b) => {
+    const rank =
+      SUBAGENT_STATUS_RANK[a.status] - SUBAGENT_STATUS_RANK[b.status];
+    if (rank !== 0) return rank;
+    const start = a.createdAt - b.createdAt;
+    if (start !== 0) return start;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+}
+
 export interface DashboardSelection {
   id?: string;
   index: number;
@@ -234,7 +263,7 @@ class SubagentDashboard implements Component {
   }
 
   private subs(): ReadonlyArray<SubagentSnapshot> {
-    return this.view.list();
+    return sortSubagents(this.view.list());
   }
 
   private cleanup() {
@@ -363,14 +392,15 @@ class SubagentDashboard implements Component {
         theme.fg("border", "╯"),
     );
 
-    // Hints
+    // Hints: confirm takes over, cancel returns to the session, and the
+    // same cancel key inside a takeover returns here (PI-35 round-trip).
     const selected = subs[this.selection.index];
     const abortHint = selected?.stage === undefined ? " · x abort" : "";
     lines.push(
       truncateToWidth(
         theme.fg(
           "dim",
-          `  ${configuredKeys(this.keybindings, "tui.select.up")}/${configuredKeys(this.keybindings, "tui.select.down")}/jk select · ${configuredKeys(this.keybindings, "tui.select.confirm")} take over${abortHint} · ${configuredKeys(this.keybindings, "tui.select.cancel")} close`,
+          `  ${configuredKeys(this.keybindings, "tui.select.up")}/${configuredKeys(this.keybindings, "tui.select.down")}/jk select · ${configuredKeys(this.keybindings, "tui.select.confirm")} take over${abortHint} · ${configuredKeys(this.keybindings, "tui.select.cancel")} back to session · ${configuredKeys(this.keybindings, "tui.select.cancel")} in takeover back to picker`,
         ),
         width,
       ),

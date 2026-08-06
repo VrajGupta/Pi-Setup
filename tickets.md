@@ -1180,7 +1180,7 @@ binding may be re-implemented by hand.
 
 ## PI-35 — Picker ordering, full listing, and round-trip (INV-2, INV-11, INV-20)
 
-Status: **Agent Ready** · Blocked-by: none · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
+Status: **Debugger Ready** · Blocked-by: none · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
 
 **What to build.** In `extensions/subagents/src/ui/takeover.ts`, make the dashboard listing
 order deterministic and the round-trip explicit. All subagents are listed — `running` first, then

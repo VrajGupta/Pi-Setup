@@ -14,6 +14,7 @@ import {
   openSubagentPicker,
   openSubagentTakeover,
   reconcileDashboardSelection,
+  sortSubagents,
   type DashboardSelection,
 } from "./src/ui/takeover.ts";
 
@@ -57,6 +58,68 @@ const snapshot = (stage?: SubagentSnapshot["stage"]): SubagentSnapshot => ({
   finalText: "",
   turns: 0,
 });
+
+const mkSnap = (
+  id: string,
+  status: SubagentSnapshot["status"],
+  createdAt: number,
+): SubagentSnapshot => ({ ...snapshot(), id, status, createdAt });
+
+async function openPickerForTest(snaps: ReadonlyArray<SubagentSnapshot>) {
+  const components: TakeoverComponent[] = [];
+  const pending: Array<(value: string | null) => void> = [];
+  const sends: string[] = [];
+  const stageSends: StageSend[] = [];
+  const bindings = new Set<string>();
+  const tui = {
+    requestRender: () => {},
+    terminal: { rows: 30 },
+  } as unknown as TUI;
+  const theme = {
+    fg: (_color: string, text: string) => text,
+    bold: (text: string) => text,
+  } as unknown as Theme;
+  const keybindings = {
+    getKeys: (binding: string) =>
+      binding === "tui.select.confirm"
+        ? ["enter"]
+        : binding === "tui.select.cancel"
+          ? ["esc"]
+          : ["up", "down"],
+    matches: (data: string, key: string) => bindings.has(`${data}:${key}`),
+  } as unknown as KeybindingsManager;
+  const view = {
+    size: () => snaps.length,
+    list: () => snaps,
+    get: (id: string) => snaps.find((s) => s.id === id),
+    subscribe: () => () => {},
+    subscribeTo: () => () => {},
+    requestAbort: () => {},
+    requestSend: (_id: string, text: string) => {
+      sends.push(text);
+    },
+    requestStageSend: (id: string, stage: string, text: string) => {
+      stageSends.push({ id, stage, text });
+    },
+  } as unknown as SubagentReadModel;
+  const context = {
+    ui: {
+      custom: async (factory: unknown) => {
+        if (typeof factory !== "function") throw new Error("missing factory");
+        components.push(
+          (factory as DashboardFactory)(tui, theme, keybindings, (result) => {
+            pending.shift()?.(result);
+          }),
+        );
+        return new Promise<string | null>((resolve) => pending.push(resolve));
+      },
+    },
+  } as unknown as ExtensionCommandContext;
+  const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+  const picker = openSubagentPicker(context, view);
+  await flush();
+  return { bindings, components, flush, pending, picker, sends, stageSends };
+}
 
 async function openForTest(snap: SubagentSnapshot) {
   let component: TakeoverComponent | undefined;
@@ -362,4 +425,149 @@ test("dashboard selection follows its subagent id and falls back by row", () => 
 
   reconcileDashboardSelection(selection, []);
   assert.deepEqual(selection, { id: undefined, index: 0 });
+});
+
+test("sortSubagents lists running first, then done, then error, with stable tiebreaks", () => {
+  const input = [
+    mkSnap("sa-done", "done", 3_000),
+    mkSnap("sa-run-a", "running", 2_000),
+    mkSnap("sa-err", "error", 4_000),
+    mkSnap("sa-run-b", "running", 1_000),
+    mkSnap("sa-run-c", "running", 2_000),
+  ];
+  const sorted = sortSubagents(input);
+  assert.deepEqual(
+    sorted.map((snap) => snap.id),
+    ["sa-run-b", "sa-run-a", "sa-run-c", "sa-done", "sa-err"],
+  );
+  // The input array is not mutated.
+  assert.deepEqual(
+    input.map((snap) => snap.id),
+    ["sa-done", "sa-run-a", "sa-err", "sa-run-b", "sa-run-c"],
+  );
+});
+
+test("rendered dashboard orders running first, then done, then error, filtering nothing", async () => {
+  const snaps = [
+    mkSnap("sa-done", "done", 3_000),
+    mkSnap("sa-run-a", "running", 2_000),
+    mkSnap("sa-err", "error", 4_000),
+    mkSnap("sa-run-b", "running", 1_000),
+  ];
+  const harness = await openPickerForTest(snaps);
+  try {
+    const lines = harness.components[0].render(120);
+    const position = (id: string) =>
+      lines.findIndex((line) => line.includes(id));
+    assert.ok(position("sa-run-a") >= 0);
+    assert.ok(position("sa-run-b") >= 0);
+    assert.ok(position("sa-run-b") < position("sa-run-a"));
+    assert.ok(position("sa-run-a") < position("sa-done"));
+    assert.ok(position("sa-done") < position("sa-err"));
+  } finally {
+    harness.components.forEach((component) => component.dispose?.());
+  }
+});
+
+test("selection id survives a reorder after the dashboard sorts", () => {
+  const sorted = sortSubagents([
+    mkSnap("sa-done", "done", 3_000),
+    mkSnap("sa-run-a", "running", 2_000),
+    mkSnap("sa-err", "error", 4_000),
+    mkSnap("sa-run-b", "running", 1_000),
+  ]);
+  const selection: DashboardSelection = { id: "sa-run-b", index: 0 };
+  reconcileDashboardSelection(selection, sorted);
+  assert.equal(selection.id, "sa-run-b");
+  assert.equal(
+    selection.index,
+    sorted.findIndex((snap) => snap.id === "sa-run-b"),
+  );
+});
+
+test("picker returns to the dashboard after a takeover resolves", async () => {
+  const snaps = [
+    mkSnap("sa-run-1", "running", 1_000),
+    mkSnap("sa-done", "done", 2_000),
+  ];
+  const harness = await openPickerForTest(snaps);
+  try {
+    assert.equal(harness.components.length, 1);
+
+    // Confirm the selected running agent: the dashboard resolves, the picker
+    // loop opens a takeover instead of returning to the caller.
+    harness.bindings.add("enter:tui.select.confirm");
+    harness.components[0].handleInput?.("enter");
+    await harness.flush();
+    assert.equal(harness.components.length, 2);
+    assert.match(harness.components[1].render(80).join("\n"), /send/);
+
+    // Closing the takeover resolves it; the loop re-renders the dashboard.
+    harness.bindings.add("escape:app.interrupt");
+    harness.components[1].handleInput?.("escape");
+    await harness.flush();
+    assert.equal(harness.components.length, 3);
+    assert.match(harness.components[2].render(80).join("\n"), /Subagents/);
+
+    // Cancelling the re-rendered dashboard returns to the main session.
+    harness.bindings.add("escape:tui.select.cancel");
+    harness.components[2].handleInput?.("escape");
+    await harness.picker;
+    assert.equal(harness.components.length, 3);
+  } finally {
+    harness.components.forEach((component) => component.dispose?.());
+  }
+});
+
+test("cancelling the dashboard returns to the session without opening a takeover", async () => {
+  const snaps = [mkSnap("sa-run-1", "running", 1_000)];
+  const harness = await openPickerForTest(snaps);
+  try {
+    assert.equal(harness.components.length, 1);
+    harness.bindings.add("escape:tui.select.cancel");
+    harness.components[0].handleInput?.("escape");
+    await harness.picker;
+    assert.equal(harness.components.length, 1);
+    assert.deepEqual(harness.sends, []);
+    assert.deepEqual(harness.stageSends, []);
+  } finally {
+    harness.components.forEach((component) => component.dispose?.());
+  }
+});
+
+test("dashboard hint names confirm, cancel, and both escape behaviours; rows are redacted and width-bounded", async () => {
+  const snaps = [
+    {
+      ...mkSnap("sa-run", "running", 1_000),
+      title: "Authorization: Bearer DASH_SECRET_TOKEN",
+    },
+    {
+      ...mkSnap("sa-done", "done", 2_000),
+      title: "日本語🙂 very long dashboard title that must truncate safely",
+    },
+  ];
+  const harness = await openPickerForTest(snaps);
+  try {
+    for (const width of [40, 80, 120]) {
+      const lines = harness.components[0].render(width);
+      const output = lines.join("\n");
+      assert.ok(
+        lines.every((line) => visibleWidth(line) <= width),
+        `width ${width} exceeded`,
+      );
+      assert.doesNotMatch(output, /DASH_SECRET_TOKEN/);
+    }
+    const full = harness.components[0].render(120).join("\n");
+    assert.match(full, /enter take over/);
+    assert.match(full, /esc back to session/);
+    assert.match(full, /esc in takeover back to picker/);
+
+    // INV-20 no-send regression: dashboard keystrokes never deliver text.
+    harness.components[0].handleInput?.("hello world");
+    harness.components[0].handleInput?.("a");
+    assert.deepEqual(harness.sends, []);
+    assert.deepEqual(harness.stageSends, []);
+  } finally {
+    harness.components.forEach((component) => component.dispose?.());
+  }
 });
