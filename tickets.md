@@ -218,7 +218,7 @@ Status: **Done** · Blocked-by: PI-04 · Phase 1
 
 ## PI-06 — Adopt Ponytail and Caveman-style terseness explicitly (Phase 2)
 
-Status: **Planned** · Blocked-by: PI-04 · Phase 2
+Status: **Done** · Blocked-by: PI-04 · Phase 2
 
 **What to build.** Make the already-installed Ponytail package a declared, pinned part of this configuration and give Pi a Caveman-equivalent terse-output policy: record the package in `settings.example.json`, document both in `README.md` and `SYSTEM.md`, add a `skills/terse-output/SKILL.md` porting the Caveman rules (including its safety exception for security warnings, irreversible actions, and multi-step sequences), and make `install.sh` merge rather than overwrite the user's existing `packages` list.
 
@@ -236,7 +236,7 @@ Status: **Planned** · Blocked-by: PI-04 · Phase 2
 
 ## PI-07 — Prompt-cache-stable system prompt assembly (Phase 2)
 
-Status: **Agent Ready** · Blocked-by: PI-06 (Done) · Phase 2 · GitHub issue #9
+Status: **Done** · Blocked-by: PI-06 (Done) · Phase 2 · GitHub issue #9
 
 **What to build.** Today `extensions/workflow/index.ts` appends a per-turn route block to the system prompt. Split assembly into an explicitly stable prefix and a volatile suffix, prove the prefix is byte-identical across turns whose route differs, and scrub credentials of the **supported shapes below** before either region is assembled.
 
@@ -303,7 +303,7 @@ Status: **Done** · Blocked-by: PI-07 · Phase 2
 
 ## PI-09 — Investigate-only: compressing proxy evaluation (no adoption)
 
-Status: **Planned** · Blocked-by: PI-06 · Phase 2 · May run in parallel with PI-07/PI-08
+Status: **Done** · Blocked-by: PI-06 · Phase 2 · May run in parallel with PI-07/PI-08
 
 **What to build.** A written evaluation at `docs/2026-08-04-proxy-evaluation.md` of routing Pi through a compressing proxy — OmniRoute's RTK + Caveman compression (source already on this machine at `~/.hermes/node/lib/node_modules/omniroute`), and Headroom **if and only if** a real artifact or primary source for it can be identified. This ticket produces a recommendation and changes no configuration.
 
