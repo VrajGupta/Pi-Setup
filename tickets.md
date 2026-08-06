@@ -1061,7 +1061,7 @@ Status: **Done** · Blocked-by: PI-28, PI-29 · GitHub issue #28
 
 ## PI-31 — belowEditor section and /flow Routines tab
 
-Status: **Debugger Ready** · Blocked-by: PI-30 · GitHub issue #29
+Status: **Review Ready** · Blocked-by: PI-30 · GitHub issue #29
 
 **What to build.** belowEditor routines section (rule `─ routines · 1 due ───`, rows per due/snoozed/disabled routine). `/flow` Routines tab with full details. Width-safe, secret-redacted, terminal-safe, INV-11 glyphs.
 
@@ -1077,7 +1077,9 @@ Status: **Debugger Ready** · Blocked-by: PI-30 · GitHub issue #29
 - Throwing getter degrades to base lines (INV-6).
 - Routines tab renders at widths 40/80/120 with no I/O (INV-3).
 
-**Verification-command.** `node --test --experimental-strip-types extensions/ui-customization/status-widget.test.ts extensions/workflow/routine-panel.test.ts && npm run check`
+**Verification-command.** `node --test --experimental-strip-types extensions/ui-customization/status-widget.test.ts extensions/workflow/flow-panel.test.ts && npm run check`
+
+**Debugger delivery (2026-08-05).** Three real defects fixed test-first: (1) `formatRelative` and `routineStatusToken` leaked NaN/Infinity for non-finite `dueAt` — added `Number.isFinite` guards; (2) null entries in routines array silently dropped the entire widget section and crashed the flow panel Routines tab — added per-row null/object filtering in both `routineRows` and `FlowPanel.routines`; (3) `dueAt` in the future appeared as due — due filter now checks `isFiniteNumber(r.dueAt) && r.dueAt <= now`. Added 6 regression tests. Product diff SHA-256: `3bc32583e543cb971c3138b6aa2bd44b93cd7bd5f82445643ca71ea6aea57ca2`. Gate: `node --test --experimental-strip-types extensions/ui-customization/status-widget.test.ts extensions/workflow/flow-panel.test.ts && npm run check && npm run format:check` → exit 0 (118 tests, tsc clean, format clean). Handoff: `docs/handoffs/2026-08-05-debugger-pi31.md`.
 
 ## PI-32 — Lifecycle wiring, docs, and regression
 

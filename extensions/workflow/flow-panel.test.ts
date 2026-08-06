@@ -988,3 +988,32 @@ test("PI-31: Routines tab falls back on throwing getter (INV-6)", () => {
   assert.doesNotThrow(() => flow.render(120));
   assert.match(flow.render(120).join("\n"), /none configured/);
 });
+
+test("PI-31 debugger: Routines tab skips null entries instead of crashing", () => {
+  const flow = new FlowPanel(
+    context,
+    theme,
+    () => state(),
+    () => [],
+    () => [],
+    () => ({ loaded: [], selected: [] }),
+    () => {},
+    () => {},
+    () => undefined,
+    () => undefined,
+    () =>
+      [
+        null,
+        {
+          name: "good",
+          scheduleMs: 3_600_000,
+          prompt: "test",
+          enabled: true,
+        },
+      ] as never[],
+  );
+  for (let i = 0; i < 6; i++) flow.handleInput("\t");
+  assert.doesNotThrow(() => flow.render(120));
+  const out = flow.render(120).join("\n");
+  assert.match(out, /good/);
+});

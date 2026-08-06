@@ -479,6 +479,7 @@ function issueSection(
 // ── routine rows ──────────────────────────────────────────
 
 function formatRelative(ms: number): string {
+  if (!Number.isFinite(ms)) return "?";
   if (ms < 60_000) return "due now";
   const m = Math.floor(ms / 60_000);
   if (m < 60) return `~${m}m`;
@@ -488,6 +489,7 @@ function formatRelative(ms: number): string {
 
 function routineStatusToken(r: StatusWidgetRoutineRecord, now: number): string {
   if (!r.enabled) return "disabled";
+  if (!isFiniteNumber(r.dueAt)) return "?";
   if (isFiniteNumber(r.snoozedUntil) && r.snoozedUntil > now) {
     const remaining = Math.max(0, r.snoozedUntil - now);
     const m = Math.ceil(remaining / 60_000);
@@ -502,16 +504,24 @@ function routineRows(
   width: number,
 ): string[] {
   if (routines.length === 0) return [];
+  // Per-row isolation: filter out null/undefined entries before any access.
+  const safe = routines.filter(
+    (r): r is StatusWidgetRoutineRecord => r != null && typeof r === "object",
+  );
+  if (safe.length === 0) return [];
   const collapsed = width < 60;
 
-  const due = routines.filter(
+  const due = safe.filter(
     (r) =>
-      r.enabled && (!isFiniteNumber(r.snoozedUntil) || r.snoozedUntil <= now),
+      r.enabled &&
+      isFiniteNumber(r.dueAt) &&
+      r.dueAt <= now &&
+      (!isFiniteNumber(r.snoozedUntil) || r.snoozedUntil <= now),
   );
-  const snoozed = routines.filter(
+  const snoozed = safe.filter(
     (r) => r.enabled && isFiniteNumber(r.snoozedUntil) && r.snoozedUntil > now,
   );
-  const disabled = routines.filter((r) => !r.enabled);
+  const disabled = safe.filter((r) => !r.enabled);
 
   const display = collapsed ? due : [...due, ...snoozed, ...disabled];
   if (display.length === 0) return [];
@@ -560,9 +570,16 @@ function routineSection(
   try {
     if (!routines || !Array.isArray(routines) || routines.length === 0)
       return [];
-    const dueCount = routines.filter(
+    const safe = routines.filter(
+      (r): r is StatusWidgetRoutineRecord => r != null && typeof r === "object",
+    );
+    if (safe.length === 0) return [];
+    const dueCount = safe.filter(
       (r) =>
-        r.enabled && (!isFiniteNumber(r.snoozedUntil) || r.snoozedUntil <= now),
+        r.enabled &&
+        isFiniteNumber(r.dueAt) &&
+        r.dueAt <= now &&
+        (!isFiniteNumber(r.snoozedUntil) || r.snoozedUntil <= now),
     ).length;
     const head = `─ routines · ${dueCount} due ─`;
     const fill = "─".repeat(Math.max(0, width - visibleWidth(head)));

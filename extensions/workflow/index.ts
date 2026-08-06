@@ -866,7 +866,17 @@ export class FlowPanel {
         " none configured — add workflow.routines to settings.json",
       ];
     }
-    return [" routines", ...routines.map((r) => ` ${routineRow(r, now)}`)];
+    // Per-row isolation: skip null/undefined entries (INV-6).
+    const safe = routines.filter(
+      (r): r is RoutineDefinition => r != null && typeof r === "object",
+    );
+    if (safe.length === 0) {
+      return [
+        " routines",
+        " none configured — add workflow.routines to settings.json",
+      ];
+    }
+    return [" routines", ...safe.map((r) => ` ${routineRow(r, now)}`)];
   }
 
   private clearIssueCache() {

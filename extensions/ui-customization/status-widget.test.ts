@@ -1452,3 +1452,70 @@ test("PI-31: user text redacted; throwing routine getter → bounded fallback", 
   assert.ok(Array.isArray(fallback));
   assert.ok(fallback.length >= 0);
 });
+
+// ── Debugger PI-31: non-finite dueAt, per-row isolation, future dueAt ──
+
+test("PI-31 debugger: NaN dueAt never leaks into output", () => {
+  const result = renderStatusWidget(
+    state({ now: 100_000, routines: [routine({ dueAt: Number.NaN })] }),
+  );
+  const all = result.join(" ");
+  assert.ok(!all.includes("NaN"), "NaN dueAt produces no NaN");
+  assert.ok(!all.includes("Infinity"), "NaN dueAt produces no Infinity");
+});
+
+test("PI-31 debugger: -Infinity dueAt never leaks into output", () => {
+  const result = renderStatusWidget(
+    state({
+      now: 100_000,
+      routines: [routine({ dueAt: Number.NEGATIVE_INFINITY })],
+    }),
+  );
+  const all = result.join(" ");
+  assert.ok(!all.includes("Infinity"), "-Infinity dueAt produces no Infinity");
+  assert.ok(!all.includes("NaN"), "-Infinity dueAt produces no NaN");
+});
+
+test("PI-31 debugger: null entry in routines array does not drop the section", () => {
+  const result = renderStatusWidget(
+    state({
+      now: 100_000,
+      routines: [
+        null,
+        routine({ name: "good", dueAt: 100_000 }),
+      ] as never as readonly StatusWidgetRoutineRecord[],
+    }),
+  );
+  const all = result.join(" ");
+  assert.ok(all.includes("good"), "good row still renders alongside null");
+  assert.ok(all.includes("routines"), "section rule still renders");
+});
+
+test("PI-31 debugger: future dueAt does not appear as due", () => {
+  const result = renderStatusWidget(
+    state({
+      now: 100_000,
+      routines: [routine({ name: "future", dueAt: 200_000 })],
+    }),
+  );
+  const all = result.join(" ");
+  assert.ok(!all.includes("future"), "future-due routine hidden from section");
+});
+
+test("PI-31 debugger: undefined dueAt does not crash", () => {
+  const result = renderStatusWidget(
+    state({
+      now: 100_000,
+      routines: [
+        {
+          name: "missing",
+          schedule: "every 60m",
+          enabled: true,
+        } as StatusWidgetRoutineRecord,
+      ],
+    }),
+  );
+  const all = result.join(" ");
+  assert.ok(!all.includes("NaN"), "undefined dueAt produces no NaN");
+  assert.ok(!all.includes("Infinity"), "undefined dueAt produces no Infinity");
+});
