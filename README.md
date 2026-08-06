@@ -52,6 +52,27 @@ reviewer may set `Done`.
 Every stage boundary leaves a bounded handoff in `docs/handoffs/` and advances the
 board; each handoff is a claim, never proof — the next stage re-runs the gate itself.
 
+## Token savings (the point of the shebang)
+
+This repo is deliberately built to burn as few tokens as possible. Three levers are
+shipped and enforced; nothing here is a vendor claim:
+
+| Lever | What it actually does | Effect |
+| --- | --- | --- |
+| **Caveman-style terse output** — `skills/terse-output/SKILL.md` + Ponytail | Routine replies drop filler, articles, and pleasantries while keeping full technical accuracy; security warnings, irreversible-action confirmations, and multi-step sequences are never compressed | ~75% fewer tokens on conversation overhead (policy claim, matches the Caveman skill contract) |
+| **Prompt-cache-stable assembly** — `extensions/workflow` | The system prompt is split into a byte-identical stable prefix and a volatile route suffix, so provider prompt caches keep hitting across turns instead of re-reading the world every request | Cheaper + faster repeated calls; cache-hit pricing instead of full-prompt pricing |
+| **Measured-only telemetry** — INV-1 | No fabricated percentages. Context use comes from exactly three in-process denominators; everything else renders elapsed time + turn count + no number | Honest UI, no token budget wasted on invented metrics |
+
+**What was evaluated and deliberately NOT adopted:** a compressing proxy (RTK/Caveman
+compression, Headroom) with vendor claims of 15–95% savings. Those claims were not
+independently reproduced; the verdict is `needs a further spike` and Pi never routes
+traffic through an unmeasured proxy. Adoption requires a new planner run, new
+invariants, and explicit approval — see `docs/2026-08-04-proxy-evaluation.md`.
+
+**Trust boundary:** credentials, API keys, tokens, and provider URLs never reach the
+footer, `/flow`, handoffs, or third parties (INV-2) — redaction is defense in depth,
+not permission to be careless.
+
 ## Extending Pi
 
 - **Commands** (`/mode`, `/flow`, `/routine`, …): `extensions/workflow/index.ts` — register with `registerCommand`.
