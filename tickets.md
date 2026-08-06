@@ -1180,7 +1180,7 @@ binding may be re-implemented by hand.
 
 ## PI-35 — Picker ordering, full listing, and round-trip (INV-2, INV-11, INV-20)
 
-Status: **Review Ready** · Blocked-by: none · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
+Status: **Done** · Blocked-by: none · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
 
 **What to build.** In `extensions/subagents/src/ui/takeover.ts`, make the dashboard listing
 order deterministic and the round-trip explicit. All subagents are listed — `running` first, then
@@ -1201,6 +1201,16 @@ behaviours in text.
 - Every rendered row is secret-redacted and truncated to width at widths 40, 80, and 120 (INV-2, INV-4 width clause).
 
 **Verification-command.** `node --test --experimental-strip-types extensions/subagents/takeover.test.ts && npm run check`
+
+### Reviewer verdict (2026-08-06)
+
+- **PASS** (94/100, diagnostic only). Bounce 0 of 3.
+- Gate: `node --test --experimental-strip-types extensions/subagents/takeover.test.ts && npm run check` → exit 0 (15/15 tests; `tsc --noEmit` clean) at product commits `63fc448` + `c2e67ee` (HEAD at review start `e0ffa67`).
+- Blind inputs only: ticket PI-35 / issue #33, spec INV-20/INV-19, mounted `extensions/subagents/` PI-35 diff. No coder/debugger handoff read before verdict.
+- All 8 acceptance criteria held at the production seam: `sortSubagents` ranks running→done→error with `createdAt` then `id` tiebreak and does not mutate input; dashboard `subs()` consumes it so done/error remain listed; `reconcileDashboardSelection` keeps selected id across reorder; `openSubagentPicker` loop returns to dashboard after takeover and exits on dashboard cancel; hint names confirm/cancel and both escape behaviours under monochrome theme (INV-11); rows secret-redacted and width-bounded at 40/80/120 (INV-2/INV-4).
+- INV-20 no-send held on dashboard path: plain keystrokes do not call `requestSend`/`requestStageSend`. Abort affordance is truthful (running helpers only).
+- No blocking findings. Advisory only: ticket text says `startedAt`; domain field is `createdAt` (started-at equivalent) — correct mapping, not a defect.
+- Routing: → **Done** — Project #12 item `PVTI_lAHOCFvJwM4BfV__zg1hVXQ` read back Done; issue #33 closed.
 
 ---
 
