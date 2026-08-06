@@ -81,6 +81,8 @@ Due routines appear as a `─ routines · N due ─` section in the belowEditor 
 - **Concurrency:** single-flight per routine; a slow handler never overlaps.
 - **Failure:** per-routine isolation; a broken routine never kills the scheduler.
 
+Routine prompts route through `classifyRequest` with the current routing mode (INV-8); the routine system never spawns or sends on the subagent bridge by itself.
+
 Routine definitions are stored in `settings.json` → `workflow.routines`. The scheduler starts at session start and stops on session shutdown (no leaked timers, INV-18). Settings changes via `/routine` refresh the scheduler without leaking timers.
 
 Example settings block:

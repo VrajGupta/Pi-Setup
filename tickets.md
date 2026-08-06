@@ -1084,7 +1084,7 @@ Status: **Done** · Blocked-by: PI-28, PI-29 · GitHub issue #28
 
 ## PI-32 — Lifecycle wiring, docs, and regression
 
-Status: **Debugger Ready** · Blocked-by: PI-31 (Done) · GitHub issue #30
+Status: **Review Ready** · Blocked-by: PI-31 (Done) · GitHub issue #30
 
 **What to build.** Wire scheduler + commands into `session_start`/`session_shutdown`. Document routines in `README.md`, `SYSTEM.md`, `settings.example.json`. INV-14 render budget holds with routines section. Closing gate.
 
@@ -1101,3 +1101,5 @@ Status: **Debugger Ready** · Blocked-by: PI-31 (Done) · GitHub issue #30
 **Verification-command.** `npm test && npm run check && npm run format:check`
 
 **Coder delivery (2026-08-05).** Changed paths: `extensions/workflow/index.ts`, `extensions/ui-customization/index.ts`, `extensions/workflow/flow-panel.test.ts`, `README.md`, `SYSTEM.md`, `tickets.md`, `docs/handoffs/2026-08-05-coder-pi32.md`. Diff SHA-256: `405c23e0e6e539ea3412db8b93bbe9706ac235e2bd5fe91419f23da02fa1fbe7`. Exact gate `node --test --experimental-strip-types extensions/ui-customization/status-widget.test.ts extensions/workflow/flow-panel.test.ts extensions/workflow/routines-scheduler.test.ts extensions/workflow/routines-settings.test.ts && npm run check` → exit 0 (196 tests; TypeScript clean). `npm run format:check` → exit 0. `npm test` → exit 1 (2 known environmental failures: live Codex completion test, PI-13 benchmark — outside lane).
+
+**Debugger delivery (2026-08-05).** Model: DeepSeek V4 Flash via OpenRouter (session-approved, not repo policy). Independent red-team audit of the full attack surface (startup idempotence, shutdown timer/state cleanup, settings refresh restart semantics, snapshot producer, banner INV-8, docs, regression) found one real acceptance-criterion defect: README.md lacked the required `classifyRequest` literal (criterion "README.md and SYSTEM.md contain routine, /routine, classifyRequest"). Fixed docs: added the INV-8 routing sentence to README.md's Routines section. No lifecycle, snapshot, banner, or scheduler logic defect found — double-start is clean (stop-then-create), stop clears timers and emits empty snapshot, refresh restarts without timer leak, `readRoutines` is throw-safe, no-routines is idle, shutdown-without-start is a no-op, in-flight `onDue` settle after stop cannot notify (context cleared), channel listener is registered once with cleanup. Debugger diff SHA-256 (README.md only, from c8902d4): `2ea861b45076518f104ebd32c388519dd474c8b81ca3430fdd5e898f4affb8f0`. Exact gate `node --test --experimental-strip-types extensions/ui-customization/status-widget.test.ts extensions/workflow/flow-panel.test.ts extensions/workflow/routines-scheduler.test.ts extensions/workflow/routines-settings.test.ts && npm run check && npm run format:check` → exit 0 (196 tests; tsc clean; Prettier clean). Artifacts: `docs/handoffs/2026-08-05-debugger-pi32.md`. Only the independent reviewer may set Done.
