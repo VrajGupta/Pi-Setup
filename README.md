@@ -1,17 +1,67 @@
 # Vraj Pi
 
-Personal Pi configuration for the planner → coder → debugger → reviewer workflow.
+Personal configuration for **Pi**, the terminal agent host this repo installs into
+(`~/.pi/agent`). It turns a stock Pi into a four-stage delivery machine —
+**planner → coder → debugger → reviewer** — driven from the prompt, the
+belowEditor status surface, and a GitHub Projects board.
 
-## What this owns
+## What this repo is
 
-- `SYSTEM.md`: coordinator policy and stage protocol.
-- `extensions/workflow`: risk-based routing, pinned stage launch, coordinator-mediated question relay, recovery state, and `/flow`/F6 command center.
-- `extensions/ui-customization`: compact `π + project` header, permanent workflow rail, technical footer.
-- `extensions/subagents`: the existing multi-harness engine plus the workflow bridge and safe `subagent_send` tool.
-- `themes/vraj-ink.json`: OLED-black cyan/violet theme with semantic stage colors.
-- `keybindings.json`: personal keybinding overrides.
+Everything here gets linked (or copied) into `~/.pi/agent` by `./install.sh`:
+
+- `SYSTEM.md` — coordinator policy: fleet protocol, stage boundaries, approved model map, invariants.
+- `AGENTS.md` — agent rules for this repo: check/format/lint, type safety, test economy.
+- `extensions/workflow` — risk-based routing, pinned stage launch, coordinator-mediated question relay, recovery state, `/mode`, `/flow`/F6 command center, `/routine` commands, the routines scheduler.
+- `extensions/ui-customization` — the belowEditor status surface (mode/route/stage rows, issue rows, routines section), compact `π + project` header, technical footer.
+- `extensions/subagents` — the multi-harness engine plus the workflow bridge and safe `subagent_send` tool.
+- `skills/` — local skill packages (background-terminals, subagents, terse-output).
+- `themes/vraj-ink.json` — OLED-black cyan/violet theme with semantic stage colors.
+- `keybindings.json` — personal keybinding overrides.
+- `SETUP.md` — install, backup, and rollback details.
+- `tickets.md` — local mirror of the GitHub Projects board: issue map, statuses, delivery records.
+- `docs/` — specs and stage handoffs (every stage boundary is a file-backed handoff here).
 
 Runtime state stays outside git: auth, sessions, trust, live settings, downloaded packages, environment files, and workflow checkpoints.
+
+## Repository layout
+
+```
+extensions/<name>/index.ts     # extension entry point (registered when Pi loads)
+extensions/<name>/*.ts         # pure modules (renderers, schedulers, settings)
+extensions/<name>/*.test.ts    # node:test suites, run with --experimental-strip-types
+docs/2026-08-05-*.md          # specs + handoffs per effort/ticket
+tickets.md                    # board mirror; the tracker is the authority, this is the local copy
+```
+
+## How work flows
+
+Work lives as GitHub issues on a Project board with a strict status pipeline:
+`Planned → Agent Ready → Coding → Debugger Ready → Debugging → Review Ready → Reviewing → Done`.
+Each status is a handoff boundary; nothing skips a stage and only the independent
+reviewer may set `Done`.
+
+1. **Planner** grills the idea, locks decisions and invariants, writes a spec in `docs/`,
+   and cuts dependency-ordered tickets (issues + board items).
+2. **Coder** picks the next unblocked ticket, builds it test-first against the ticket's
+   exact Verification-command, self-checks, and hands off.
+3. **Debugger** attacks what the coder built — weird inputs, failure modes, boundary
+   violations — fixes real defects test-first, and re-runs the gate.
+4. **Reviewer** (blind: never reads maker rationale) judges the diff against the ticket
+   and invariants, and routes: pass → `Done`, fail → back with falsifiable findings.
+
+Every stage boundary leaves a bounded handoff in `docs/handoffs/` and advances the
+board; each handoff is a claim, never proof — the next stage re-runs the gate itself.
+
+## Extending Pi
+
+- **Commands** (`/mode`, `/flow`, `/routine`, …): `extensions/workflow/index.ts` — register with `registerCommand`.
+- **Status surface**: `extensions/ui-customization/status-widget.ts` (pure renderer) + `index.ts` (wiring).
+- **Scheduled prompts**: add a `workflow.routines` entry in `settings.example.json` (see Routines below).
+- **Skills**: `skills/<name>/SKILL.md` — the loader reads these when a task matches.
+- **Theme/keybindings**: `themes/vraj-ink.json`, `keybindings.json`.
+
+Run `npm run check` (typecheck), `npm run format:check`, and the ticket's exact
+Verification-command before finishing any change (see Checks below).
 
 ## Install
 
