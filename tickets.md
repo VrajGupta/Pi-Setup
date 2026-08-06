@@ -14,6 +14,7 @@ workflow authority for stage state; this file mirrors it and carries the durable
 `PI-12 → #6` · `PI-13 → #4` · `PI-14 → #8` · `PI-15 → #12` · `PI-16 → #3` · `PI-17 → #5` · `PI-19 → #16`
 `PI-20 → #18` · `PI-21 → #19` · `PI-22 → #20` · `PI-23 → #21` · `PI-24 → #22` · `PI-25 → #23` · `PI-26 → #24`
 `PI-27 → #25` · `PI-28 → #27` · `PI-29 → #26` · `PI-30 → #28` · `PI-31 → #29` · `PI-32 → #30`
+`PI-33 → #31` · `PI-34 → #32` · `PI-35 → #33` · `PI-36 → #34` · `PI-37 → #35` · `PI-38 → #36` · `PI-39 → #37`
 
 ## Immediate priority override
 
@@ -1105,3 +1106,194 @@ Status: **Done** · Blocked-by: PI-31 (Done) · GitHub issue #30
 **Debugger delivery (2026-08-05).** Model: DeepSeek V4 Flash via OpenRouter (session-approved, not repo policy). Independent red-team audit of the full attack surface (startup idempotence, shutdown timer/state cleanup, settings refresh restart semantics, snapshot producer, banner INV-8, docs, regression) found one real acceptance-criterion defect: README.md lacked the required `classifyRequest` literal (criterion "README.md and SYSTEM.md contain routine, /routine, classifyRequest"). Fixed docs: added the INV-8 routing sentence to README.md's Routines section. No lifecycle, snapshot, banner, or scheduler logic defect found — double-start is clean (stop-then-create), stop clears timers and emits empty snapshot, refresh restarts without timer leak, `readRoutines` is throw-safe, no-routines is idle, shutdown-without-start is a no-op, in-flight `onDue` settle after stop cannot notify (context cleared), channel listener is registered once with cleanup. Debugger diff SHA-256 (README.md only, from c8902d4): `2ea861b45076518f104ebd32c388519dd474c8b81ca3430fdd5e898f4affb8f0`. Exact gate `node --test --experimental-strip-types extensions/ui-customization/status-widget.test.ts extensions/workflow/flow-panel.test.ts extensions/workflow/routines-scheduler.test.ts extensions/workflow/routines-settings.test.ts && npm run check && npm run format:check` → exit 0 (196 tests; tsc clean; Prettier clean). Artifacts: `docs/handoffs/2026-08-05-debugger-pi32.md`.
 
 **Reviewer (2026-08-05).** Verdict: **PASS** (score: 94/100, diagnostic only). Bounce: 0 of 3. Gate: `node --test --experimental-strip-types extensions/ui-customization/status-widget.test.ts extensions/workflow/flow-panel.test.ts extensions/workflow/routines-scheduler.test.ts extensions/workflow/routines-settings.test.ts && npm run check && npm run format:check` → 193/196 tests pass (3 pre-existing environmental perf-budget failures); `tsc --noEmit` clean; Prettier clean. All 8 PI-32-specific tests pass. All 70 scheduler/settings tests pass. All 7 acceptance criteria met. No blocking findings. Routing: **Done**.
+
+---
+
+## PI-33 — Pure down-arrow picker trigger policy (INV-20)
+
+Status: **Agent Ready** · Blocked-by: none · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
+
+**What to build.** A pure module `extensions/subagents/src/picker-trigger.ts` exporting
+`shouldOpenPicker(input)` and `resolvePickerEnabled(settings)`. `shouldOpenPicker` takes
+`{ editorText, autocompleteOpen, historyActive, runningCount, enabled }` and returns a boolean:
+`true` only when the editor buffer is empty (after trimming nothing — exact empty string),
+the autocomplete dropdown is closed, the editor is not mid-history-navigation, `runningCount >= 1`,
+and `enabled` is true. `resolvePickerEnabled` reads `workflow.subagentPicker.downArrow` from a
+settings object and returns `true` unless the value is exactly `false`. No TUI import, no I/O,
+no rendering. This module is the single decision point for INV-20.
+
+**Acceptance criteria.**
+
+- `shouldOpenPicker` returns `true` for `{ editorText: "", autocompleteOpen: false, historyActive: false, runningCount: 1, enabled: true }`.
+- `shouldOpenPicker` returns `false` when `editorText` is any non-empty string, including `" "`.
+- `shouldOpenPicker` returns `false` when `autocompleteOpen` is `true`, all else being trigger-positive.
+- `shouldOpenPicker` returns `false` when `historyActive` is `true`, all else being trigger-positive.
+- `shouldOpenPicker` returns `false` when `runningCount` is `0`, and `true` when it is `1` or greater.
+- `shouldOpenPicker` returns `false` when `enabled` is `false`, all else being trigger-positive.
+- `shouldOpenPicker` returns `false` for a malformed input (`null`, `undefined`, a non-object, or an object whose `runningCount` is `NaN`, `Infinity`, or a string) and never throws.
+- `resolvePickerEnabled` returns `true` for absent settings, `{}`, `{workflow:{}}`, and a non-`false` value; it returns `false` only for `workflow.subagentPicker.downArrow === false`.
+- The module's own source text contains no import from `node:fs`, `node:child_process`, `@earendil-works/pi-tui`, or `@earendil-works/pi-coding-agent`.
+
+**Verification-command.** `node --test --experimental-strip-types extensions/subagents/picker-trigger.test.ts && npm run check`
+
+---
+
+## PI-34 — Guarded bare-DOWN editor subclass and `alt+down` alias (INV-20)
+
+Status: **Planned** · Blocked-by: PI-33 · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
+
+**What to build.** Wire the trigger. In `extensions/subagents/index.ts`, register (a) a
+`CustomEditor` subclass through `ctx.ui.setEditorComponent` whose `handleInput(data)` consults
+`shouldOpenPicker` from PI-33 when the key matches `tui.editor.cursorDown` and, on `true`, opens
+`openSubagentPicker` instead of delegating; on `false` it calls `super.handleInput(data)`
+unchanged. Register (b) `pi.registerShortcut("alt+down", …)` that opens the picker regardless of
+buffer state whenever at least one subagent exists. The subclass must chain — not clobber — any
+factory already returned by `ctx.ui.getEditorComponent()`. `CustomEditor` is imported from
+`@earendil-works/pi-coding-agent`; the runtime then copies app-level handlers, action handlers,
+and the autocomplete provider onto the subclass (`interactive-mode.js:1855-1895`), so no stock
+binding may be re-implemented by hand.
+
+**Acceptance criteria.**
+
+- With no subagent running, a DOWN key event delivered to the subclass calls the wrapped stock `handleInput` exactly once with the identical input string, and opens no picker.
+- With a subagent running and the editor buffer empty, the same DOWN key event opens the picker and does **not** call the wrapped stock `handleInput`.
+- With a subagent running and the editor buffer non-empty, the DOWN key event calls the wrapped stock `handleInput` and opens no picker.
+- With `workflow.subagentPicker.downArrow` set to `false`, no DOWN key event opens the picker in any state, and every DOWN event reaches the wrapped stock `handleInput`.
+- A key event that is not DOWN is always passed through to the wrapped stock `handleInput`, byte-identical.
+- The `alt+down` shortcut opens the picker when at least one subagent exists and the editor buffer is non-empty.
+- The registered shortcut string is exactly `alt+down`; a test asserts the extension registers no shortcut whose key is `down`, `up`, `enter`, `escape`, or `tab`.
+- Opening the picker from either trigger performs no send: a test asserts no `subagent_send`, relay, or bridge call is made anywhere on the trigger path (INV-20, PI-11).
+- The extension registers its editor factory by chaining a previously installed factory: given a pre-installed factory, the subclass's wrapped editor is the one that factory produced.
+
+**Verification-command.** `node --test --experimental-strip-types extensions/subagents/picker-trigger.test.ts extensions/subagents/picker-wiring.test.ts extensions/subagents/takeover.test.ts && npm run check`
+
+---
+
+## PI-35 — Picker ordering, full listing, and round-trip (INV-2, INV-11, INV-20)
+
+Status: **Agent Ready** · Blocked-by: none · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
+
+**What to build.** In `extensions/subagents/src/ui/takeover.ts`, make the dashboard listing
+order deterministic and the round-trip explicit. All subagents are listed — `running` first, then
+`done`, then `error` — with a stable tiebreak by `startedAt` then `id`. Escape from an opened
+takeover returns to the dashboard (the existing `openSubagentPicker` loop); escape from the
+dashboard returns to the main session. The dashboard footer hint must state both escape
+behaviours in text.
+
+**Acceptance criteria.**
+
+- Given subagents in the order `done, running, error, running`, the rendered dashboard lists the two `running` entries first, then `done`, then `error`.
+- Two `running` subagents with different `startedAt` are ordered by `startedAt` ascending; with identical `startedAt` they are ordered by `id` ascending.
+- A `done` and an `error` subagent are both present in the listing (no status filter drops them).
+- Selection tracking survives a reorder: after `reconcileDashboardSelection`, the selected `id` is unchanged when the underlying list is re-sorted.
+- Closing the takeover view returns control to the dashboard rather than to the caller: a test asserts the picker loop re-renders the dashboard after a takeover resolves.
+- Cancelling the dashboard resolves the picker and returns to the main session without opening any takeover.
+- The dashboard renders a hint line whose text names the confirm key, the cancel key, and that cancel returns to the session; the meaning survives `NO_COLOR` (INV-11).
+- Every rendered row is secret-redacted and truncated to width at widths 40, 80, and 120 (INV-2, INV-4 width clause).
+
+**Verification-command.** `node --test --experimental-strip-types extensions/subagents/takeover.test.ts && npm run check`
+
+---
+
+## PI-36 — Wire the tracker poll to the belowEditor issue list (INV-10, INV-13)
+
+Status: **Agent Ready** · Blocked-by: none · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
+
+**What to build.** Close the live gap that makes the todo list render nothing today.
+`extensions/ui-customization/index.ts:110` declares `ticketSnapshot` but nothing ever assigns it,
+and `startTrackerPoll` (PI-22, Done) was never wired to a session lifecycle. Publish the poll's
+completed snapshot on a new channel `vraj:ticket-snapshot`, following the existing
+`vraj:routines-snapshot` pattern (`extensions/ui-customization/index.ts:142-144`): the workflow
+extension starts the poll on `session_start` and emits each completed snapshot; the
+ui-customization extension listens, stores it in `ticketSnapshot`, and requests a render. Stop the
+poll and clear the listener on `session_shutdown`. `extensions/shared/ticket-snapshot.ts` stays a
+read-only dependency.
+
+**Acceptance criteria.**
+
+- After a `session_start` and one completed poll read, the widget renders at least one issue row for a tracker containing at least one active ticket, where previously it rendered none.
+- The rendered issue rule line reports the active and done counts from the published snapshot.
+- A published snapshot carrying a `reason` renders exactly one line `issues unavailable — <reason>` and no issue rows (INV-10).
+- A snapshot older than the staleness window renders with the `~` staleness marker in the rule line (INV-5).
+- `session_shutdown` calls the poll's `stop()`, and no further snapshot is published after shutdown.
+- The poll timer is `unref`'d and the interval still resolves from `workflow.trackerPollMs` with the existing `[2000, 300000]` clamp and 10000 default (INV-13 unchanged).
+- A malformed or throwing published value leaves the previous `ticketSnapshot` in place and never crashes the widget (INV-6).
+- The render path performs no filesystem read: a test asserts the widget render function is called with an already-captured snapshot object and the module performs no I/O during render (INV-3).
+
+**Verification-command.** `node --test --experimental-strip-types extensions/ui-customization/status-widget.test.ts extensions/workflow/tracker-poll.test.ts && npm run check`
+
+---
+
+## PI-37 — `maxLines` actually read, with `0` meaning unlimited (INV-4 amended)
+
+Status: **Agent Ready** · Blocked-by: none · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
+
+**What to build.** Close the live gap where `extensions/ui-customization/index.ts:280` passes
+`maxLines: undefined`, so `workflow.statusWidget.maxLines` in `settings.example.json` is read by
+nothing. Resolve the value from the agent settings file off the render path, pass it into
+`renderStatusWidget`, and extend `normalizeMaxLines` so that `0` means unlimited (no cap applied),
+any other numeric value is clamped to `[8, 200]`, and absent/non-numeric yields the default 40.
+
+**Acceptance criteria.**
+
+- `normalizeMaxLines(0)` yields the unlimited sentinel, and rendering a state whose deterministic line count is 120 with `maxLines: 0` emits all 120 lines with no `+N more` line (terminal-height bound is PI-38).
+- `normalizeMaxLines` maps `4` to `8`, `500` to `200`, `undefined` to `40`, `null` to `40`, `"40"` to `40`, `NaN` to `40`, and `-1` to `8`.
+- With `maxLines: 12` and a deterministic count of 30, the surface emits exactly 12 lines and the last line is exactly `+19 more · /flow`.
+- A settings file containing `workflow.statusWidget.maxLines: 0` results in the widget being invoked with the unlimited value; a settings file with no such key results in 40.
+- The settings read happens outside `renderStatusWidget`; a test asserts the render function receives `maxLines` as plain state and performs no settings read (INV-3).
+- An unreadable or malformed settings file yields the default 40 and never throws (INV-6).
+- Line count remains a deterministic function of input counts at every `maxLines` value (INV-4 clause 2).
+
+**Verification-command.** `node --test --experimental-strip-types extensions/ui-customization/status-widget.test.ts && npm run check`
+
+---
+
+## PI-38 — Terminal-height reservation so the surface never occludes the prompt (INV-19)
+
+Status: **Planned** · Blocked-by: PI-37 · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
+
+**What to build.** Implement INV-19. Capture `tui.terminal.rows` in the widget **factory**
+(`extensions/ui-customization/index.ts:241`), never inside render, and pass `terminalRows` plus a
+`reservedRows` value into `renderStatusWidget` as plain state. The render function emits at most
+`availableRows = max(0, terminalRows - reservedRows)` lines; this bound takes precedence over
+`maxLines`, including unlimited mode. When it truncates, the last emitted line is exactly
+`+N more · /flow`. When `availableRows` is smaller than the base lines plus one overflow line, the
+surface emits nothing.
+
+**Acceptance criteria.**
+
+- With `maxLines: 0` (unlimited), `terminalRows: 24`, `reservedRows: 6`, and a deterministic count of 200, the surface emits exactly 18 lines and the last is `+183 more · /flow`.
+- With `maxLines: 0`, `terminalRows: 100`, `reservedRows: 6`, and a deterministic count of 40, the surface emits exactly 40 lines and no overflow line.
+- With `maxLines: 40` and `terminalRows: 20`, `reservedRows: 6`, the height bound wins: at most 14 lines are emitted.
+- With `terminalRows: 5` and `reservedRows: 6`, the surface emits zero lines.
+- `terminalRows` that is `undefined`, `NaN`, `Infinity`, `0`, or negative falls back to the `maxLines` behaviour alone and never produces an unbounded emit (INV-6).
+- The suppressed count `N` in the overflow line always equals the deterministic total minus the emitted lines, at every combination above.
+- `terminalRows` is read in the widget factory, not in render: a test asserts `renderStatusWidget` never accesses a `tui` object (INV-3).
+- INV-14 extended: rendering a 200-ticket snapshot plus 5 routines at width 120 in unlimited mode completes in under 50 ms.
+
+**Verification-command.** `node --test --experimental-strip-types extensions/ui-customization/status-widget.test.ts && npm run check`
+
+---
+
+## PI-39 — Docs, settings, and closing regression for both features
+
+Status: **Planned** · Blocked-by: PI-34, PI-35, PI-36, PI-38 · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
+
+**What to build.** Document both features and lock the invariants in the suite. Add
+`workflow.subagentPicker.downArrow` to `settings.example.json` and document
+`workflow.statusWidget.maxLines: 0` as unlimited. Describe the DOWN / `alt+down` picker and the
+unbounded todo surface in `README.md` and `SYSTEM.md`. Record the INV-4 second amendment, INV-19,
+INV-20, and the INV-14 extension in the spec doc's invariant section. Add the regression that
+proves the footer cap was **not** touched.
+
+**Acceptance criteria.**
+
+- `settings.example.json` contains `workflow.subagentPicker.downArrow` and a `workflow.statusWidget.maxLines` entry, and a test asserts both keys parse and are consumed by the code that reads them.
+- `README.md` contains the strings `alt+down` and `maxLines`, and describes that DOWN opens the subagent picker only when a subagent is running.
+- `SYSTEM.md` states that the picker opens a view only and that sending to a stage remains the explicit in-view send action (PI-11, INV-20).
+- The footer regression still passes unchanged: `renderFooter` emits exactly 3 lines with no statuses and at most 7 lines with 10 supplied status lines (INV-4 footer clause untouched).
+- A test asserts no extension registers a shortcut bound to bare `down`.
+- Rendering a 200-ticket snapshot plus 5 routines at width 120 with `maxLines: 0` and `terminalRows: 200` completes in under 50 ms (INV-14 extended).
+- `npm run check` and `npm run format:check` both exit 0.
+
+**Verification-command.** `node --test --experimental-strip-types extensions/ui-customization/status-widget.test.ts extensions/ui-customization/footer.test.ts extensions/subagents/picker-trigger.test.ts extensions/subagents/picker-wiring.test.ts extensions/subagents/takeover.test.ts extensions/workflow/config-docs.test.ts && npm run check && npm run format:check`
