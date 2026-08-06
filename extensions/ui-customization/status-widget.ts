@@ -478,23 +478,32 @@ function issueRows(
 
 // INV-3 / INV-19 perf: the belowEditor surface re-renders at 1Hz, so derived
 // issue rows must not be rebuilt from scratch every render. The row text for a
-// given ticket list depends only on the records array identity and the width,
-// so a one-slot cache keyed on those makes repeated renders cheap. The rule
-// line (which carries "~" staleness against `now`) is still computed fresh each
-// render and is deliberately not cached. Clear-on-identity-change is implicit:
-// a different records object misses the slot and replaces it.
+// given ticket list depends only on the snapshot's records array identity and
+// the width, so a one-slot cache keyed on those makes repeated renders cheap.
+// The key MUST be the ORIGINAL snapshot.records reference (stable across renders
+// of the same immutable frozen snapshot per PI-13), never a freshly-allocated
+// filtered copy — keying on a per-render copy would make the cache dead. The
+// rule line (which carries "~" staleness against `now`) is still computed fresh
+// each render and is deliberately not cached.
 let issueRowCacheKey: readonly StatusWidgetIssueRecord[] | null = null;
 let issueRowCacheWidth = -1;
 let issueRowCacheValue: string[] | null = null;
 
 function memoIssueRows(
-  records: readonly StatusWidgetIssueRecord[],
+  recordsInput: readonly StatusWidgetIssueRecord[] | undefined | null,
   width: number,
 ): string[] {
-  if (records === issueRowCacheKey && width === issueRowCacheWidth) {
+  if (recordsInput === issueRowCacheKey && width === issueRowCacheWidth) {
     return issueRowCacheValue ?? [];
   }
-  issueRowCacheKey = records;
+  const records = Array.isArray(recordsInput)
+    ? recordsInput.filter(
+        (r): r is StatusWidgetIssueRecord => r != null && typeof r === "object",
+      )
+    : [];
+  // Key the cache on the ORIGINAL input reference so a repeated render of the
+  // same snapshot.records array hits, not on the filtered copy above.
+  issueRowCacheKey = recordsInput ?? null;
   issueRowCacheWidth = width;
   issueRowCacheValue = issueRows(records, width);
   return issueRowCacheValue;
@@ -523,7 +532,12 @@ function issueSection(
         )
       : [];
     const rule = issueRuleLine(records, snapshot.capturedAt, now, width);
-    const rows = memoIssueRows(records, width);
+    // Pass the ORIGINAL snapshot.records reference as the cache key so the
+    // one-slot cache actually hits on repeated renders of the same snapshot.
+    const rows = memoIssueRows(
+      Array.isArray(snapshot.records) ? snapshot.records : undefined,
+      width,
+    );
     return [rule, ...rows];
   } catch {
     return [safeTruncate("issues unavailable — render error", width)];

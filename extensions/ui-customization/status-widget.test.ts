@@ -2001,9 +2001,9 @@ test("PI-38: INV-14 extended — 200 tickets + 5 routines at width 120 unlimited
   );
 });
 
-test("PI-39: issue-row cache never serves stale rows across different snapshots", () => {
+test("PI-39: issue-row cache reuses rows for the same snapshot identity and clears on a new one", () => {
   const a = Array.from({ length: 2 }, (_, i) =>
-    issue({ id: `A-${i}`, status: "coding" }),
+    issue({ id: `A-${i}`, status: "coding", title: "before" }),
   );
   const b = Array.from({ length: 2 }, (_, i) =>
     issue({ id: `B-${i}`, status: "coding" }),
@@ -2020,11 +2020,32 @@ test("PI-39: issue-row cache never serves stale rows across different snapshots"
     ticketSnapshot: snapshot(b),
     now: 1,
   });
-  const first = renderStatusWidget(s1).join("\n");
-  renderStatusWidget(s1); // prime the cache with snapshot A
-  const second = renderStatusWidget(s2).join("\n"); // must NOT reuse A's rows
+
+  // Warm and prime the cache with snapshot A's rows.
+  const before = renderStatusWidget(s1).join("\n");
+  renderStatusWidget(s1);
+
+  // Mutation probe: same array identity, changed title. A NULL cache would
+  // recompute and show the new title; a HIT reuses the cached rows (still
+  // "before"). Frozen prod snapshots (PI-13) make this safe in practice — the
+  // probe only proves the cache path actually reuses row text.
+  // Narrow test-only cast: records are readonly-typed, but we mutate one to
+  // prove the cache reuses row text (frozen prod snapshots make this inert).
+  (a[0] as { title: string }).title = "after-mutation";
+  const after = renderStatusWidget(s1).join("\n");
+  assert.ok(
+    after.includes("before"),
+    "same snapshot identity reuses cached rows",
+  );
+  assert.ok(
+    !after.includes("after-mutation"),
+    "rows not recomputed on cache hit",
+  );
+
+  // A genuinely different snapshot (different identity) must render fresh rows.
+  const second = renderStatusWidget(s2).join("\n");
   assert.notEqual(
-    first,
+    before,
     second,
     "different snapshots must render different rows",
   );
