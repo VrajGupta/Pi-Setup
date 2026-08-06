@@ -40,6 +40,11 @@ import {
 
 const STAGES: StageName[] = ["planner", "coder", "debugger", "reviewer"];
 
+// INV-19: rows reserved for the editor, the footer, and one spare row. The
+// surface emits at most `terminalRows - RESERVED_ROWS` lines so it never
+// occludes the prompt.
+const RESERVED_ROWS = 6;
+
 type Activity = "idle" | "working" | "done" | "error";
 
 function formatTokens(tokens: number) {
@@ -295,7 +300,7 @@ export default function uiCustomization(
     // Register the belowEditor status widget (PI-20, enriched by PI-21).
     ctx.ui.setWidget?.(
       "vraj-status",
-      (_tui, _theme) => {
+      (tui, _theme) => {
         // Settings read happens here, once per widget mount — never inside
         // render (INV-3, PI-37). A throwing resolver degrades to the default.
         let maxLines: number;
@@ -303,6 +308,15 @@ export default function uiCustomization(
           maxLines = resolveMaxLines();
         } catch {
           maxLines = normalizeMaxLines(undefined);
+        }
+        // Terminal height is captured here, once per widget mount — never
+        // inside render (INV-3, INV-19). A throwing/missing read degrades in
+        // render to the maxLines behaviour alone (INV-6).
+        let terminalRows: number | undefined;
+        try {
+          terminalRows = tui.terminal.rows;
+        } catch {
+          terminalRows = undefined;
         }
         return {
           render(width: number) {
@@ -341,6 +355,8 @@ export default function uiCustomization(
             return renderStatusWidget({
               width,
               maxLines,
+              terminalRows,
+              reservedRows: RESERVED_ROWS,
               inputLines: [],
               mode: workflow.mode,
               route: workflow.route,

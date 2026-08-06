@@ -1796,3 +1796,207 @@ test("PI-31 debugger: undefined dueAt does not crash", () => {
   assert.ok(!all.includes("NaN"), "undefined dueAt produces no NaN");
   assert.ok(!all.includes("Infinity"), "undefined dueAt produces no Infinity");
 });
+
+// ── PI-38: terminal-height reservation (INV-19) ──────────
+
+test("PI-38: unlimited mode is bounded by terminal height — 200 lines → 18, last +183 more", () => {
+  const lines = Array.from({ length: 197 }, (_, i) => `line ${i + 1}`);
+  const result = renderStatusWidget(
+    state({
+      inputLines: lines,
+      maxLines: 0,
+      terminalRows: 24,
+      reservedRows: 6,
+    }),
+  );
+  // availableRows = 24 - 6 = 18, so 17 visible + overflow = 18 lines.
+  assert.equal(result.length, 18);
+  assert.equal(result[17], "+183 more · /flow");
+});
+
+test("PI-38: height bound never truncates what fits — 40 lines → no overflow", () => {
+  const lines = Array.from({ length: 37 }, (_, i) => `line ${i + 1}`);
+  const result = renderStatusWidget(
+    state({
+      inputLines: lines,
+      maxLines: 0,
+      terminalRows: 100,
+      reservedRows: 6,
+    }),
+  );
+  // 3 base + 37 = 40 ≤ 94 available → all emitted, no overflow line.
+  assert.equal(result.length, 40);
+  assert.equal(result[39], "line 37");
+  assert.ok(!result.join("\n").includes("more · /flow"));
+});
+
+test("PI-38: height bound wins over maxLines — 200 lines → at most 14", () => {
+  const lines = Array.from({ length: 197 }, (_, i) => `line ${i + 1}`);
+  const result = renderStatusWidget(
+    state({
+      inputLines: lines,
+      maxLines: 40,
+      terminalRows: 20,
+      reservedRows: 6,
+    }),
+  );
+  // availableRows = 14 < maxLines 40 → 13 visible + overflow = 14 lines.
+  assert.ok(result.length <= 14);
+  assert.equal(result.length, 14);
+  assert.equal(result[13], "+187 more · /flow");
+});
+
+test("PI-38: terminalRows smaller than reservedRows emits zero lines", () => {
+  const result = renderStatusWidget(
+    state({
+      inputLines: ["line 1"],
+      maxLines: 0,
+      terminalRows: 5,
+      reservedRows: 6,
+    }),
+  );
+  assert.deepEqual(result, []);
+});
+
+test("PI-38: invalid terminalRows falls back to maxLines alone, never unbounded", () => {
+  const lines = Array.from({ length: 100 }, (_, i) => `line ${i + 1}`);
+  for (const terminalRows of [
+    undefined,
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+    0,
+    -10,
+  ]) {
+    const result = renderStatusWidget(
+      state({ inputLines: lines, maxLines: 40, terminalRows, reservedRows: 6 }),
+    );
+    // 3 base + 100 = 103 > 40 → 40 lines, last "+64 more · /flow".
+    assert.equal(result.length, 40, `terminalRows ${terminalRows}`);
+    assert.ok(result[39].includes("+64 more · /flow"));
+  }
+});
+
+test("PI-38: suppressed N always equals deterministic total minus emitted visible lines", () => {
+  // 3 base + 197 input = 200 deterministic lines.
+  const lines = Array.from({ length: 197 }, (_, i) => `line ${i + 1}`);
+  const combos = [
+    { maxLines: 0, terminalRows: 24, reservedRows: 6, emitted: 18, n: 183 },
+    { maxLines: 40, terminalRows: 20, reservedRows: 6, emitted: 14, n: 187 },
+    { maxLines: 0, terminalRows: 10, reservedRows: 2, emitted: 8, n: 193 },
+    { maxLines: 12, terminalRows: 200, reservedRows: 6, emitted: 12, n: 189 },
+  ];
+  for (const c of combos) {
+    const result = renderStatusWidget(
+      state({
+        inputLines: lines,
+        maxLines: c.maxLines,
+        terminalRows: c.terminalRows,
+        reservedRows: c.reservedRows,
+      }),
+    );
+    assert.equal(result.length, c.emitted, `combo ${JSON.stringify(c)}`);
+    assert.equal(
+      result.at(-1),
+      `+${c.n} more · /flow`,
+      `overflow N for ${JSON.stringify(c)}`,
+    );
+  }
+});
+
+test("PI-38: renderStatusWidget never accesses a tui object (INV-3)", () => {
+  const source = readFileSync(
+    new URL("./status-widget.ts", import.meta.url),
+    "utf8",
+  );
+  // The only "tui" tokens are the pi-tui import; no member access on a tui.
+  assert.doesNotMatch(source, /\btui\s*\./);
+  assert.doesNotMatch(source, /\btui\s*\[/);
+});
+
+test("PI-38: factory captures terminalRows once and passes it into render", () => {
+  const listeners = new Map<string, Set<(value: unknown) => void>>();
+  const hooks = new Map<string, (...args: unknown[]) => void>();
+  const widgets: Array<{ key: string; content: unknown; options?: unknown }> =
+    [];
+  const theme = { fg: (_color: string, text: string) => text };
+  const pi = {
+    events: {
+      on(channel: string, handler: (value: unknown) => void) {
+        const set = listeners.get(channel) ?? new Set();
+        set.add(handler);
+        listeners.set(channel, set);
+        return () => set.delete(handler);
+      },
+      emit(channel: string, value: unknown) {
+        for (const handler of listeners.get(channel) ?? []) handler(value);
+      },
+    },
+    on(event: string, handler: (...args: unknown[]) => void) {
+      hooks.set(event, handler);
+    },
+    getThinkingLevel() {
+      return "high";
+    },
+  };
+  const context = {
+    mode: "tui",
+    cwd: "/repo",
+    ui: {
+      theme,
+      setHeader() {},
+      setFooter() {},
+      setWidget(key: string, content: unknown, options?: unknown) {
+        widgets.push({ key, content, options });
+      },
+      setTitle() {},
+    },
+  };
+
+  uiCustomization(pi as never, { readStatusWidgetMaxLines: () => 0 });
+  hooks.get("session_start")?.({}, context);
+  // Factory receives a real-ish tui with terminal.rows; unlimited maxLines
+  // means only the terminal-height bound can stop the 201-line emit.
+  const widget = (
+    widgets[0].content as (...args: unknown[]) => {
+      render(width: number): string[];
+    }
+  )({ requestRender() {}, terminal: { rows: 24 } }, theme);
+
+  pi.events.emit("vraj:ticket-snapshot", {
+    repo: "pi",
+    capturedAt: 100_000,
+    records: Array.from({ length: 200 }, (_, i) =>
+      issue({ id: `PI-${100 + i}`, status: "coding", assignee: "coder" }),
+    ),
+  });
+  // 3 base + 1 rule + 200 rows = 204 > 18 → 17 visible + "+187 more".
+  const rendered = widget.render(80);
+  assert.equal(rendered.length, 18);
+  assert.equal(rendered.at(-1), "+187 more · /flow");
+});
+
+test("PI-38: INV-14 extended — 200 tickets + 5 routines at width 120 unlimited renders under 50ms", () => {
+  const records = Array.from({ length: 200 }, (_, i) =>
+    issue({ id: `PI-${i + 1}`, status: "coding" }),
+  );
+  const routines = Array.from({ length: 5 }, (_, i) =>
+    routine({ name: `routine-${i}`, dueAt: 100_000 }),
+  );
+  const s = state({
+    width: 120,
+    maxLines: 0,
+    terminalRows: 200,
+    reservedRows: 6,
+    ticketSnapshot: snapshot(records, { capturedAt: 100_000 }),
+    routines,
+    now: 100_000,
+  });
+  renderStatusWidget(s); // warm-up
+  const start = process.hrtime.bigint();
+  renderStatusWidget(s);
+  const elapsedMs = Number(process.hrtime.bigint() - start) / 1e6;
+  assert.ok(
+    elapsedMs < 50,
+    `200-ticket + 5-routine unlimited render took ${elapsedMs.toFixed(2)}ms, expected < 50ms`,
+  );
+});

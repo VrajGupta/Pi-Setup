@@ -56,6 +56,8 @@ export interface StatusWidgetState {
   width: number;
   maxLines: unknown;
   inputLines: readonly string[];
+  terminalRows?: unknown;
+  reservedRows?: unknown;
   mode?: unknown;
   route?: unknown;
   activeStage?: unknown;
@@ -87,6 +89,25 @@ export function normalizeMaxLines(value: unknown) {
   if (value === 0 || value === Number.POSITIVE_INFINITY)
     return Number.POSITIVE_INFINITY;
   return Math.max(8, Math.min(200, Math.floor(value)));
+}
+
+/**
+ * Normalize `terminalRows` (PI-38, INV-19): only a finite positive number is
+ * usable; anything else (undefined, NaN, Infinity, 0, negative) yields
+ * `undefined` so render falls back to `maxLines` behaviour alone and never
+ * emits unbounded (INV-6).
+ */
+function normalizeTerminalRows(value: unknown) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0)
+    return undefined;
+  return Math.floor(value);
+}
+
+/** `reservedRows` (PI-38, INV-19): non-negative finite integer, default 0. */
+function normalizeReservedRows(value: unknown) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0)
+    return 0;
+  return Math.floor(value);
 }
 
 function isFiniteNumber(value: unknown): value is number {
@@ -672,9 +693,23 @@ export function renderStatusWidget(state: StatusWidgetState): string[] {
       ...inputLines.map((line) => safeTruncate(safeToken(line, ""), width)),
     ];
 
-    if (lines.length <= maxLines) return lines;
+    // INV-19: the terminal-height bound takes precedence over maxLines,
+    // including unlimited mode. An unusable terminalRows degrades to the
+    // maxLines behaviour alone, never an unbounded emit (INV-6).
+    const terminalRows = normalizeTerminalRows(state.terminalRows);
+    const availableRows =
+      terminalRows === undefined
+        ? Number.POSITIVE_INFINITY
+        : Math.max(0, terminalRows - normalizeReservedRows(state.reservedRows));
+    const cap = Math.min(maxLines, availableRows);
 
-    const visibleLines = lines.slice(0, maxLines - 1);
+    if (lines.length <= cap) return lines;
+
+    // Below the base lines plus an overflow line there is no viable widget:
+    // emit nothing rather than push the editor off-screen (INV-19).
+    if (availableRows < base.length + 1) return [];
+
+    const visibleLines = lines.slice(0, cap - 1);
     const suppressedCount = lines.length - visibleLines.length;
     return [
       ...visibleLines,

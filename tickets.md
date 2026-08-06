@@ -1290,7 +1290,7 @@ per user time pressure) → reviewer is the sole Done gate.
 
 ## PI-38 — Terminal-height reservation so the surface never occludes the prompt (INV-19)
 
-Status: **Planned** · Blocked-by: PI-37 · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
+Status: **Debugger Ready** · Blocked-by: PI-37 · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
 
 **What to build.** Implement INV-19. Capture `tui.terminal.rows` in the widget **factory**
 (`extensions/ui-customization/index.ts:241`), never inside render, and pass `terminalRows` plus a
