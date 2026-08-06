@@ -84,7 +84,8 @@ export function normalizeMaxLines(value: unknown) {
   if (value === undefined) return DEFAULT_MAX_LINES;
   if (typeof value !== "number" || Number.isNaN(value))
     return DEFAULT_MAX_LINES;
-  if (value === 0) return Number.POSITIVE_INFINITY;
+  if (value === 0 || value === Number.POSITIVE_INFINITY)
+    return Number.POSITIVE_INFINITY;
   return Math.max(8, Math.min(200, Math.floor(value)));
 }
 

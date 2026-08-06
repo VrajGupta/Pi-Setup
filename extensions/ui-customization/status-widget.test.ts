@@ -155,7 +155,7 @@ test("PI-37: renderStatusWidget performs no settings read (INV-3)", () => {
   assert.doesNotMatch(source, /getAgentDir|getSettingsPath|settings\.json/);
 });
 
-test("PI-37: widget factory passes the resolved maxLines as plain state", () => {
+test("PI-37: a settings value of 0 survives the factory-to-render round trip for >200 issue rows", () => {
   const listeners = new Map<string, Set<(value: unknown) => void>>();
   const hooks = new Map<string, (...args: unknown[]) => void>();
   const widgets: Array<{ key: string; content: unknown; options?: unknown }> =
@@ -195,7 +195,7 @@ test("PI-37: widget factory passes the resolved maxLines as plain state", () => 
   };
 
   uiCustomization(pi as never, {
-    readStatusWidgetMaxLines: () => Number.POSITIVE_INFINITY,
+    readStatusWidgetMaxLines: () => 0,
   });
   hooks.get("session_start")?.({}, context);
   const widget = (
@@ -204,17 +204,18 @@ test("PI-37: widget factory passes the resolved maxLines as plain state", () => 
     }
   )({ requestRender() {} }, theme);
 
-  // A 60-ticket snapshot: 3 base + 1 rule + 60 rows = 64 lines. With the
-  // unlimited sentinel the surface emits all of them, no +N more line.
+  // 3 base + 1 rule + 201 active tickets = 205 lines. The settings sentinel
+  // must survive the factory-to-render round trip without a 200-line cap.
   pi.events.emit("vraj:ticket-snapshot", {
     repo: "pi",
     capturedAt: 100_000,
-    records: Array.from({ length: 60 }, (_, i) =>
+    records: Array.from({ length: 201 }, (_, i) =>
       issue({ id: `PI-${100 + i}`, status: "coding", assignee: "coder" }),
     ),
   });
   const rendered = widget.render(80);
-  assert.equal(rendered.length, 64);
+  assert.equal(rendered.length, 205);
+  assert.ok(rendered.some((line) => line.includes("PI-300")));
   assert.ok(!rendered.join("\n").includes("more · /flow"));
 });
 
@@ -273,13 +274,14 @@ test("maxLines defaults to 40 when passed NaN (non-numeric)", () => {
   assert.ok(nanResult[39].includes("+64 more · /flow"));
 });
 
-test("maxLines clamps to 200 when passed Infinity", () => {
+test("maxLines preserves the unlimited sentinel through rendering", () => {
   const lines = Array.from({ length: 250 }, (_, i) => `line ${i + 1}`);
   const infResult = renderStatusWidget(
-    state({ inputLines: lines, maxLines: Infinity }),
+    state({ inputLines: lines, maxLines: Number.POSITIVE_INFINITY }),
   );
-  assert.equal(infResult.length, 200);
-  assert.ok(infResult[199].includes("+54 more · /flow"));
+  assert.equal(infResult.length, 253);
+  assert.equal(infResult[252], "line 250");
+  assert.ok(!infResult.join("\n").includes("more · /flow"));
 });
 
 test("maxLines clamps to maximum 200 when passed very large values", () => {
