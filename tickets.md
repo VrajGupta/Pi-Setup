@@ -1290,7 +1290,9 @@ per user time pressure) → reviewer is the sole Done gate.
 
 ## PI-38 — Terminal-height reservation so the surface never occludes the prompt (INV-19)
 
-Status: **Debugger Ready** · Blocked-by: PI-37 · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
+Status: **Done** · Blocked-by: PI-37 · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
+
+**Reviewer (2026-08-06, expedited coder->reviewer): PASS 96/100. All INV-19 ACs + INV-3/INV-14 held; -4 only for env perf flake. Board #36 -> Done.**
 
 **What to build.** Implement INV-19. Capture `tui.terminal.rows` in the widget **factory**
 (`extensions/ui-customization/index.ts:241`), never inside render, and pass `terminalRows` plus a
@@ -1317,7 +1319,7 @@ surface emits nothing.
 
 ## PI-39 — Docs, settings, and closing regression for both features
 
-Status: **Planned** · Blocked-by: PI-34, PI-35, PI-36, PI-38 · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
+Status: **Agent Ready** · Blocked-by: PI-34, PI-35, PI-36, PI-38 · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
 
 **What to build.** Document both features and lock the invariants in the suite. Add
 `workflow.subagentPicker.downArrow` to `settings.example.json` and document
