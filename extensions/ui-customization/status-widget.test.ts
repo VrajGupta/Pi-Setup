@@ -2000,3 +2000,40 @@ test("PI-38: INV-14 extended — 200 tickets + 5 routines at width 120 unlimited
     `200-ticket + 5-routine unlimited render took ${elapsedMs.toFixed(2)}ms, expected < 50ms`,
   );
 });
+
+test("PI-39: issue-row cache never serves stale rows across different snapshots", () => {
+  const a = Array.from({ length: 2 }, (_, i) =>
+    issue({ id: `A-${i}`, status: "coding" }),
+  );
+  const b = Array.from({ length: 2 }, (_, i) =>
+    issue({ id: `B-${i}`, status: "coding" }),
+  );
+  const s1 = state({
+    width: 120,
+    maxLines: 0,
+    ticketSnapshot: snapshot(a),
+    now: 1,
+  });
+  const s2 = state({
+    width: 120,
+    maxLines: 0,
+    ticketSnapshot: snapshot(b),
+    now: 1,
+  });
+  const first = renderStatusWidget(s1).join("\n");
+  renderStatusWidget(s1); // prime the cache with snapshot A
+  const second = renderStatusWidget(s2).join("\n"); // must NOT reuse A's rows
+  assert.notEqual(
+    first,
+    second,
+    "different snapshots must render different rows",
+  );
+  assert.ok(
+    second.includes("B-0"),
+    "second render carries the new snapshot's ids",
+  );
+  assert.ok(
+    !second.includes("A-0"),
+    "second render must not reuse the cached A rows",
+  );
+});

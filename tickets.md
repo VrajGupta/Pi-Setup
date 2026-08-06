@@ -1319,7 +1319,7 @@ surface emits nothing.
 
 ## PI-39 — Docs, settings, and closing regression for both features
 
-Status: **Debugger Ready** · Blocked-by: PI-34, PI-35, PI-36, PI-38 · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
+Status: **Review Ready** · Blocked-by: PI-34, PI-35, PI-36, PI-38 · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
 
 **What to build.** Document both features and lock the invariants in the suite. Add
 `workflow.subagentPicker.downArrow` to `settings.example.json` and document
