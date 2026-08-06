@@ -1111,7 +1111,7 @@ Status: **Done** · Blocked-by: PI-31 (Done) · GitHub issue #30
 
 ## PI-33 — Pure down-arrow picker trigger policy (INV-20)
 
-Status: **Review Ready** · Blocked-by: none · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
+Status: **Done** · Blocked-by: none · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md` · GitHub issue #31
 
 **What to build.** A pure module `extensions/subagents/src/picker-trigger.ts` exporting
 `shouldOpenPicker(input)` and `resolvePickerEnabled(settings)`. `shouldOpenPicker` takes
@@ -1135,6 +1135,15 @@ no rendering. This module is the single decision point for INV-20.
 - The module's own source text contains no import from `node:fs`, `node:child_process`, `@earendil-works/pi-tui`, or `@earendil-works/pi-coding-agent`.
 
 **Verification-command.** `node --test --experimental-strip-types extensions/subagents/picker-trigger.test.ts && npm run check`
+
+**Reviewer final (2026-08-06): PASS (96/100, diagnostic only) · Bounce 0 of 3.**
+
+- Gate: `node --test --experimental-strip-types extensions/subagents/picker-trigger.test.ts && npm run check` → exit 0 (8/8 tests; `tsc --noEmit` clean) at product commits `e09be3e` + `2d7be9f` (HEAD at review start `5a4114b`).
+- Blind inputs only: ticket PI-33 / issue #31, spec INV-20, mounted `picker-trigger.ts` + `picker-trigger.test.ts`. No coder/debugger handoff read before verdict.
+- All 9 acceptance criteria held at the production seam: exact-empty buffer (`=== ""`, space fails), autocomplete/history guards, `runningCount >= 1` with non-finite/`NaN`/string fail-closed, kill-switch `enabled === false` blocks, `resolvePickerEnabled` true unless `downArrow === false`, zero forbidden imports, malformed/`try` paths never throw.
+- INV-20 decision module is pure (no TUI/I/O/render). No-send path remains PI-34/PI-35 scope; not exercised here and not a gap for this ticket.
+- No blocking findings. Advisory only: `enabled !== false` fail-open matches INV-20 kill-switch / `resolvePickerEnabled` (missing enabled does not silently disable).
+- Routing: → **Done** — Project #12 item `PVTI_lAHOCFvJwM4BfV__zg1hVUk` read back Done; issue #31 closed.
 
 ---
 
