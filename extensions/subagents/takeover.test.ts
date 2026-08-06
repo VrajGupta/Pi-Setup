@@ -320,6 +320,19 @@ test("helper takeover retains abort and send behavior", async () => {
   }
 });
 
+test("settled helper takeover does not advertise abort", async () => {
+  const harness = await openForTest({
+    ...snapshot(),
+    status: "done",
+    settledAt: 1_000,
+  });
+  try {
+    assert.doesNotMatch(harness.component.render(120).join("\\n"), /abort run/);
+  } finally {
+    harness.component.dispose?.();
+  }
+});
+
 test("dashboard preserves tiny measured context and terminal width with Unicode titles", async () => {
   const snap = {
     ...snapshot(),
@@ -430,10 +443,10 @@ test("dashboard selection follows its subagent id and falls back by row", () => 
 test("sortSubagents lists running first, then done, then error, with stable tiebreaks", () => {
   const input = [
     mkSnap("sa-done", "done", 3_000),
-    mkSnap("sa-run-a", "running", 2_000),
+    mkSnap("sa-run-c", "running", 2_000),
     mkSnap("sa-err", "error", 4_000),
     mkSnap("sa-run-b", "running", 1_000),
-    mkSnap("sa-run-c", "running", 2_000),
+    mkSnap("sa-run-a", "running", 2_000),
   ];
   const sorted = sortSubagents(input);
   assert.deepEqual(
@@ -443,7 +456,7 @@ test("sortSubagents lists running first, then done, then error, with stable tieb
   // The input array is not mutated.
   assert.deepEqual(
     input.map((snap) => snap.id),
-    ["sa-done", "sa-run-a", "sa-err", "sa-run-b", "sa-run-c"],
+    ["sa-done", "sa-run-c", "sa-err", "sa-run-b", "sa-run-a"],
   );
 });
 
@@ -464,6 +477,10 @@ test("rendered dashboard orders running first, then done, then error, filtering 
     assert.ok(position("sa-run-b") < position("sa-run-a"));
     assert.ok(position("sa-run-a") < position("sa-done"));
     assert.ok(position("sa-done") < position("sa-err"));
+    assert.deepEqual(
+      snaps.map((snap) => snap.id),
+      ["sa-done", "sa-run-a", "sa-err", "sa-run-b"],
+    );
   } finally {
     harness.components.forEach((component) => component.dispose?.());
   }
@@ -501,6 +518,8 @@ test("picker returns to the dashboard after a takeover resolves", async () => {
     await harness.flush();
     assert.equal(harness.components.length, 2);
     assert.match(harness.components[1].render(80).join("\n"), /send/);
+    assert.deepEqual(harness.sends, []);
+    assert.deepEqual(harness.stageSends, []);
 
     // Closing the takeover resolves it; the loop re-renders the dashboard.
     harness.bindings.add("escape:app.interrupt");
@@ -530,6 +549,18 @@ test("cancelling the dashboard returns to the session without opening a takeover
     assert.equal(harness.components.length, 1);
     assert.deepEqual(harness.sends, []);
     assert.deepEqual(harness.stageSends, []);
+  } finally {
+    harness.components.forEach((component) => component.dispose?.());
+  }
+});
+
+test("dashboard only advertises abort for a running helper", async () => {
+  const harness = await openPickerForTest([mkSnap("sa-done", "done", 1_000)]);
+  try {
+    assert.doesNotMatch(
+      harness.components[0].render(120).join("\\n"),
+      /x abort/,
+    );
   } finally {
     harness.components.forEach((component) => component.dispose?.());
   }

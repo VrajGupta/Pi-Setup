@@ -395,7 +395,10 @@ class SubagentDashboard implements Component {
     // Hints: confirm takes over, cancel returns to the session, and the
     // same cancel key inside a takeover returns here (PI-35 round-trip).
     const selected = subs[this.selection.index];
-    const abortHint = selected?.stage === undefined ? " · x abort" : "";
+    const abortHint =
+      selected?.status === "running" && selected.stage === undefined
+        ? " · x abort"
+        : "";
     lines.push(
       truncateToWidth(
         theme.fg(
@@ -718,7 +721,7 @@ class TakeoverView implements Component, Focusable {
           "dim",
           snap.stage
             ? `Send to ${snap.stage} (${snap.id}) · ${configuredKeys(this.keybindings, "tui.input.submit")} send · ${configuredKeys(this.keybindings, "app.interrupt")} cancel · ${configuredKeys(this.keybindings, "tui.editor.cursorUp")}/${configuredKeys(this.keybindings, "tui.editor.cursorDown")} scroll · ${configuredKeys(this.keybindings, "tui.editor.pageUp")}/${configuredKeys(this.keybindings, "tui.editor.pageDown")} page`
-            : `${configuredKeys(this.keybindings, "tui.input.submit")} send · ${configuredKeys(this.keybindings, "app.interrupt")} back · ${configuredKeys(this.keybindings, "app.clear")} abort run · ${configuredKeys(this.keybindings, "tui.editor.cursorUp")}/${configuredKeys(this.keybindings, "tui.editor.cursorDown")} scroll · ${configuredKeys(this.keybindings, "tui.editor.pageUp")}/${configuredKeys(this.keybindings, "tui.editor.pageDown")} page`,
+            : `${configuredKeys(this.keybindings, "tui.input.submit")} send · ${configuredKeys(this.keybindings, "app.interrupt")} back${snap.status === "running" ? ` · ${configuredKeys(this.keybindings, "app.clear")} abort run` : ""} · ${configuredKeys(this.keybindings, "tui.editor.cursorUp")}/${configuredKeys(this.keybindings, "tui.editor.cursorDown")} scroll · ${configuredKeys(this.keybindings, "tui.editor.pageUp")}/${configuredKeys(this.keybindings, "tui.editor.pageDown")} page`,
         ),
         width,
       ),
