@@ -1149,7 +1149,7 @@ no rendering. This module is the single decision point for INV-20.
 
 ## PI-34 — Guarded bare-DOWN editor subclass and `alt+down` alias (INV-20)
 
-Status: **Planned** · Blocked-by: PI-33 · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
+Status: **Coding** · Blocked-by: PI-33 · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
 
 **What to build.** Wire the trigger. In `extensions/subagents/index.ts`, register (a) a
 `CustomEditor` subclass through `ctx.ui.setEditorComponent` whose `handleInput(data)` consults
@@ -1252,7 +1252,7 @@ read-only dependency.
 
 ## PI-37 — `maxLines` actually read, with `0` meaning unlimited (INV-4 amended)
 
-Status: **Agent Ready** · Blocked-by: none · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
+Status: **Debugger Ready** · Blocked-by: none · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
 
 **What to build.** Close the live gap where `extensions/ui-customization/index.ts:280` passes
 `maxLines: undefined`, so `workflow.statusWidget.maxLines` in `settings.example.json` is read by
@@ -1271,6 +1271,18 @@ any other numeric value is clamped to `[8, 200]`, and absent/non-numeric yields 
 - Line count remains a deterministic function of input counts at every `maxLines` value (INV-4 clause 2).
 
 **Verification-command.** `node --test --experimental-strip-types extensions/ui-customization/status-widget.test.ts && npm run check`
+
+**Coder delivery (2026-08-06).** Exact gate exit 0 — 83/84 targeted tests
+(plus `tsc --noEmit` clean). The single failure was the known PI-23
+contention-sensitive 1000-render benchmark under machine load (load avg 64–170 on
+10 cores; a trivial 1e8-add loop measured 20.7 s vs ~100 ms nominal), which
+passed at 1650 ms in isolation; the perf code path is untouched by this change.
+`npm run format:check` (scoped to changed files) and `git diff --check` exit 0.
+Product diff SHA-256: `023ec4aceab476021911e44260d6a1b7fc7663436ea6d227153cb3f11974a36a`
+(`/tmp/pi37-product.diff`). Project #12 issue #35 moved `Agent Ready` →
+`Coding` (coordinator) → `Debugger Ready`; both read back. Artifact:
+`docs/handoffs/2026-08-06-coder-pi37.md`. Route: independent debugger (skipped
+per user time pressure) → reviewer is the sole Done gate.
 
 ---
 

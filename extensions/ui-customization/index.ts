@@ -26,7 +26,9 @@ import {
   type WorkflowSubagentSummary,
 } from "../shared/workflow-state.ts";
 import { columns, renderFooter } from "./footer.ts";
+import { readStatusWidgetMaxLines as readMaxLinesFromSettings } from "./status-widget-settings.ts";
 import {
+  normalizeMaxLines,
   renderStatusWidget,
   type StatusWidgetAgent,
   type StatusWidgetContext,
@@ -126,7 +128,20 @@ function asStatusWidgetSnapshotView(
   return view;
 }
 
-export default function uiCustomization(pi: ExtensionAPI) {
+export interface UiCustomizationOptions {
+  /**
+   * Resolve `workflow.statusWidget.maxLines` off the render path (PI-37):
+   * `0` means unlimited, values clamp to `[8, 200]`, default 40. Defaults to
+   * reading the agent settings file once per widget mount; injectable for
+   * deterministic tests.
+   */
+  readonly readStatusWidgetMaxLines?: () => number;
+}
+
+export default function uiCustomization(
+  pi: ExtensionAPI,
+  options: UiCustomizationOptions = {},
+) {
   let modelInfo = emptyModelInfoState();
   let gitInfo = emptyGitInfoState();
   let workflow = emptyWorkflowState();
@@ -190,6 +205,9 @@ export default function uiCustomization(pi: ExtensionAPI) {
     ticketSnapshot = view;
     refresh();
   });
+
+  const resolveMaxLines =
+    options.readStatusWidgetMaxLines ?? readMaxLinesFromSettings;
 
   const install = (ctx: ExtensionContext) => {
     if (ctx.mode !== "tui") return;
@@ -278,6 +296,14 @@ export default function uiCustomization(pi: ExtensionAPI) {
     ctx.ui.setWidget?.(
       "vraj-status",
       (_tui, _theme) => {
+        // Settings read happens here, once per widget mount — never inside
+        // render (INV-3, PI-37). A throwing resolver degrades to the default.
+        let maxLines: number;
+        try {
+          maxLines = resolveMaxLines();
+        } catch {
+          maxLines = normalizeMaxLines(undefined);
+        }
         return {
           render(width: number) {
             const now = Date.now();
@@ -314,7 +340,7 @@ export default function uiCustomization(pi: ExtensionAPI) {
             }
             return renderStatusWidget({
               width,
-              maxLines: undefined,
+              maxLines,
               inputLines: [],
               mode: workflow.mode,
               route: workflow.route,

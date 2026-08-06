@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import uiCustomization from "./index.ts";
+import { readStatusWidgetMaxLines } from "./status-widget-settings.ts";
 import {
   layoutColumns,
+  normalizeMaxLines,
   renderStatusWidget,
   type StatusWidgetAgent,
   type StatusWidgetIssueRecord,
@@ -61,6 +65,159 @@ function agent(overrides: Partial<StatusWidgetAgent> = {}): StatusWidgetAgent {
   };
 }
 
+// ── PI-37: maxLines resolved from settings, 0 = unlimited ──
+
+test("PI-37: normalizeMaxLines(0) yields the unlimited sentinel", () => {
+  assert.equal(normalizeMaxLines(0), Number.POSITIVE_INFINITY);
+});
+
+test("PI-37: normalizeMaxLines maps boundary values", () => {
+  assert.equal(normalizeMaxLines(4), 8);
+  assert.equal(normalizeMaxLines(500), 200);
+  assert.equal(normalizeMaxLines(undefined), 40);
+  assert.equal(normalizeMaxLines(null), 40);
+  assert.equal(normalizeMaxLines("40"), 40);
+  assert.equal(normalizeMaxLines(Number.NaN), 40);
+  assert.equal(normalizeMaxLines(-1), 8);
+});
+
+test("PI-37: maxLines 0 emits every deterministic line with no overflow", () => {
+  // 3 base + 117 input = 120 deterministic lines
+  const lines = Array.from({ length: 117 }, (_, i) => `line ${i + 1}`);
+  const result = renderStatusWidget(state({ inputLines: lines, maxLines: 0 }));
+  assert.equal(result.length, 120);
+  assert.equal(result[119], "line 117");
+  assert.ok(!result.join("\n").includes("more · /flow"));
+});
+
+test("PI-37: maxLines 12 with a deterministic count of 30 emits 12 lines, last is +19 more · /flow", () => {
+  // 3 base + 27 input = 30 deterministic lines
+  const lines = Array.from({ length: 27 }, (_, i) => `line ${i + 1}`);
+  const result = renderStatusWidget(state({ inputLines: lines, maxLines: 12 }));
+  assert.equal(result.length, 12);
+  assert.equal(result[11], "+19 more · /flow");
+});
+
+test("PI-37: settings file with maxLines 0 resolves unlimited; absent key resolves 40", () => {
+  const temporary = mkdtempSync(join(tmpdir(), "pi37-settings-"));
+  try {
+    const unlimited = join(temporary, "unlimited.json");
+    writeFileSync(
+      unlimited,
+      JSON.stringify({ workflow: { statusWidget: { maxLines: 0 } } }),
+    );
+    assert.equal(readStatusWidgetMaxLines(unlimited), Number.POSITIVE_INFINITY);
+
+    const absent = join(temporary, "absent.json");
+    writeFileSync(absent, JSON.stringify({ workflow: { mode: "free" } }));
+    assert.equal(readStatusWidgetMaxLines(absent), 40);
+
+    const numeric = join(temporary, "numeric.json");
+    writeFileSync(
+      numeric,
+      JSON.stringify({ workflow: { statusWidget: { maxLines: 500 } } }),
+    );
+    assert.equal(readStatusWidgetMaxLines(numeric), 200);
+  } finally {
+    rmSync(temporary, { recursive: true, force: true });
+  }
+});
+
+test("PI-37: unreadable or malformed settings yield 40 and never throw", () => {
+  const temporary = mkdtempSync(join(tmpdir(), "pi37-bad-"));
+  try {
+    assert.equal(readStatusWidgetMaxLines(join(temporary, "missing.json")), 40);
+    const malformed = join(temporary, "malformed.json");
+    writeFileSync(malformed, "{ not json");
+    assert.equal(readStatusWidgetMaxLines(malformed), 40);
+    for (const raw of [
+      "null",
+      "[]",
+      "42",
+      '"x"',
+      JSON.stringify({ workflow: "nope" }),
+      JSON.stringify({ workflow: { statusWidget: null } }),
+    ]) {
+      const file = join(temporary, "case.json");
+      writeFileSync(file, raw);
+      assert.equal(readStatusWidgetMaxLines(file), 40);
+    }
+  } finally {
+    rmSync(temporary, { recursive: true, force: true });
+  }
+});
+
+test("PI-37: renderStatusWidget performs no settings read (INV-3)", () => {
+  const source = readFileSync(
+    new URL("./status-widget.ts", import.meta.url),
+    "utf8",
+  );
+  assert.doesNotMatch(source, /getAgentDir|getSettingsPath|settings\.json/);
+});
+
+test("PI-37: widget factory passes the resolved maxLines as plain state", () => {
+  const listeners = new Map<string, Set<(value: unknown) => void>>();
+  const hooks = new Map<string, (...args: unknown[]) => void>();
+  const widgets: Array<{ key: string; content: unknown; options?: unknown }> =
+    [];
+  const theme = { fg: (_color: string, text: string) => text };
+  const pi = {
+    events: {
+      on(channel: string, handler: (value: unknown) => void) {
+        const set = listeners.get(channel) ?? new Set();
+        set.add(handler);
+        listeners.set(channel, set);
+        return () => set.delete(handler);
+      },
+      emit(channel: string, value: unknown) {
+        for (const handler of listeners.get(channel) ?? []) handler(value);
+      },
+    },
+    on(event: string, handler: (...args: unknown[]) => void) {
+      hooks.set(event, handler);
+    },
+    getThinkingLevel() {
+      return "high";
+    },
+  };
+  const context = {
+    mode: "tui",
+    cwd: "/repo",
+    ui: {
+      theme,
+      setHeader() {},
+      setFooter() {},
+      setWidget(key: string, content: unknown, options?: unknown) {
+        widgets.push({ key, content, options });
+      },
+      setTitle() {},
+    },
+  };
+
+  uiCustomization(pi as never, {
+    readStatusWidgetMaxLines: () => Number.POSITIVE_INFINITY,
+  });
+  hooks.get("session_start")?.({}, context);
+  const widget = (
+    widgets[0].content as (...args: unknown[]) => {
+      render(width: number): string[];
+    }
+  )({ requestRender() {} }, theme);
+
+  // A 60-ticket snapshot: 3 base + 1 rule + 60 rows = 64 lines. With the
+  // unlimited sentinel the surface emits all of them, no +N more line.
+  pi.events.emit("vraj:ticket-snapshot", {
+    repo: "pi",
+    capturedAt: 100_000,
+    records: Array.from({ length: 60 }, (_, i) =>
+      issue({ id: `PI-${100 + i}`, status: "coding", assignee: "coder" }),
+    ),
+  });
+  const rendered = widget.render(80);
+  assert.equal(rendered.length, 64);
+  assert.ok(!rendered.join("\n").includes("more · /flow"));
+});
+
 // ── PI-20 base (amended for PI-21 flow base) ────────────
 
 test("with 0 input lines, renders the three flow base lines", () => {
@@ -98,19 +255,13 @@ test("with N input lines where N > maxLines, renders maxLines total including ov
   assert.ok(result[39].includes("+14 more · /flow"));
 });
 
-test("maxLines clamps to minimum 8 when passed 0 or negative", () => {
+test("maxLines clamps to minimum 8 when passed negative values", () => {
   const lines = Array.from({ length: 100 }, (_, i) => `line ${i + 1}`);
-
-  const zeroResult = renderStatusWidget(
-    state({ inputLines: lines, maxLines: 0 }),
-  );
-  assert.equal(zeroResult.length, 8);
-  assert.ok(zeroResult[7].includes("+96 more · /flow"));
-
   const negResult = renderStatusWidget(
     state({ inputLines: lines, maxLines: -100 }),
   );
   assert.equal(negResult.length, 8);
+  assert.ok(negResult[7].includes("+96 more · /flow"));
 });
 
 test("maxLines defaults to 40 when passed NaN (non-numeric)", () => {
@@ -349,7 +500,7 @@ test("registers belowEditor widget, cleans it up, and keeps header/footer usable
     },
   };
 
-  uiCustomization(pi as never);
+  uiCustomization(pi as never, { readStatusWidgetMaxLines: () => 40 });
   hooks.get("session_start")?.({}, context);
   assert.equal(widgets.length, 1);
   assert.equal(widgets[0].key, "vraj-status");
@@ -413,7 +564,7 @@ test("PI-36: emitted snapshots render issue rows; malformed values keep the prio
     },
   };
 
-  uiCustomization(pi as never);
+  uiCustomization(pi as never, { readStatusWidgetMaxLines: () => 40 });
   hooks.get("session_start")?.({}, context);
   const widget = (
     widgets[0].content as (...args: unknown[]) => {

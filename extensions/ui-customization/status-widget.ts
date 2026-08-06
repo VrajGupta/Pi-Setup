@@ -73,10 +73,18 @@ function normalizeWidth(width: unknown) {
   return Math.max(0, Math.floor(width));
 }
 
-function normalizeMaxLines(value: unknown) {
+/**
+ * Normalize `workflow.statusWidget.maxLines` (PI-37): `0` means unlimited
+ * (the `+N more` cap is not applied), any other numeric value is clamped to
+ * `[8, 200]`, and absent/non-numeric values yield the default 40. The
+ * unlimited sentinel is `Infinity`, so the existing `lines.length <= maxLines`
+ * early return emits every deterministic line with no overflow.
+ */
+export function normalizeMaxLines(value: unknown) {
   if (value === undefined) return DEFAULT_MAX_LINES;
   if (typeof value !== "number" || Number.isNaN(value))
     return DEFAULT_MAX_LINES;
+  if (value === 0) return Number.POSITIVE_INFINITY;
   return Math.max(8, Math.min(200, Math.floor(value)));
 }
 
