@@ -1149,7 +1149,7 @@ no rendering. This module is the single decision point for INV-20.
 
 ## PI-34 — Guarded bare-DOWN editor subclass and `alt+down` alias (INV-20)
 
-Status: **Coding** · Blocked-by: PI-33 · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
+Status: **Done** · Blocked-by: PI-33 · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
 
 **What to build.** Wire the trigger. In `extensions/subagents/index.ts`, register (a) a
 `CustomEditor` subclass through `ctx.ui.setEditorComponent` whose `handleInput(data)` consults
