@@ -931,3 +931,60 @@ test("classifyRoutinePrompt routes through classifyRequest", () => {
   assert.ok("confidence" in decision);
   assert.ok("reason" in decision);
 });
+
+test("PI-31: Routines tab lists routines and the none-configured fallback", () => {
+  const routines = [
+    {
+      name: "standup",
+      scheduleMs: 60 * 60 * 1000,
+      prompt: "summarize yesterday",
+      enabled: true,
+    },
+    {
+      name: "weekly",
+      scheduleMs: 24 * 60 * 60 * 1000,
+      prompt: "weekly review",
+      enabled: false,
+    },
+  ];
+  const flow = new FlowPanel(
+    context,
+    theme,
+    () => state(),
+    () => [],
+    () => [],
+    () => ({ loaded: [], selected: [] }),
+    () => {},
+    () => {},
+    () => undefined,
+    () => undefined,
+    () => routines,
+  );
+  for (let i = 0; i < 6; i++) flow.handleInput("\t");
+  const out = flow.render(120).join("\n");
+  assert.match(out, /routines/);
+  assert.match(out, /standup/);
+  assert.match(out, /weekly/);
+  assert.match(out, /disabled/);
+});
+
+test("PI-31: Routines tab falls back on throwing getter (INV-6)", () => {
+  const flow = new FlowPanel(
+    context,
+    theme,
+    () => state(),
+    () => [],
+    () => [],
+    () => ({ loaded: [], selected: [] }),
+    () => {},
+    () => {},
+    () => undefined,
+    () => undefined,
+    () => {
+      throw new Error("routines unavailable");
+    },
+  );
+  for (let i = 0; i < 6; i++) flow.handleInput("\t");
+  assert.doesNotThrow(() => flow.render(120));
+  assert.match(flow.render(120).join("\n"), /none configured/);
+});

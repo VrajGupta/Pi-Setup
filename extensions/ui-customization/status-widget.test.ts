@@ -8,6 +8,7 @@ import {
   renderStatusWidget,
   type StatusWidgetAgent,
   type StatusWidgetIssueRecord,
+  type StatusWidgetRoutineRecord,
   type StatusWidgetSnapshotView,
   type StatusWidgetState,
 } from "./status-widget.ts";
@@ -1356,4 +1357,98 @@ test("PI-23 debugger: wide glyphs in collapsed mode at width 50", () => {
       `line "${line}" has visible width ${visibleWidth(line)}`,
     );
   }
+});
+
+// ── PI-31 routines section ──────────────────────────────
+
+function routine(
+  overrides: Partial<StatusWidgetRoutineRecord> = {},
+): StatusWidgetRoutineRecord {
+  return {
+    name: "standup",
+    schedule: "every 60m",
+    enabled: true,
+    dueAt: 100_000,
+    ...overrides,
+  };
+}
+
+test("PI-31: routines section renders name + status token rows deterministically", () => {
+  const r1 = routine({
+    name: "standup",
+    schedule: "every 60m",
+    dueAt: 100_000,
+  });
+  const r2 = routine({
+    name: "weekly",
+    schedule: "daily at 9:00",
+    enabled: false,
+    dueAt: 100_000,
+  });
+  const a = renderStatusWidget(state({ now: 100_000, routines: [r1, r2] }));
+  const b = renderStatusWidget(state({ now: 100_000, routines: [r1, r2] }));
+  assert.deepEqual(a, b);
+  const joined = a.join("\n");
+  assert.match(joined, /standup/);
+  assert.match(joined, /weekly/);
+  assert.match(joined, /disabled/);
+  assert.match(joined, /─ routines/);
+});
+
+test("PI-31: due-now and snoozed tokens per state", () => {
+  const dueNow = renderStatusWidget(
+    state({ now: 100_000, routines: [routine({ dueAt: 100_000 })] }),
+  ).join("\n");
+  assert.match(dueNow, /due now/);
+  const snoozed = renderStatusWidget(
+    state({
+      now: 100_000,
+      routines: [routine({ snoozedUntil: 100_000 + 30 * 60_000 })],
+    }),
+  ).join("\n");
+  assert.match(snoozed, /snoozed/);
+});
+
+test("PI-31: no routines / undefined source → no section, no crash", () => {
+  const none = renderStatusWidget(state({ now: 100_000 }));
+  assert.ok(!none.join("\n").includes("routines"));
+  const empty = renderStatusWidget(state({ now: 100_000, routines: [] }));
+  assert.ok(!empty.join("\n").includes("routines"));
+});
+
+test("PI-31: widths 40/80/120/200 bounded, overflow via maxLines budget", () => {
+  for (const width of [40, 80, 120, 200]) {
+    const rows = Array.from({ length: 30 }, (_, i) =>
+      routine({ name: `routine-${i}`, dueAt: 100_000 }),
+    );
+    const result = renderStatusWidget(
+      state({ width, maxLines: 12, now: 100_000, routines: rows }),
+    );
+    assert.ok(result.length <= 12, `width ${width}: lines ${result.length}`);
+    for (const line of result) {
+      assert.ok(
+        visibleWidth(line) <= width,
+        `width ${width}: line "${line}" has visible width ${visibleWidth(line)}`,
+      );
+    }
+    const joined = result.join("\n");
+    if (rows.length > 12) assert.match(joined, /more · \/flow/);
+  }
+});
+
+test("PI-31: user text redacted; throwing routine getter → bounded fallback", () => {
+  const secret = "ghp_abcdef1234567890";
+  const result = renderStatusWidget(
+    state({ now: 100_000, routines: [routine({ name: secret })] }),
+  );
+  assert.ok(!result.join("\n").includes(secret));
+  const throwing = state({ now: 100_000 });
+  Object.defineProperty(throwing, "routines", {
+    get() {
+      throw new Error("boom");
+    },
+  });
+  const fallback = renderStatusWidget(throwing);
+  assert.ok(Array.isArray(fallback));
+  assert.ok(fallback.length >= 0);
 });

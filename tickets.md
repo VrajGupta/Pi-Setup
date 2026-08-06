@@ -1061,7 +1061,7 @@ Status: **Done** · Blocked-by: PI-28, PI-29 · GitHub issue #28
 
 ## PI-31 — belowEditor section and /flow Routines tab
 
-Status: **Agent Ready** · Blocked-by: PI-30 · GitHub issue #29
+Status: **Debugger Ready** · Blocked-by: PI-30 · GitHub issue #29
 
 **What to build.** belowEditor routines section (rule `─ routines · 1 due ───`, rows per due/snoozed/disabled routine). `/flow` Routines tab with full details. Width-safe, secret-redacted, terminal-safe, INV-11 glyphs.
 

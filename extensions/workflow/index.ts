@@ -380,6 +380,47 @@ function issueRow(record: TicketRecord) {
   return ` repo ${issueField(record.repo)} · id ${issueField(record.id)} · title ${issueField(record.title)} · assignee ${record.assignee ?? "—"} · status ${issueStatus(record.status)} · ${issueBlockers(record)} · ${issueEta(record)}`;
 }
 
+function formatMinutesOfDay(minutes: number) {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${h}:${String(m).padStart(2, "0")}`;
+}
+
+function scheduleSummary(routine: RoutineDefinition) {
+  const at = Array.isArray(routine.at)
+    ? routine.at.filter((v) => typeof v === "number" && Number.isFinite(v))
+    : [];
+  if (at.length > 0)
+    return `daily at ${at.map((v) => formatMinutesOfDay(v)).join(", ")}`;
+  const minutes = Math.round((finiteNumber(routine.scheduleMs) ?? 0) / 60_000);
+  if (minutes < 60) return `every ${minutes}m`;
+  return `every ${Math.floor(minutes / 60)}h`;
+}
+
+function routineStateToken(routine: RoutineDefinition, now: number) {
+  if (!routine.enabled) return "disabled";
+  if (
+    finiteNumber(routine.snoozedUntil) !== undefined &&
+    (routine.snoozedUntil ?? 0) > now
+  ) {
+    const remaining = Math.max(
+      0,
+      Math.ceil(((routine.snoozedUntil ?? 0) - now) / 60_000),
+    );
+    return `snoozed (${remaining}m)`;
+  }
+  return "enabled";
+}
+
+function routineRow(routine: RoutineDefinition, now: number) {
+  const name = displayText(routine.name, "?");
+  const schedule = displayText(scheduleSummary(routine), "?");
+  const state = routineStateToken(routine, now);
+  const prompt = displayText(routine.prompt, "—");
+  const previewText = preview(prompt, 64);
+  return `${name} · ${schedule} · ${state} · prompt ${previewText}`;
+}
+
 function repositoryHeader(read: RepositoryRead, now: number) {
   if (read.snapshot === undefined || read.snapshot.reason !== undefined) {
     return ` repo ${issueField(read.repo)} — unavailable — ${issueField(read.reason || read.snapshot?.reason || "unknown")}`;
@@ -545,6 +586,7 @@ export class FlowPanel {
     "Capabilities",
     "Session",
     "Issues",
+    "Routines",
   ];
   private readonly ctx: FlowPanelContext;
   private readonly theme: FlowPanelTheme;
@@ -559,6 +601,7 @@ export class FlowPanel {
   private readonly rerender: () => void;
   private readonly getTicketSnapshot: () => unknown;
   private readonly getRepositoryView: () => RepositoryView | undefined;
+  private readonly getRoutines: () => readonly RoutineDefinition[];
   private cachedReads: readonly RepositoryRead[] | undefined;
   private cachedNormalizedReads: readonly RepositoryRead[] | undefined;
   private cachedSections: readonly string[][] | undefined;
@@ -574,6 +617,7 @@ export class FlowPanel {
     rerender: () => void,
     getTicketSnapshot: () => unknown = () => undefined,
     getRepositoryView: () => RepositoryView | undefined = () => undefined,
+    getRoutines: () => readonly RoutineDefinition[] = () => [],
   ) {
     this.ctx = ctx;
     this.theme = theme;
@@ -585,6 +629,7 @@ export class FlowPanel {
     this.rerender = rerender;
     this.getTicketSnapshot = getTicketSnapshot;
     this.getRepositoryView = getRepositoryView;
+    this.getRoutines = getRoutines;
   }
 
   handleInput(data: string) {
@@ -700,6 +745,8 @@ export class FlowPanel {
         return this.session(state);
       case 5:
         return this.issues(now);
+      case 6:
+        return this.routines(now);
       default:
         return this.overview(state, agents, now);
     }
@@ -804,6 +851,22 @@ export class FlowPanel {
       this.clearIssueCache();
       return [" issue list unavailable — snapshot unavailable"];
     }
+  }
+
+  private routines(now: number) {
+    let routines: readonly RoutineDefinition[] = [];
+    try {
+      routines = this.getRoutines();
+    } catch {
+      // INV-6: throwing getter degrades the tab, never the panel.
+    }
+    if (!Array.isArray(routines) || routines.length === 0) {
+      return [
+        " routines",
+        " none configured — add workflow.routines to settings.json",
+      ];
+    }
+    return [" routines", ...routines.map((r) => ` ${routineRow(r, now)}`)];
   }
 
   private clearIssueCache() {
@@ -1489,6 +1552,7 @@ export default function workflow(pi: ExtensionAPI) {
           () => tui.requestRender(),
           () => undefined,
           () => repositoryView,
+          () => configuredRoutines,
         );
         requestRender = () => tui.requestRender();
         return panel;

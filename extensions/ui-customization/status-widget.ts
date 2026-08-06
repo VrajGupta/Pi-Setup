@@ -44,6 +44,14 @@ export interface StatusWidgetSnapshotView {
   readonly reason?: string;
 }
 
+export interface StatusWidgetRoutineRecord {
+  readonly name: string;
+  readonly schedule: string;
+  readonly enabled: boolean;
+  readonly snoozedUntil?: number;
+  readonly dueAt: number;
+}
+
 export interface StatusWidgetState {
   width: number;
   maxLines: unknown;
@@ -55,6 +63,7 @@ export interface StatusWidgetState {
   now?: number;
   agents?: readonly StatusWidgetAgent[];
   ticketSnapshot?: StatusWidgetSnapshotView;
+  routines?: readonly StatusWidgetRoutineRecord[];
 }
 
 // ── helpers ──────────────────────────────────────────────
@@ -467,6 +476,104 @@ function issueSection(
   }
 }
 
+// ── routine rows ──────────────────────────────────────────
+
+function formatRelative(ms: number): string {
+  if (ms < 60_000) return "due now";
+  const m = Math.floor(ms / 60_000);
+  if (m < 60) return `~${m}m`;
+  const h = Math.floor(m / 60);
+  return `~${h}h${m % 60}m`;
+}
+
+function routineStatusToken(r: StatusWidgetRoutineRecord, now: number): string {
+  if (!r.enabled) return "disabled";
+  if (isFiniteNumber(r.snoozedUntil) && r.snoozedUntil > now) {
+    const remaining = Math.max(0, r.snoozedUntil - now);
+    const m = Math.ceil(remaining / 60_000);
+    return `snoozed (${m}m)`;
+  }
+  return formatRelative(Math.max(0, now - r.dueAt));
+}
+
+function routineRows(
+  routines: readonly StatusWidgetRoutineRecord[],
+  now: number,
+  width: number,
+): string[] {
+  if (routines.length === 0) return [];
+  const collapsed = width < 60;
+
+  const due = routines.filter(
+    (r) =>
+      r.enabled && (!isFiniteNumber(r.snoozedUntil) || r.snoozedUntil <= now),
+  );
+  const snoozed = routines.filter(
+    (r) => r.enabled && isFiniteNumber(r.snoozedUntil) && r.snoozedUntil > now,
+  );
+  const disabled = routines.filter((r) => !r.enabled);
+
+  const display = collapsed ? due : [...due, ...snoozed, ...disabled];
+  if (display.length === 0) return [];
+
+  if (collapsed) {
+    // Collapsed: only due, name + status token
+    const rows = display.map((r) => {
+      const name = safeToken(r.name, "?");
+      const token = routineStatusToken(r, now);
+      return `${name}  ${token}`;
+    });
+    return rows.map((row) => safeTruncate(row, width));
+  }
+
+  // Full: name + schedule + status token
+  const cellData = display
+    .map((r) => {
+      try {
+        return {
+          name: safeToken(r.name, "?"),
+          schedule: safeToken(r.schedule, "?"),
+          token: routineStatusToken(r, now),
+        };
+      } catch {
+        return null;
+      }
+    })
+    .filter((c): c is NonNullable<typeof c> => c !== null);
+
+  const nameW = Math.max(...cellData.map((c) => visibleWidth(c.name)));
+  const scheduleW = Math.max(...cellData.map((c) => visibleWidth(c.schedule)));
+
+  const rows = cellData.map((c) => {
+    const name = padRight(c.name, nameW);
+    const schedule = padRight(c.schedule, scheduleW);
+    return safeTruncate(`${name}  ${schedule}  ${c.token}`, width);
+  });
+  return rows;
+}
+
+function routineSection(
+  routines: readonly StatusWidgetRoutineRecord[] | undefined,
+  now: number,
+  width: number,
+): string[] {
+  try {
+    if (!routines || !Array.isArray(routines) || routines.length === 0)
+      return [];
+    const dueCount = routines.filter(
+      (r) =>
+        r.enabled && (!isFiniteNumber(r.snoozedUntil) || r.snoozedUntil <= now),
+    ).length;
+    const head = `─ routines · ${dueCount} due ─`;
+    const fill = "─".repeat(Math.max(0, width - visibleWidth(head)));
+    const rule = safeTruncate(head + fill, width);
+    const rows = routineRows(routines, now, width);
+    return [rule, ...rows];
+  } catch {
+    return [];
+  }
+}
+
 // ── base lines (fallback) ───────────────────────────────
 
 function baseLines(width: number) {
@@ -525,9 +632,17 @@ export function renderStatusWidget(state: StatusWidgetState): string[] {
       snapshot = undefined;
     }
     const issues = issueSection(snapshot, now, width);
+    let routines: readonly StatusWidgetRoutineRecord[] | undefined;
+    try {
+      routines = state.routines;
+    } catch {
+      routines = undefined;
+    }
+    const routineLines = routineSection(routines, now, width);
     const lines = [
       ...base.map((line) => safeTruncate(safeString(line), width)),
       ...issues,
+      ...routineLines,
       ...inputLines.map((line) => safeTruncate(safeToken(line, ""), width)),
     ];
 

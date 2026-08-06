@@ -30,6 +30,7 @@ import {
   renderStatusWidget,
   type StatusWidgetAgent,
   type StatusWidgetContext,
+  type StatusWidgetRoutineRecord,
   type StatusWidgetSnapshotView,
   type StatusWidgetState,
 } from "./status-widget.ts";
@@ -107,6 +108,7 @@ export default function uiCustomization(pi: ExtensionAPI) {
   let agentsAt = 0;
   let activity: Activity = "idle";
   let ticketSnapshot: StatusWidgetSnapshotView | undefined;
+  let routinesSnapshot: readonly StatusWidgetRoutineRecord[] | undefined;
   let activeTui: { requestRender(force?: boolean): void } | undefined;
   let currentContext: ExtensionContext | undefined;
 
@@ -268,6 +270,7 @@ export default function uiCustomization(pi: ExtensionAPI) {
               now,
               agents: stageAgents,
               ticketSnapshot,
+              routines: routinesSnapshot,
             });
           },
           invalidate() {},
