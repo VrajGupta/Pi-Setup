@@ -127,6 +127,8 @@ Mode labels are `mode free (manual)` (everything direct unless a stage is named)
 
 The current mode persists across restarts via `workflow.mode` in settings. The tracker poll interval (`workflow.trackerPollMs`, default 10000) and the surface runaway ceiling (`workflow.statusWidget.maxLines`, default 40) are configurable in `settings.example.json`.
 
+**Subagent picker.** DOWN opens the subagent picker only when a subagent is running; `alt+down` opens it anytime. DOWN opens a view only — sending to a subagent remains the explicit in-view send action (PI-11, INV-20). The picker trigger can be disabled with `workflow.subagentPicker.downArrow: false` in `settings.example.json`.
+
 ## Routines
 
 Periodic scheduled prompts (like Claude Code routines) are configured under `workflow.routines` in settings. Each routine has a name, a prompt/task template, and a schedule (fixed interval in ms, with optional `at` minutes-of-day for time-of-day pinning). The scheduler is single-flight per routine and runs off the render path (INV-10, INV-13).

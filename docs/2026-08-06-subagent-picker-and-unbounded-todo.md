@@ -119,9 +119,10 @@ Supersedes clause 3 of the first amendment in `docs/2026-08-05-below-editor-stat
   any subagent; sending remains PI-17's explicit in-view send affordance. Extends PI-11 and
   INV-8.
 - **INV-14 (extended) — render budget in unlimited mode.** The existing budget now also
-  holds with `maxLines: 0`: rendering a 200-ticket snapshot plus 5 routines at width 120 in
-  unlimited mode completes in under 50 ms wall-clock in the repo's normal local test run, and
-  the render path allocates no timers, in-flight promises, or I/O handles.
+  holds with `maxLines: 0`: rendering a 200-ticket snapshot plus 5 routines at width 120
+  with `maxLines: 0` and `terminalRows: 200` completes in under 50 ms wall-clock in the
+  repo's normal local test run, and the render path allocates no timers, in-flight promises,
+  or I/O handles.
 
 ---
 

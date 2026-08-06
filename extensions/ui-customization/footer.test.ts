@@ -95,6 +95,16 @@ test("the footer never exceeds 7 lines for any tested state", () => {
   }
 });
 
+test("PI-39: INV-4 footer clause unchanged — exactly 3 lines bare, at most 7 with 10 statuses", () => {
+  assert.equal(renderFooter(state()).length, 3);
+  const withTen = renderFooter(
+    state({
+      statuses: Array.from({ length: 10 }, (_, i) => `status ${i + 1}`),
+    }),
+  );
+  assert.ok(withTen.length <= 7, `${withTen.length} lines with 10 statuses`);
+});
+
 test("1 000 renders at width 200 complete in under 2 000 ms", () => {
   const input = state({
     width: 200,

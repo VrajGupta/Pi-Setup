@@ -104,6 +104,8 @@ Use the Ponytail package and terse-output policy: routine replies are concise, C
 
 The **belowEditor** status surface renders the routing mode, fleet route, active stage pipeline, per-agent progress, and issue rows below the prompt. Mode labels: `mode free (manual)` (everything direct) and `mode workflow` (auto-route to fleet). Route labels: `route direct` and `route fleet/<stage>`. `/mode` switches between workflow and free (manual) with a native picker, completions, and warning on invalid input. `/flow` or F6 provides the full command center including all tabs and full issue strings.
 
+The subagent picker opens a view only — DOWN while a subagent is running, or `alt+down` anytime. Sending to a stage remains the explicit in-view send action (PI-11, INV-20); no keystroke path may deliver main-chat input to a subagent.
+
 When you finish, use this shape:
 
 - `route:` direct or fleet stage plus selected skills

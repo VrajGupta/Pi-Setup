@@ -13,6 +13,9 @@
   "workflow": {
     "mode": "workflow",
     "trackerPollMs": 10000,
+    "subagentPicker": {
+      "downArrow": true
+    },
     "statusWidget": {
       "maxLines": 40
     },

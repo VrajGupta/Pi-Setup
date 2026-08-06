@@ -1,8 +1,16 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import type {
   ExtensionAPI,
   ExtensionContext,
@@ -244,6 +252,31 @@ test("registers exactly one shortcut keyed alt+down, never down/up/enter/escape/
   for (const forbidden of ["down", "up", "enter", "escape", "tab"]) {
     assert.notEqual(shortcuts[0].key, forbidden);
   }
+});
+
+test("PI-39: no extension registers a shortcut bound to bare down", () => {
+  const extensionsRoot = fileURLToPath(new URL("../", import.meta.url));
+  const entryPoints: string[] = [];
+  for (const entry of readdirSync(extensionsRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const index = join(extensionsRoot, entry.name, "index.ts");
+    if (existsSync(index)) entryPoints.push(index);
+  }
+  assert.ok(
+    entryPoints.length >= 2,
+    "expected multiple extension entry points",
+  );
+  const registered = entryPoints.flatMap((file) => {
+    const source = readFileSync(file, "utf8");
+    const calls = source.matchAll(/registerShortcut\s*\(\s*["']([^"']+)["']/g);
+    return [...calls].map((match) => match[1]);
+  });
+  assert.ok(registered.length >= 1, "expected at least the alt+down alias");
+  assert.ok(
+    registered.every((key) => key !== "down"),
+    `bare down registered: ${registered.join(", ")}`,
+  );
+  assert.ok(registered.includes("alt+down"));
 });
 
 test("alt+down opens the picker when at least one subagent exists, regardless of buffer state", async () => {
