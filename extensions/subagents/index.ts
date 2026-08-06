@@ -28,8 +28,10 @@ import type {
   ExtensionCommandContext,
   ExtensionContext,
   ExtensionUIContext,
+  KeybindingsManager,
 } from "@earendil-works/pi-coding-agent";
 import {
+  CustomEditor,
   DEFAULT_MAX_BYTES,
   DEFAULT_MAX_LINES,
   formatSize,
@@ -38,7 +40,13 @@ import {
   ProjectTrustStore,
   truncateHead,
 } from "@earendil-works/pi-coding-agent";
-import { Markdown, Text } from "@earendil-works/pi-tui";
+import {
+  Markdown,
+  Text,
+  type EditorComponent,
+  type EditorTheme,
+  type TUI,
+} from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { deriveBtwTitle, isModelVisible } from "./src/by-the-way.ts";
 import {
@@ -52,7 +60,16 @@ import {
   formatActivityStatus,
   formatContextUtilization,
 } from "./src/format.ts";
-import { SubagentManager, type SubagentManagerShape } from "./src/manager.ts";
+import {
+  SubagentManager,
+  type SubagentManagerShape,
+  type SubagentReadModel,
+} from "./src/manager.ts";
+import {
+  resolvePickerEnabled,
+  shouldOpenPicker,
+  type SubagentPickerSettings,
+} from "./src/picker-trigger.ts";
 import {
   buildSubagentResultMessage,
   buildSubagentSpawnResult,
@@ -140,6 +157,180 @@ function truncatedOutput(
   return text;
 }
 
+// --- Picker wiring (PI-34, INV-20) -------------------------------------------
+
+/** Live running-subagent count, kept by updateStatus for the sync DOWN trigger. */
+let runningCount = 0;
+/** INV-20 kill switch (`workflow.subagentPicker.downArrow`), resolved at install. */
+let pickerEnabled = true;
+
+export interface SubagentPickerEditorOptions {
+  /** Editor produced by a previously installed custom-editor factory, if any. */
+  readonly base?: EditorComponent;
+  /** Live running-subagent count, read at DOWN time. */
+  readonly getRunningCount: () => number;
+  /** INV-20 kill switch, read at DOWN time. */
+  readonly getEnabled: () => boolean;
+  /** Opens the subagent picker. Never sends to a subagent (INV-20/PI-11). */
+  readonly onDown: () => void;
+}
+
+/** Editor factory shape accepted by `ctx.ui.setEditorComponent` (not re-exported by the agent package). */
+type EditorFactory = (
+  tui: TUI,
+  theme: EditorTheme,
+  keybindings: KeybindingsManager,
+) => EditorComponent;
+
+/**
+ * PI-34 — guarded bare-DOWN editor wrapper (INV-20).
+ *
+ * Intercepts `tui.editor.cursorDown`; when PI-33's `shouldOpenPicker` says
+ * open, it opens the picker instead of handing the key to the editor. Every
+ * other key (and every DOWN that fails the trigger) passes through unchanged:
+ * to the previously installed custom editor when one exists, otherwise to the
+ * stock `CustomEditor` behavior — the runtime copies the app-level handlers,
+ * action handlers, and autocomplete provider onto this subclass at install
+ * (`interactive-mode.js` setCustomEditorComponent), so no stock binding is
+ * re-implemented here.
+ */
+export class SubagentPickerEditor extends CustomEditor {
+  private readonly keybindingsManager: KeybindingsManager;
+  private readonly base?: EditorComponent;
+  private readonly getRunningCount: () => number;
+  private readonly getEnabled: () => boolean;
+  private readonly onDown: () => void;
+
+  constructor(
+    tui: TUI,
+    theme: EditorTheme,
+    keybindings: KeybindingsManager,
+    options: SubagentPickerEditorOptions,
+  ) {
+    super(tui, theme, keybindings);
+    this.keybindingsManager = keybindings;
+    this.base = options.base;
+    this.getRunningCount = options.getRunningCount;
+    this.getEnabled = options.getEnabled;
+    this.onDown = options.onDown;
+  }
+
+  handleInput(data: string): void {
+    if (
+      this.keybindingsManager.matches(data, "tui.editor.cursorDown") &&
+      shouldOpenPicker({
+        editorText: this.liveText(),
+        autocompleteOpen: this.liveAutocompleteOpen(),
+        historyActive: this.liveHistoryActive(),
+        runningCount: this.getRunningCount(),
+        enabled: this.getEnabled(),
+      })
+    ) {
+      this.onDown();
+      return;
+    }
+    this.passThrough(data);
+  }
+
+  /** Forward a non-intercepted key to the wrapped editor (previous factory, else stock). */
+  protected passThrough(data: string): void {
+    if (this.base) {
+      this.base.handleInput(data);
+      return;
+    }
+    super.handleInput(data);
+  }
+
+  /**
+   * When chaining a previously installed editor, that instance owns the live
+   * editing state (all non-intercepted input flows to it), so the trigger
+   * reads buffer/autocomplete/history state from it.
+   */
+  private liveSource(): {
+    getText(): string;
+    isShowingAutocomplete?: () => boolean;
+    historyIndex?: number;
+  } {
+    const editor = this.base ?? this;
+    return {
+      getText: () => editor.getText(),
+      isShowingAutocomplete:
+        typeof (editor as { isShowingAutocomplete?: () => boolean })
+          .isShowingAutocomplete === "function"
+          ? () =>
+              (
+                editor as { isShowingAutocomplete: () => boolean }
+              ).isShowingAutocomplete()
+          : undefined,
+      // Editor keeps historyIndex private in its types; the runtime field is
+      // the only history-navigation signal the trigger needs (PI-33 guard).
+      historyIndex: (editor as { historyIndex?: number }).historyIndex,
+    };
+  }
+
+  private liveText(): string {
+    return this.liveSource().getText();
+  }
+
+  private liveAutocompleteOpen(): boolean {
+    return this.liveSource().isShowingAutocomplete?.() ?? false;
+  }
+
+  private liveHistoryActive(): boolean {
+    return (this.liveSource().historyIndex ?? -1) > -1;
+  }
+}
+
+/**
+ * Build the editor factory for PI-34, chaining (not clobbering) a previously
+ * installed factory: when `previous` exists, its editor becomes the subclass's
+ * wrapped base; otherwise the subclass keeps the stock `CustomEditor` path.
+ */
+export function createSubagentPickerEditorFactory(options: {
+  readonly previous?: EditorFactory;
+  readonly getRunningCount: () => number;
+  readonly getEnabled: () => boolean;
+  readonly onDown: () => void;
+}): EditorFactory {
+  return (tui, theme, keybindings) =>
+    new SubagentPickerEditor(tui, theme, keybindings, {
+      base: options.previous?.(tui, theme, keybindings),
+      getRunningCount: options.getRunningCount,
+      getEnabled: options.getEnabled,
+      onDown: options.onDown,
+    });
+}
+
+/**
+ * INV-20 no-send leaf used by every picker trigger: it only opens UI.
+ * No-op when no subagents exist (the `alt+down` alias's existence gate).
+ */
+export async function openSubagentPickerFromContext(
+  ctx: ExtensionContext,
+  view: SubagentReadModel,
+): Promise<void> {
+  if (view.size() === 0) return;
+  await openSubagentPicker(ctx as ExtensionCommandContext, view);
+}
+
+/** Read the picker kill switch from settings.json; unreadable/missing fails open. */
+export function readPickerSettings(
+  settingsPath?: string,
+): SubagentPickerSettings | undefined {
+  try {
+    const raw = fs.readFileSync(
+      settingsPath ?? path.join(getAgentDir(), "settings.json"),
+      "utf8",
+    );
+    const parsed: unknown = JSON.parse(raw);
+    return typeof parsed === "object" && parsed !== null
+      ? (parsed as SubagentPickerSettings)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Same-directory children inherit the live parent decision. An alternate cwd
  * is trusted only when pi's persisted trust store explicitly trusts it (or a
@@ -196,13 +387,14 @@ export default function (pi: ExtensionAPI) {
 
   const updateStatus = (manager: SubagentManagerShape) => {
     publishSubagents(manager);
-    if (!ui) return;
     const subs = manager.view.list();
+    const running = subs.filter((snap) => snap.status === "running").length;
+    runningCount = running;
+    if (!ui) return;
     if (subs.length === 0) {
       ui.setStatus("subagents", undefined);
       return;
     }
-    const running = subs.filter((snap) => snap.status === "running").length;
     const failed = subs.filter((snap) => snap.status === "error").length;
     const done = subs.length - running - failed;
     ui.setStatus(
@@ -338,9 +530,36 @@ export default function (pi: ExtensionAPI) {
     })();
   });
 
+  /** Best-effort picker open shared by both triggers; never crashes the TUI. */
+  const openPicker = async (ctx: ExtensionContext): Promise<void> => {
+    try {
+      const manager = await getManager();
+      await openSubagentPickerFromContext(ctx, manager.view);
+    } catch {
+      // Picker opening is best-effort; a trigger must never crash the TUI.
+    }
+  };
+
+  const installSubagentPickerEditor = (ctx: ExtensionContext) => {
+    pickerEnabled = resolvePickerEnabled(readPickerSettings());
+    ctx.ui.setEditorComponent(
+      createSubagentPickerEditorFactory({
+        previous: ctx.ui.getEditorComponent(),
+        getRunningCount: () => runningCount,
+        getEnabled: () => pickerEnabled,
+        onDown: () => {
+          void openPicker(ctx);
+        },
+      }),
+    );
+  };
+
   pi.on("session_start", (_event, ctx) => {
     sessionContext = ctx;
-    if (ctx.hasUI) ui = ctx.ui;
+    if (ctx.hasUI) {
+      ui = ctx.ui;
+      installSubagentPickerEditor(ctx);
+    }
     void getManager()
       .then(publishSubagents)
       .catch(() => undefined);
@@ -881,6 +1100,14 @@ export default function (pi: ExtensionAPI) {
         return;
       }
       await openSubagentPicker(ctx, manager.view);
+    },
+  });
+
+  pi.registerShortcut("alt+down", {
+    description: "Open the subagent picker",
+    handler: (ctx) => {
+      if (!ctx.hasUI) return;
+      return openPicker(ctx);
     },
   });
 }
