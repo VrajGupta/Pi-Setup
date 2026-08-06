@@ -1216,7 +1216,7 @@ behaviours in text.
 
 ## PI-36 — Wire the tracker poll to the belowEditor issue list (INV-10, INV-13)
 
-Status: **Debugger Ready** · Blocked-by: none · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
+Status: **Done** · Blocked-by: none · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
 
 **What to build.** Close the live gap that makes the todo list render nothing today.
 `extensions/ui-customization/index.ts:110` declares `ticketSnapshot` but nothing ever assigns it,
@@ -1240,6 +1240,13 @@ read-only dependency.
 - The render path performs no filesystem read: a test asserts the widget render function is called with an already-captured snapshot object and the module performs no I/O during render (INV-3).
 
 **Verification-command.** `node --test --experimental-strip-types extensions/ui-customization/status-widget.test.ts extensions/workflow/tracker-poll.test.ts && npm run check`
+
+**Reviewer verdict (2026-08-06): PASS (90/100, diagnostic).** Bounce: 1 of 3 (first review; debugger stage skipped by coordinator under time pressure — this review is the sole independent gate).
+- Gate: exact Verification-command → exit 0 (89 tests; `tsc --noEmit` clean). Perf isolation `1000 renders with 200 issue rows at width 200` → exit 0 (1641 ms).
+- Blind inputs only: ticket PI-36 / issue #34, spec INV-10/INV-13 (+ INV-2/5/6/3 as named), mounted PI-36 diff on the five named files. No coder handoff read before verdict.
+- All 8 acceptance criteria held at the production seam: `startTrackerPolling` on `session_start` + `stop` on `session_shutdown`; `vraj:ticket-snapshot` channel mirrors routines; widget `asStatusWidgetSnapshotView` keeps prior on malformed (INV-6); reason → single unavailable line (INV-10); clamp/default 10000 (INV-13); unref'd timer; `ticket-snapshot.ts` untouched; render still pure / off-I/O (INV-3). INV-5 `~` age held by existing issue-rule path fed by the same snapshot shape.
+- No blocking findings. Advisory: `maxLines: undefined` remains at the widget call site — that is PI-37 scope, not PI-36. First poll still waits one clamped interval before the first publish (PI-22 behavior unchanged).
+- Routing: → **Done**.
 
 ---
 
