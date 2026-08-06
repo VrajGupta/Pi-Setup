@@ -1252,7 +1252,9 @@ read-only dependency.
 
 ## PI-37 — `maxLines` actually read, with `0` meaning unlimited (INV-4 amended)
 
-Status: **Debugger Ready** · Blocked-by: none · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
+Status: **Done** · Blocked-by: none · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
+
+**Reviewer bounce 2 (2026-08-06, expedited coder->fix->review): PASS 96/100. Bounce-1 defect (unlimited sentinel destroyed by double-normalize) fixed and independently probed (250 lines render, no truncation). Board #35 -> Done.**
 
 **What to build.** Close the live gap where `extensions/ui-customization/index.ts:280` passes
 `maxLines: undefined`, so `workflow.statusWidget.maxLines` in `settings.example.json` is read by
