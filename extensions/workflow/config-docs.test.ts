@@ -15,6 +15,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { resolvePickerEnabled } from "../subagents/src/picker-trigger.ts";
+import { resolveStatusWidgetMaxLines } from "../ui-customization/status-widget-settings.ts";
 
 const root = fileURLToPath(new URL("../../", import.meta.url));
 const installer = join(root, "install.sh");
@@ -32,6 +34,39 @@ const runtimeSettings = join(
 function readSettings(path: string) {
   return JSON.parse(readFileSync(path, "utf8"));
 }
+
+test("PI-39: settings keys downArrow and maxLines parse and are consumed by their readers", () => {
+  const settings = readSettings(settingsExample);
+  const workflow = settings.workflow as {
+    subagentPicker?: { downArrow?: unknown };
+    statusWidget?: { maxLines?: unknown };
+  };
+  assert.ok(workflow?.subagentPicker, "workflow.subagentPicker missing");
+  assert.equal(workflow.subagentPicker.downArrow, true);
+  assert.ok(workflow?.statusWidget, "workflow.statusWidget missing");
+  assert.equal(workflow.statusWidget.maxLines, 40);
+  // The keys are consumed by the code that reads them, not just documented.
+  assert.equal(resolvePickerEnabled(settings), true);
+  assert.equal(resolveStatusWidgetMaxLines(settings), 40);
+});
+
+test("PI-39: README documents alt+down, maxLines, and the running-only DOWN gate", () => {
+  const readmeText = readFileSync(readme, "utf8");
+  assert.match(readmeText, /alt\+down/);
+  assert.match(readmeText, /maxLines/);
+  assert.match(readmeText, /only when a subagent is running/i);
+  assert.match(
+    readmeText,
+    /DOWN opens the subagent picker only when a subagent is running/i,
+  );
+});
+
+test("PI-39: SYSTEM.md keeps the picker as open-view-only with explicit in-view send (PI-11, INV-20)", () => {
+  const systemText = readFileSync(system, "utf8");
+  assert.match(systemText, /picker opens a view only/i);
+  assert.match(systemText, /explicit in-view send action/i);
+  assert.match(systemText, /\(PI-11, INV-20\)/);
+});
 
 test("settings document Pi's accepted steering values and keep stages on relay", () => {
   const runtime = readFileSync(runtimeSettings, "utf8");

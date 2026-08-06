@@ -26,16 +26,24 @@ import {
   type WorkflowSubagentSummary,
 } from "../shared/workflow-state.ts";
 import { columns, renderFooter } from "./footer.ts";
+import { readStatusWidgetMaxLines as readMaxLinesFromSettings } from "./status-widget-settings.ts";
 import {
+  normalizeMaxLines,
   renderStatusWidget,
   type StatusWidgetAgent,
   type StatusWidgetContext,
+  type StatusWidgetIssueRecord,
   type StatusWidgetRoutineRecord,
   type StatusWidgetSnapshotView,
   type StatusWidgetState,
 } from "./status-widget.ts";
 
 const STAGES: StageName[] = ["planner", "coder", "debugger", "reviewer"];
+
+// INV-19: rows reserved for the editor, the footer, and one spare row. The
+// surface emits at most `terminalRows - RESERVED_ROWS` lines so it never
+// occludes the prompt.
+const RESERVED_ROWS = 6;
 
 type Activity = "idle" | "working" | "done" | "error";
 
@@ -98,7 +106,47 @@ function titleFor(
   return `${glyph} π ${formatDirectory(ctx.cwd)} · ${stage}`;
 }
 
-export default function uiCustomization(pi: ExtensionAPI) {
+/**
+ * Validate a channel value as the widget's snapshot view. Rejects malformed
+ * shapes so a bad publish never replaces the previous snapshot (INV-6); the
+ * widget additionally isolates malformed individual records at render time.
+ */
+function asStatusWidgetSnapshotView(
+  value: unknown,
+): StatusWidgetSnapshotView | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const v = value as Record<string, unknown>;
+  if (typeof v.capturedAt !== "number" || !Number.isFinite(v.capturedAt))
+    return undefined;
+  if (v.reason !== undefined && typeof v.reason !== "string") return undefined;
+  if (v.records !== undefined && !Array.isArray(v.records)) return undefined;
+  const view: StatusWidgetSnapshotView = {
+    capturedAt: v.capturedAt,
+    records: Array.isArray(v.records)
+      ? v.records.filter(
+          (r): r is StatusWidgetIssueRecord =>
+            r != null && typeof r === "object",
+        )
+      : [],
+    ...(typeof v.reason === "string" ? { reason: v.reason } : {}),
+  };
+  return view;
+}
+
+export interface UiCustomizationOptions {
+  /**
+   * Resolve `workflow.statusWidget.maxLines` off the render path (PI-37):
+   * `0` means unlimited, values clamp to `[8, 200]`, default 40. Defaults to
+   * reading the agent settings file once per widget mount; injectable for
+   * deterministic tests.
+   */
+  readonly readStatusWidgetMaxLines?: () => number;
+}
+
+export default function uiCustomization(
+  pi: ExtensionAPI,
+  options: UiCustomizationOptions = {},
+) {
   let modelInfo = emptyModelInfoState();
   let gitInfo = emptyGitInfoState();
   let workflow = emptyWorkflowState();
@@ -153,6 +201,18 @@ export default function uiCustomization(pi: ExtensionAPI) {
       refresh();
     },
   );
+  // Ticket snapshot (PI-36): the workflow extension emits each completed
+  // off-render tracker poll read; the widget only renders it (INV-10, INV-3).
+  const TICKET_SNAPSHOT_CHANNEL = "vraj:ticket-snapshot";
+  const stopTicketListener = pi.events.on(TICKET_SNAPSHOT_CHANNEL, (value) => {
+    const view = asStatusWidgetSnapshotView(value);
+    if (view === undefined) return;
+    ticketSnapshot = view;
+    refresh();
+  });
+
+  const resolveMaxLines =
+    options.readStatusWidgetMaxLines ?? readMaxLinesFromSettings;
 
   const install = (ctx: ExtensionContext) => {
     if (ctx.mode !== "tui") return;
@@ -240,7 +300,24 @@ export default function uiCustomization(pi: ExtensionAPI) {
     // Register the belowEditor status widget (PI-20, enriched by PI-21).
     ctx.ui.setWidget?.(
       "vraj-status",
-      (_tui, _theme) => {
+      (tui, _theme) => {
+        // Settings read happens here, once per widget mount — never inside
+        // render (INV-3, PI-37). A throwing resolver degrades to the default.
+        let maxLines: number;
+        try {
+          maxLines = resolveMaxLines();
+        } catch {
+          maxLines = normalizeMaxLines(undefined);
+        }
+        // Terminal height is captured here, once per widget mount — never
+        // inside render (INV-3, INV-19). A throwing/missing read degrades in
+        // render to the maxLines behaviour alone (INV-6).
+        let terminalRows: number | undefined;
+        try {
+          terminalRows = tui.terminal.rows;
+        } catch {
+          terminalRows = undefined;
+        }
         return {
           render(width: number) {
             const now = Date.now();
@@ -277,7 +354,9 @@ export default function uiCustomization(pi: ExtensionAPI) {
             }
             return renderStatusWidget({
               width,
-              maxLines: undefined,
+              maxLines,
+              terminalRows,
+              reservedRows: RESERVED_ROWS,
               inputLines: [],
               mode: workflow.mode,
               route: workflow.route,
@@ -306,6 +385,7 @@ export default function uiCustomization(pi: ExtensionAPI) {
     agents = [];
     agentsAt = 0;
     activity = "idle";
+    ticketSnapshot = undefined;
     install(ctx);
   });
   pi.on("agent_start", (_event, ctx) => {
@@ -335,7 +415,9 @@ export default function uiCustomization(pi: ExtensionAPI) {
     stopSubagentListener();
     stopRefreshListener();
     stopRoutinesListener();
+    stopTicketListener();
     routinesSnapshot = undefined;
+    ticketSnapshot = undefined;
     activeTui = undefined;
     currentContext = undefined;
     if (ctx.mode === "tui") {

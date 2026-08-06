@@ -56,6 +56,8 @@ export interface StatusWidgetState {
   width: number;
   maxLines: unknown;
   inputLines: readonly string[];
+  terminalRows?: unknown;
+  reservedRows?: unknown;
   mode?: unknown;
   route?: unknown;
   activeStage?: unknown;
@@ -73,11 +75,39 @@ function normalizeWidth(width: unknown) {
   return Math.max(0, Math.floor(width));
 }
 
-function normalizeMaxLines(value: unknown) {
+/**
+ * Normalize `workflow.statusWidget.maxLines` (PI-37): `0` means unlimited
+ * (the `+N more` cap is not applied), any other numeric value is clamped to
+ * `[8, 200]`, and absent/non-numeric values yield the default 40. The
+ * unlimited sentinel is `Infinity`, so the existing `lines.length <= maxLines`
+ * early return emits every deterministic line with no overflow.
+ */
+export function normalizeMaxLines(value: unknown) {
   if (value === undefined) return DEFAULT_MAX_LINES;
   if (typeof value !== "number" || Number.isNaN(value))
     return DEFAULT_MAX_LINES;
+  if (value === 0 || value === Number.POSITIVE_INFINITY)
+    return Number.POSITIVE_INFINITY;
   return Math.max(8, Math.min(200, Math.floor(value)));
+}
+
+/**
+ * Normalize `terminalRows` (PI-38, INV-19): only a finite positive number is
+ * usable; anything else (undefined, NaN, Infinity, 0, negative) yields
+ * `undefined` so render falls back to `maxLines` behaviour alone and never
+ * emits unbounded (INV-6).
+ */
+function normalizeTerminalRows(value: unknown) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0)
+    return undefined;
+  return Math.floor(value);
+}
+
+/** `reservedRows` (PI-38, INV-19): non-negative finite integer, default 0. */
+function normalizeReservedRows(value: unknown) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0)
+    return 0;
+  return Math.floor(value);
 }
 
 function isFiniteNumber(value: unknown): value is number {
@@ -446,6 +476,30 @@ function issueRows(
   );
 }
 
+// INV-3 / INV-19 perf: the belowEditor surface re-renders at 1Hz, so derived
+// issue rows must not be rebuilt from scratch every render. The row text for a
+// given ticket list depends only on the records array identity and the width,
+// so a one-slot cache keyed on those makes repeated renders cheap. The rule
+// line (which carries "~" staleness against `now`) is still computed fresh each
+// render and is deliberately not cached. Clear-on-identity-change is implicit:
+// a different records object misses the slot and replaces it.
+let issueRowCacheKey: readonly StatusWidgetIssueRecord[] | null = null;
+let issueRowCacheWidth = -1;
+let issueRowCacheValue: string[] | null = null;
+
+function memoIssueRows(
+  records: readonly StatusWidgetIssueRecord[],
+  width: number,
+): string[] {
+  if (records === issueRowCacheKey && width === issueRowCacheWidth) {
+    return issueRowCacheValue ?? [];
+  }
+  issueRowCacheKey = records;
+  issueRowCacheWidth = width;
+  issueRowCacheValue = issueRows(records, width);
+  return issueRowCacheValue;
+}
+
 function issueSection(
   snapshot: StatusWidgetSnapshotView | undefined,
   now: number,
@@ -469,7 +523,7 @@ function issueSection(
         )
       : [];
     const rule = issueRuleLine(records, snapshot.capturedAt, now, width);
-    const rows = issueRows(records, width);
+    const rows = memoIssueRows(records, width);
     return [rule, ...rows];
   } catch {
     return [safeTruncate("issues unavailable — render error", width)];
@@ -663,9 +717,23 @@ export function renderStatusWidget(state: StatusWidgetState): string[] {
       ...inputLines.map((line) => safeTruncate(safeToken(line, ""), width)),
     ];
 
-    if (lines.length <= maxLines) return lines;
+    // INV-19: the terminal-height bound takes precedence over maxLines,
+    // including unlimited mode. An unusable terminalRows degrades to the
+    // maxLines behaviour alone, never an unbounded emit (INV-6).
+    const terminalRows = normalizeTerminalRows(state.terminalRows);
+    const availableRows =
+      terminalRows === undefined
+        ? Number.POSITIVE_INFINITY
+        : Math.max(0, terminalRows - normalizeReservedRows(state.reservedRows));
+    const cap = Math.min(maxLines, availableRows);
 
-    const visibleLines = lines.slice(0, maxLines - 1);
+    if (lines.length <= cap) return lines;
+
+    // Below the base lines plus an overflow line there is no viable widget:
+    // emit nothing rather than push the editor off-screen (INV-19).
+    if (availableRows < base.length + 1) return [];
+
+    const visibleLines = lines.slice(0, cap - 1);
     const suppressedCount = lines.length - visibleLines.length;
     return [
       ...visibleLines,

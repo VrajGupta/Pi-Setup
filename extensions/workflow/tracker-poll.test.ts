@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, join } from "node:path";
 import test from "node:test";
 import type { TicketSnapshot } from "../shared/ticket-snapshot.ts";
+import {
+  TICKET_SNAPSHOT_CHANNEL,
+  readTrackerSnapshotForPoll,
+  startTrackerPolling,
+} from "./index.ts";
 import { startTrackerPoll } from "./tracker-poll.ts";
 
 /**
@@ -350,6 +357,107 @@ test("tracker poll: thrown and malformed reads become non-empty reasoned failure
   assert.equal(malformed.capturedAt, first.capturedAt);
   assert.equal(malformed.reason, "invalid snapshot");
   poll.stop();
+});
+
+// ── PI-36: wiring the poll to the belowEditor issue list ──
+
+function fakeEmitPi(emitted: unknown[]) {
+  return {
+    events: {
+      on() {
+        return () => {};
+      },
+      emit(channel: string, value: unknown) {
+        if (channel === TICKET_SNAPSHOT_CHANNEL) emitted.push(value);
+      },
+    },
+  };
+}
+
+test("PI-36: startTrackerPolling emits each completed snapshot on the ticket channel", async () => {
+  const clock = fakeTimer();
+  const emitted: unknown[] = [];
+  const poll = startTrackerPolling(
+    fakeEmitPi(emitted) as never,
+    { workflow: { trackerPollMs: 500 } },
+    "/repo",
+    {
+      read: async () => ({
+        repo: "repo",
+        capturedAt: clock.now(),
+        records: [record("repo", "PI-36")],
+      }),
+      now: clock.now,
+      setTimer: clock.setTimer,
+      clearTimer: clock.clearTimer,
+    },
+  );
+  // Below the [2000, 300000] clamp the interval resolves to 2000 (INV-13).
+  assert.equal(clock.delays[0], 2000);
+  clock.advance(2000);
+  await flush();
+  await flush();
+  assert.equal(emitted.length, 1, "first completed read publishes");
+  const snap = emitted[0] as {
+    repo: string;
+    capturedAt: number;
+    records: readonly { id: string }[];
+  };
+  assert.equal(snap.repo, "repo");
+  assert.equal(snap.records.length, 1);
+  assert.equal(snap.records[0].id, "PI-36");
+
+  clock.advance(2000);
+  await flush();
+  await flush();
+  assert.equal(emitted.length, 2, "each completed read publishes");
+  poll.stop();
+  clock.advance(10_000);
+  await flush();
+  assert.equal(emitted.length, 2, "no snapshot published after stop");
+});
+
+test("PI-36: absent trackerPollMs defaults to 10000; failed reads publish a reasoned snapshot", async () => {
+  const clock = fakeTimer();
+  const emitted: unknown[] = [];
+  const poll = startTrackerPolling(fakeEmitPi(emitted) as never, {}, "/repo", {
+    read: async () => {
+      throw new Error("repo missing");
+    },
+    now: clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+  });
+  assert.equal(clock.delays[0], 10000, "absent interval uses the default");
+  clock.advance(10000);
+  await flush();
+  await flush();
+  assert.equal(emitted.length, 1);
+  const snap = emitted[0] as { reason?: string; records: readonly unknown[] };
+  assert.equal(snap.reason, "repo missing");
+  assert.deepEqual(snap.records, []);
+  poll.stop();
+});
+
+test("PI-36: readTrackerSnapshotForPoll maps the bounded tracker read off the render path", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "pi36-"));
+  try {
+    writeFileSync(
+      join(dir, "tickets.md"),
+      "## PI-36 — Wire the tracker poll to the belowEditor issue list\nStatus: **Agent Ready** · Blocked-by: none\n",
+    );
+    const snap = await readTrackerSnapshotForPoll(dir);
+    assert.equal(snap.repo, basename(dir));
+    assert.equal(snap.records.length, 1);
+    assert.equal(snap.records[0].id, "PI-36");
+    assert.equal(snap.records[0].status, "agent-ready");
+
+    const missing = await readTrackerSnapshotForPoll(join(dir, "nope"));
+    assert.equal(missing.reason, "no tracker");
+    assert.deepEqual(missing.records, []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("tracker poll: stop clears scheduled timers and prevents further reads", async () => {

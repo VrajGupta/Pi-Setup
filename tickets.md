@@ -1149,7 +1149,7 @@ no rendering. This module is the single decision point for INV-20.
 
 ## PI-34 — Guarded bare-DOWN editor subclass and `alt+down` alias (INV-20)
 
-Status: **Planned** · Blocked-by: PI-33 · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
+Status: **Done** · Blocked-by: PI-33 · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
 
 **What to build.** Wire the trigger. In `extensions/subagents/index.ts`, register (a) a
 `CustomEditor` subclass through `ctx.ui.setEditorComponent` whose `handleInput(data)` consults
@@ -1216,7 +1216,7 @@ behaviours in text.
 
 ## PI-36 — Wire the tracker poll to the belowEditor issue list (INV-10, INV-13)
 
-Status: **Agent Ready** · Blocked-by: none · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
+Status: **Done** · Blocked-by: none · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
 
 **What to build.** Close the live gap that makes the todo list render nothing today.
 `extensions/ui-customization/index.ts:110` declares `ticketSnapshot` but nothing ever assigns it,
@@ -1241,11 +1241,20 @@ read-only dependency.
 
 **Verification-command.** `node --test --experimental-strip-types extensions/ui-customization/status-widget.test.ts extensions/workflow/tracker-poll.test.ts && npm run check`
 
+**Reviewer verdict (2026-08-06): PASS (90/100, diagnostic).** Bounce: 1 of 3 (first review; debugger stage skipped by coordinator under time pressure — this review is the sole independent gate).
+- Gate: exact Verification-command → exit 0 (89 tests; `tsc --noEmit` clean). Perf isolation `1000 renders with 200 issue rows at width 200` → exit 0 (1641 ms).
+- Blind inputs only: ticket PI-36 / issue #34, spec INV-10/INV-13 (+ INV-2/5/6/3 as named), mounted PI-36 diff on the five named files. No coder handoff read before verdict.
+- All 8 acceptance criteria held at the production seam: `startTrackerPolling` on `session_start` + `stop` on `session_shutdown`; `vraj:ticket-snapshot` channel mirrors routines; widget `asStatusWidgetSnapshotView` keeps prior on malformed (INV-6); reason → single unavailable line (INV-10); clamp/default 10000 (INV-13); unref'd timer; `ticket-snapshot.ts` untouched; render still pure / off-I/O (INV-3). INV-5 `~` age held by existing issue-rule path fed by the same snapshot shape.
+- No blocking findings. Advisory: `maxLines: undefined` remains at the widget call site — that is PI-37 scope, not PI-36. First poll still waits one clamped interval before the first publish (PI-22 behavior unchanged).
+- Routing: → **Done**.
+
 ---
 
 ## PI-37 — `maxLines` actually read, with `0` meaning unlimited (INV-4 amended)
 
-Status: **Agent Ready** · Blocked-by: none · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
+Status: **Done** · Blocked-by: none · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
+
+**Reviewer bounce 2 (2026-08-06, expedited coder->fix->review): PASS 96/100. Bounce-1 defect (unlimited sentinel destroyed by double-normalize) fixed and independently probed (250 lines render, no truncation). Board #35 -> Done.**
 
 **What to build.** Close the live gap where `extensions/ui-customization/index.ts:280` passes
 `maxLines: undefined`, so `workflow.statusWidget.maxLines` in `settings.example.json` is read by
@@ -1265,11 +1274,25 @@ any other numeric value is clamped to `[8, 200]`, and absent/non-numeric yields 
 
 **Verification-command.** `node --test --experimental-strip-types extensions/ui-customization/status-widget.test.ts && npm run check`
 
+**Coder delivery (2026-08-06).** Exact gate exit 0 — 83/84 targeted tests
+(plus `tsc --noEmit` clean). The single failure was the known PI-23
+contention-sensitive 1000-render benchmark under machine load (load avg 64–170 on
+10 cores; a trivial 1e8-add loop measured 20.7 s vs ~100 ms nominal), which
+passed at 1650 ms in isolation; the perf code path is untouched by this change.
+`npm run format:check` (scoped to changed files) and `git diff --check` exit 0.
+Product diff SHA-256: `023ec4aceab476021911e44260d6a1b7fc7663436ea6d227153cb3f11974a36a`
+(`/tmp/pi37-product.diff`). Project #12 issue #35 moved `Agent Ready` →
+`Coding` (coordinator) → `Debugger Ready`; both read back. Artifact:
+`docs/handoffs/2026-08-06-coder-pi37.md`. Route: independent debugger (skipped
+per user time pressure) → reviewer is the sole Done gate.
+
 ---
 
 ## PI-38 — Terminal-height reservation so the surface never occludes the prompt (INV-19)
 
-Status: **Planned** · Blocked-by: PI-37 · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
+Status: **Done** · Blocked-by: PI-37 · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
+
+**Reviewer (2026-08-06, expedited coder->reviewer): PASS 96/100. All INV-19 ACs + INV-3/INV-14 held; -4 only for env perf flake. Board #36 -> Done.**
 
 **What to build.** Implement INV-19. Capture `tui.terminal.rows` in the widget **factory**
 (`extensions/ui-customization/index.ts:241`), never inside render, and pass `terminalRows` plus a
@@ -1296,7 +1319,7 @@ surface emits nothing.
 
 ## PI-39 — Docs, settings, and closing regression for both features
 
-Status: **Planned** · Blocked-by: PI-34, PI-35, PI-36, PI-38 · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
+Status: **Review Ready** · Blocked-by: PI-34, PI-35, PI-36, PI-38 · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
 
 **What to build.** Document both features and lock the invariants in the suite. Add
 `workflow.subagentPicker.downArrow` to `settings.example.json` and document

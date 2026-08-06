@@ -60,6 +60,11 @@ import {
 } from "./routines-settings.ts";
 import { assembleWorkflowSystemPrompt } from "./prompt-assembly.ts";
 import { persistWorkflowMode, validateWorkflowMode } from "./settings-mode.ts";
+import {
+  startTrackerPoll,
+  type TrackerPoll,
+  type TrackerPollSnapshot,
+} from "./tracker-poll.ts";
 
 const REASONING_LEVELS = [
   "off",
@@ -582,6 +587,68 @@ export async function readRepositoryTracker(
   } catch {
     return { ...base, reason: "unreadable" };
   }
+}
+
+/** Map one bounded repository read to the poll's snapshot shape (PI-36). */
+export async function readTrackerSnapshotForPoll(
+  path: string,
+): Promise<TicketSnapshot> {
+  const read = await readRepositoryTracker(path);
+  if (read.snapshot !== undefined) {
+    return {
+      repo: read.repo,
+      capturedAt: read.capturedAt,
+      records: read.snapshot.records,
+    };
+  }
+  return {
+    repo: read.repo,
+    capturedAt: read.capturedAt,
+    records: [],
+    reason: read.reason ?? "unreadable",
+  };
+}
+
+export interface TrackerPollLifecycleOptions {
+  readonly read?: () => Promise<TicketSnapshot>;
+  readonly now?: () => number;
+  readonly setTimer?: (callback: () => void, delayMs: number) => NodeJS.Timeout;
+  readonly clearTimer?: (handle: NodeJS.Timeout) => void;
+}
+
+/**
+ * Start the off-render tracker poll for the belowEditor issue list (PI-36).
+ * Resolves `workflow.trackerPollMs` (clamped by the poll, INV-13) and the
+ * first declared repository from settings; every completed snapshot is emitted
+ * on TICKET_SNAPSHOT_CHANNEL. Clock/timer/read are injectable for tests; the
+ * production path uses the real clock, unref'd timers, and the bounded read.
+ */
+export function startTrackerPolling(
+  pi: Pick<ExtensionAPI, "events">,
+  settings: unknown,
+  cwd: string,
+  options: TrackerPollLifecycleOptions = {},
+): TrackerPoll {
+  const workflow = isRecord(settings) ? settings.workflow : undefined;
+  const intervalMs = isRecord(workflow) ? workflow.trackerPollMs : undefined;
+  const paths = resolveRepositories(settings, cwd).paths;
+  const path = paths.length > 0 ? paths[0] : cwd;
+  const now = options.now ?? Date.now;
+  const setTimer =
+    options.setTimer ??
+    ((callback: () => void, delay: number) => setTimeout(callback, delay));
+  const clearTimer =
+    options.clearTimer ?? ((handle: NodeJS.Timeout) => clearTimeout(handle));
+  return startTrackerPoll({
+    intervalMs,
+    read: options.read ?? (() => readTrackerSnapshotForPoll(path)),
+    now,
+    setTimer,
+    clearTimer,
+    onSnapshot: (snapshot) => {
+      pi.events.emit(TICKET_SNAPSHOT_CHANNEL, snapshot);
+    },
+  });
 }
 
 export class FlowPanel {
@@ -1296,6 +1363,10 @@ function isFlowInput(value: unknown): value is FlowInput {
 // the workflow extension to the belowEditor widget (ui-customization).
 export const ROUTINES_SNAPSHOT_CHANNEL = "vraj:routines-snapshot";
 
+// The ticket snapshot channel carries each completed off-render tracker poll
+// read from the workflow extension to the belowEditor widget (PI-36, INV-10).
+export const TICKET_SNAPSHOT_CHANNEL = "vraj:ticket-snapshot";
+
 /**
  * Build the read-only widget summary for every configured routine from the
  * scheduler's snapshot (INV-10: off-render producer never writes; the widget
@@ -1435,6 +1506,7 @@ export default function workflow(pi: ExtensionAPI) {
   let lastEnvelope = "";
   let configuredRoutines: readonly RoutineDefinition[] = [];
   let routinesLifecycle: RoutinesLifecycle | undefined;
+  let trackerPoll: TrackerPoll | undefined;
 
   const publish = () => {
     state = { ...state, updatedAt: Date.now() };
@@ -1985,6 +2057,8 @@ export default function workflow(pi: ExtensionAPI) {
       isRecord(settings) ? settings : {},
     ).routines;
     startRoutineLifecycle();
+    trackerPoll?.stop();
+    trackerPoll = startTrackerPolling(pi, settings, ctx.cwd);
     if (warning) ctx.ui.notify(warning, "warning");
     try {
       const saved = JSON.parse(
@@ -2076,6 +2150,8 @@ export default function workflow(pi: ExtensionAPI) {
   pi.on("session_shutdown", () => {
     routinesLifecycle?.stop();
     routinesLifecycle = undefined;
+    trackerPoll?.stop();
+    trackerPoll = undefined;
     stopSubagentState();
     requestRender = undefined;
     context = undefined;
