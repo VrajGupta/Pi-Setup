@@ -1111,7 +1111,7 @@ Status: **Done** · Blocked-by: PI-31 (Done) · GitHub issue #30
 
 ## PI-33 — Pure down-arrow picker trigger policy (INV-20)
 
-Status: **Debugger Ready** · Blocked-by: none · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
+Status: **Review Ready** · Blocked-by: none · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
 
 **What to build.** A pure module `extensions/subagents/src/picker-trigger.ts` exporting
 `shouldOpenPicker(input)` and `resolvePickerEnabled(settings)`. `shouldOpenPicker` takes

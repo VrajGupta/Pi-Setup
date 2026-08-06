@@ -26,25 +26,35 @@ export interface SubagentPickerSettings {
 }
 
 export function shouldOpenPicker(input: unknown): boolean {
-  if (typeof input !== "object" || input === null) return false;
-  const state = input as Partial<PickerTriggerInput>;
-  if (
-    typeof state.runningCount !== "number" ||
-    !Number.isFinite(state.runningCount)
-  ) {
+  try {
+    if (typeof input !== "object" || input === null || Array.isArray(input)) {
+      return false;
+    }
+    const state = input as Partial<PickerTriggerInput>;
+    if (
+      typeof state.runningCount !== "number" ||
+      !Number.isFinite(state.runningCount)
+    ) {
+      return false;
+    }
+    return (
+      state.editorText === "" &&
+      state.autocompleteOpen === false &&
+      state.historyActive === false &&
+      state.runningCount >= 1 &&
+      state.enabled !== false
+    );
+  } catch {
     return false;
   }
-  return (
-    state.editorText === "" &&
-    state.autocompleteOpen === false &&
-    state.historyActive === false &&
-    state.runningCount >= 1 &&
-    state.enabled !== false
-  );
 }
 
 export function resolvePickerEnabled(
   settings?: SubagentPickerSettings | null,
 ): boolean {
-  return settings?.workflow?.subagentPicker?.downArrow !== false;
+  try {
+    return settings?.workflow?.subagentPicker?.downArrow !== false;
+  } catch {
+    return true;
+  }
 }

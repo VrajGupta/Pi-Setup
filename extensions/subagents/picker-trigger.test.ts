@@ -57,6 +57,17 @@ test("malformed inputs return false and never throw", () => {
   ]) {
     assert.equal(shouldOpenPicker(input), false);
   }
+
+  const arrayInput = Object.assign([], positive);
+  assert.equal(shouldOpenPicker(arrayInput), false);
+
+  const throwingInput = { ...positive };
+  Object.defineProperty(throwingInput, "runningCount", {
+    get() {
+      throw new Error("malformed input");
+    },
+  });
+  assert.equal(shouldOpenPicker(throwingInput), false);
 });
 
 test("resolvePickerEnabled is true unless downArrow is exactly false", () => {
@@ -88,6 +99,14 @@ test("resolvePickerEnabled is true unless downArrow is exactly false", () => {
     }),
     false,
   );
+
+  const throwingSettings = {};
+  Object.defineProperty(throwingSettings, "workflow", {
+    get() {
+      throw new Error("malformed settings");
+    },
+  });
+  assert.equal(resolvePickerEnabled(throwingSettings), true);
 });
 
 test("the module imports no fs, child_process, or TUI/runtime packages", () => {
