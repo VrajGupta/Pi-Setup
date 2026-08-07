@@ -219,7 +219,7 @@ Status: **Done** · Blocked-by: PI-04 · Phase 1
 
 ## PI-06 — Adopt Ponytail and Caveman-style terseness explicitly (Phase 2)
 
-Status: **Done** · Blocked-by: none · Phase 2
+Status: **Done** · Blocked-by: PI-04 · Phase 2
 
 **What to build.** Make the already-installed Ponytail package a declared, pinned part of this configuration and give Pi a Caveman-equivalent terse-output policy: record the package in `settings.example.json`, document both in `README.md` and `SYSTEM.md`, add a `skills/terse-output/SKILL.md` porting the Caveman rules (including its safety exception for security warnings, irreversible actions, and multi-step sequences), and make `install.sh` merge rather than overwrite the user's existing `packages` list.
 
