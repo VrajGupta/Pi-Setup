@@ -1,4 +1,7 @@
-import type { TicketSnapshot } from "../shared/ticket-snapshot.ts";
+import {
+  isValidTicketSnapshot,
+  type TicketSnapshot,
+} from "../shared/ticket-snapshot.ts";
 
 /**
  * A fixed-interval poll of the tracker that runs off the render path.
@@ -35,30 +38,6 @@ function clampInterval(
   }
   if (!Number.isFinite(value)) return defaultValue;
   return Math.max(min, Math.min(max, value));
-}
-
-function isTicketSnapshot(value: unknown): value is TicketSnapshot {
-  if (typeof value !== "object" || value === null) return false;
-  try {
-    const candidate = value as {
-      repo?: unknown;
-      capturedAt?: unknown;
-      records?: unknown;
-      reason?: unknown;
-    };
-    return (
-      typeof candidate.repo === "string" &&
-      Number.isFinite(candidate.capturedAt) &&
-      Array.isArray(candidate.records) &&
-      candidate.records.every((record) => {
-        if (typeof record !== "object" || record === null) return false;
-        return (record as { repo?: unknown }).repo === candidate.repo;
-      }) &&
-      (candidate.reason === undefined || typeof candidate.reason === "string")
-    );
-  } catch {
-    return false;
-  }
 }
 
 function reasonFrom(error: unknown) {
@@ -189,7 +168,7 @@ export function startTrackerPoll({
           settle(
             timeoutHandle,
             () => {
-              if (!isTicketSnapshot(result)) {
+              if (!isValidTicketSnapshot(result)) {
                 recordFailure("invalid snapshot");
                 return;
               }

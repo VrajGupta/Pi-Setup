@@ -346,12 +346,7 @@ const PIPELINE_ORDER: readonly string[] = [
   "planned",
 ];
 
-const DONE_STATUSES: readonly string[] = [
-  "done",
-  "dropped",
-  "canceled",
-  "duplicate",
-];
+const DONE_STATUSES: readonly string[] = ["done"];
 
 function issueStatusLabel(status: string): string {
   return STATUS_LABEL[status] ?? status;
@@ -393,8 +388,13 @@ function issueRuleLine(
   now: number,
   width: number,
 ): string {
-  const active = records.filter((r) => isDisplayedStatus(r.status)).length;
-  const done = records.filter((r) => isDoneStatus(r.status)).length;
+  let active = 0;
+  let done = 0;
+  for (const record of records) {
+    if (!record || typeof record !== "object") continue;
+    if (isDisplayedStatus(record.status)) active += 1;
+    if (isDoneStatus(record.status)) done += 1;
+  }
   const stale =
     isFiniteNumber(now) &&
     isFiniteNumber(capturedAt) &&
@@ -517,11 +517,14 @@ function issueSection(
         ),
       ];
     }
-    const records = Array.isArray(snapshot.records)
-      ? snapshot.records.filter(
-          (r): r is NonNullable<typeof r> => r != null && typeof r === "object",
-        )
-      : [];
+    if (
+      isFiniteNumber(now) &&
+      isFiniteNumber(snapshot.capturedAt) &&
+      now - snapshot.capturedAt > STALE_AFTER_MS
+    ) {
+      return [safeTruncate("issues unavailable — stale snapshot", width)];
+    }
+    const records = Array.isArray(snapshot.records) ? snapshot.records : [];
     const rule = issueRuleLine(records, snapshot.capturedAt, now, width);
     const rows = memoIssueRows(records, width);
     return [rule, ...rows];

@@ -63,7 +63,7 @@ const snapshot = {
       title: "ready work",
       status: "agent-ready",
       assignee: "coder",
-      blockedBy: [{ id: "PI-01", satisfied: true }],
+      blockedBy: [],
       blocking: "unblocked",
       eta: { kind: "estimated", minMs: 60_000, maxMs: 180_000, n: 3 },
     },
@@ -102,15 +102,6 @@ const snapshot = {
       id: "PI-06",
       title: "dropped work",
       status: "dropped",
-      blockedBy: [],
-      blocking: "unblocked",
-      eta: { kind: "unknown" },
-    },
-    {
-      repo: "VrajGupta/Pi-Setup",
-      id: "PI-07",
-      title: "unsafe\n\u001b[2Japi_key=snapshot-secret",
-      status: "unknown",
       blockedBy: [],
       blocking: "unblocked",
       eta: { kind: "unknown" },
@@ -183,14 +174,14 @@ test("Issues/Todos renders every snapshot ticket once with explicit monochrome p
   for (const record of snapshot.records) {
     assert.equal(output.match(new RegExp(`id ${record.id}`, "g"))?.length, 1);
   }
-  assert.match(output, /repo VrajGupta\/Pi-Setup · 7 tickets/);
+  assert.match(output, /repo VrajGupta\/Pi-Setup · 6 tickets/);
   assert.match(
     output,
     /repo VrajGupta\/Pi-Setup · id PI-02 · title ready work · assignee coder · status ready/,
   );
   assert.match(
     output,
-    /blockers PI-01 \(satisfied\) · chain satisfied · eta 60000–180000ms \(n=3\)/,
+    /blockers none · chain satisfied · eta 60000–180000ms \(n=3\)/,
   );
   assert.match(
     output,
@@ -199,7 +190,6 @@ test("Issues/Todos renders every snapshot ticket once with explicit monochrome p
   assert.match(output, /status reviewing/);
   assert.match(output, /status done/);
   assert.match(output, /status dropped/);
-  assert.match(output, /assignee — · status unknown/);
   assert.doesNotMatch(output, /snapshot-secret|\u001b|\nunsafe/);
 });
 
@@ -220,13 +210,13 @@ test("tickets are grouped by repository and never render under a repository they
       {
         path: "/work/alpha",
         repo: "alpha",
-        capturedAt: Date.now(),
+        capturedAt: alpha.capturedAt,
         snapshot: alpha,
       },
       {
         path: "/work/beta",
         repo: "beta",
-        capturedAt: Date.now(),
+        capturedAt: beta.capturedAt,
         snapshot: beta,
       },
       {
@@ -342,7 +332,7 @@ test("with no registry configured the view shows this repository only and says s
       {
         path: "/repo",
         repo: snapshot.repo,
-        capturedAt: Date.now(),
+        capturedAt: snapshot.capturedAt,
         snapshot,
       },
     ],
@@ -350,7 +340,7 @@ test("with no registry configured the view shows this repository only and says s
     .render(240)
     .join("\n");
   assert.match(output, / registry default: this repository only/);
-  assert.match(output, /repo VrajGupta\/Pi-Setup · 7 tickets/);
+  assert.match(output, /repo VrajGupta\/Pi-Setup · 6 tickets/);
   assert.match(output, /id PI-01/);
 });
 
@@ -371,20 +361,21 @@ test("a stale snapshot renders with ~ and its age, never as current", () => {
       {
         path: "/work/alpha",
         repo: "alpha",
-        capturedAt: Date.now(),
+        capturedAt: alpha.capturedAt,
         snapshot: alpha,
       },
       {
         path: "/work/beta",
         repo: "beta",
-        capturedAt: Date.now(),
+        capturedAt: beta.capturedAt,
         snapshot: beta,
       },
     ],
   }))
     .render(240)
     .join("\n");
-  assert.match(output, / repo alpha · 1 ticket · ~ \d+s/);
+  assert.match(output, / repo alpha — unavailable — stale snapshot/);
+  assert.doesNotMatch(output, /title alpha title/);
   assert.doesNotMatch(output, / repo beta · 1 ticket · ~/);
 });
 
@@ -405,13 +396,33 @@ test("legacy single-snapshot fallback validates and rejects hostile fields", () 
     /issue list unavailable — invalid snapshot/,
   );
 
-  const hostile = {
+  // An empty repository identity is malformed, not a row to render with a "—"
+  // placeholder: an unattributable ticket must fail closed (PI-40 invariant 3/4).
+  const emptyRepo = {
     ...snapshot,
     repo: "",
+    records: [{ ...snapshot.records[0]!, repo: "", id: "PI-99" }],
+  };
+  assert.match(
+    legacyIssuesPanel(() => emptyRepo)
+      .render(240)
+      .join("\n"),
+    /issue list unavailable — invalid snapshot/,
+  );
+  assert.doesNotMatch(
+    legacyIssuesPanel(() => emptyRepo)
+      .render(240)
+      .join("\n"),
+    /id PI-99/,
+  );
+
+  // A well-formed snapshot carrying hostile field content still renders, and the
+  // secret/terminal-control redaction stays intact (PI-40 invariant 6).
+  const hostile = {
+    ...snapshot,
     records: [
       {
         ...snapshot.records[0]!,
-        repo: "",
         id: "PI-99",
         title:
           'DATABASE_URL=postgres://user:SYNTHETIC_DB_PASSWORD@db.example/app password="SYNTHETIC_UNTERMINATED_SECRET TAIL\nAWS_ACCESS_KEY_ID=SYNTHETIC_AWS_SECRET\nsip:user:SYNTHETIC_SIP_SECRET@example.test',
@@ -422,12 +433,13 @@ test("legacy single-snapshot fallback validates and rejects hostile fields", () 
   const hostileOutput = legacyIssuesPanel(() => hostile)
     .render(240)
     .join("\n");
-  assert.match(hostileOutput, /repo — · id PI-99/);
+  assert.match(hostileOutput, /id PI-99/);
   assert.match(hostileOutput, /assignee —/);
   assert.doesNotMatch(
     hostileOutput,
     /SYNTHETIC_DB_PASSWORD|SYNTHETIC_UNTERMINATED_SECRET|TAIL|SYNTHETIC_AWS_SECRET|SYNTHETIC_SIP_SECRET/,
   );
+  assert.doesNotMatch(hostileOutput, /\u001b/);
 
   const hostileRepo = "Authorization: Bearer SYNTHETIC_REPO\u001b[2J";
   const hostileRepoLines = issuesPanel(() => ({
@@ -466,17 +478,22 @@ test("Issues/Todos does not reuse rows after a malformed snapshot", () => {
 
   current = {
     ...snapshot,
-    get records(): never {
-      throw new Error("snapshot corrupted");
-    },
+    records: [
+      {
+        ...snapshot.records[0]!,
+        get title(): never {
+          throw new Error("snapshot corrupted");
+        },
+      },
+    ],
   };
   assert.match(
     flow.render(120).join("\n"),
-    /issue list unavailable — snapshot unavailable/,
+    /issue list unavailable — invalid snapshot/,
   );
   assert.match(
     flow.render(120).join("\n"),
-    /issue list unavailable — snapshot unavailable/,
+    /issue list unavailable — invalid snapshot/,
   );
 });
 

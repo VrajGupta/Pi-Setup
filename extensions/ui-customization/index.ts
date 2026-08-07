@@ -25,6 +25,10 @@ import {
   type WorkflowState,
   type WorkflowSubagentSummary,
 } from "../shared/workflow-state.ts";
+import {
+  isValidTicketSnapshot,
+  type TicketSnapshot,
+} from "../shared/ticket-snapshot.ts";
 import { columns, renderFooter } from "./footer.ts";
 import { readStatusWidgetMaxLines as readMaxLinesFromSettings } from "./status-widget-settings.ts";
 import {
@@ -32,7 +36,6 @@ import {
   renderStatusWidget,
   type StatusWidgetAgent,
   type StatusWidgetContext,
-  type StatusWidgetIssueRecord,
   type StatusWidgetRoutineRecord,
   type StatusWidgetSnapshotView,
   type StatusWidgetState,
@@ -114,23 +117,22 @@ function titleFor(
 function asStatusWidgetSnapshotView(
   value: unknown,
 ): StatusWidgetSnapshotView | undefined {
-  if (!value || typeof value !== "object") return undefined;
-  const v = value as Record<string, unknown>;
-  if (typeof v.capturedAt !== "number" || !Number.isFinite(v.capturedAt))
-    return undefined;
-  if (v.reason !== undefined && typeof v.reason !== "string") return undefined;
-  if (v.records !== undefined && !Array.isArray(v.records)) return undefined;
-  const view: StatusWidgetSnapshotView = {
-    capturedAt: v.capturedAt,
-    records: Array.isArray(v.records)
-      ? v.records.filter(
-          (r): r is StatusWidgetIssueRecord =>
-            r != null && typeof r === "object",
-        )
-      : [],
-    ...(typeof v.reason === "string" ? { reason: v.reason } : {}),
+  if (!isValidTicketSnapshot(value)) return undefined;
+  const snapshot: TicketSnapshot = value;
+  return {
+    capturedAt: snapshot.capturedAt,
+    records: snapshot.records.map(
+      ({ id, title, status, assignee, blockedBy, blocking }) => ({
+        id,
+        title,
+        status,
+        ...(assignee === undefined ? {} : { assignee }),
+        blockedBy,
+        blocking,
+      }),
+    ),
+    ...(snapshot.reason === undefined ? {} : { reason: snapshot.reason }),
   };
-  return view;
 }
 
 export interface UiCustomizationOptions {

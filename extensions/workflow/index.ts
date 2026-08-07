@@ -37,8 +37,8 @@ import {
 import type { StatusWidgetRoutineRecord } from "../ui-customization/status-widget.ts";
 import { buildReading, isStale } from "../shared/stage-progress.ts";
 import {
+  isValidTicketSnapshot,
   parseTicketSnapshot,
-  TICKET_STATUSES,
   type TicketRecord,
   type TicketSnapshot,
   type TicketStatus,
@@ -260,93 +260,8 @@ function readTimestamp(
   }
 }
 
-function isTicketStatus(value: unknown): value is TicketStatus {
-  return (
-    typeof value === "string" && TICKET_STATUSES.includes(value as TicketStatus)
-  );
-}
-
-function isTicketRecord(value: unknown): value is TicketRecord {
-  if (!isRecord(value)) return false;
-  if (
-    typeof value.repo !== "string" ||
-    typeof value.id !== "string" ||
-    typeof value.title !== "string" ||
-    !isTicketStatus(value.status) ||
-    !Array.isArray(value.blockedBy) ||
-    (value.assignee !== undefined &&
-      !["planner", "coder", "debugger", "reviewer"].includes(
-        value.assignee as string,
-      )) ||
-    !["unblocked", "blocked", "blocked (cycle)"].includes(
-      value.blocking as string,
-    ) ||
-    !isRecord(value.eta)
-  ) {
-    return false;
-  }
-  const blockerIds = new Set<string>();
-  if (
-    !value.blockedBy.every(
-      (blocker) =>
-        isRecord(blocker) &&
-        typeof blocker.id === "string" &&
-        blocker.id.trim().length > 0 &&
-        !blockerIds.has(blocker.id) &&
-        blockerIds.add(blocker.id) &&
-        typeof blocker.satisfied === "boolean",
-    )
-  ) {
-    return false;
-  }
-  const hasUnsatisfiedBlocker = value.blockedBy.some(
-    (blocker) => isRecord(blocker) && blocker.satisfied === false,
-  );
-  if (
-    (value.blocking === "unblocked" && hasUnsatisfiedBlocker) ||
-    (value.blocking === "blocked" && !hasUnsatisfiedBlocker)
-  ) {
-    return false;
-  }
-  if (value.eta.kind === "unknown") return true;
-  const minMs = finiteNumber(value.eta.minMs);
-  const maxMs = finiteNumber(value.eta.maxMs);
-  const n = finiteNumber(value.eta.n);
-  return (
-    value.eta.kind === "estimated" &&
-    minMs !== undefined &&
-    Number.isSafeInteger(minMs) &&
-    minMs > 0 &&
-    maxMs !== undefined &&
-    Number.isSafeInteger(maxMs) &&
-    maxMs >= minMs &&
-    n !== undefined &&
-    Number.isSafeInteger(n) &&
-    n >= 3
-  );
-}
-
 function isTicketSnapshot(value: unknown): value is TicketSnapshot {
-  if (
-    !isRecord(value) ||
-    typeof value.repo !== "string" ||
-    finiteNumber(value.capturedAt) === undefined ||
-    !Array.isArray(value.records) ||
-    (value.reason !== undefined && typeof value.reason !== "string")
-  ) {
-    return false;
-  }
-  const ids = new Set<string>();
-  for (const record of value.records) {
-    if (
-      !isTicketRecord(record) ||
-      record.repo !== value.repo ||
-      ids.has(record.id)
-    )
-      return false;
-    ids.add(record.id);
-  }
-  return true;
+  return isValidTicketSnapshot(value);
 }
 
 function issueField(value: unknown) {
@@ -433,15 +348,22 @@ function routineRow(routine: RoutineDefinition, now: number) {
   return `${name} · ${schedule} · ${state} · prompt ${previewText}`;
 }
 
+function repositoryIsFresh(read: RepositoryRead, now: number) {
+  if (read.snapshot === undefined || read.snapshot.reason !== undefined)
+    return false;
+  const capturedAt = Math.min(read.capturedAt, read.snapshot.capturedAt);
+  return Number.isFinite(now) && now - capturedAt <= REPOSITORY_STALENESS_MS;
+}
+
 function repositoryHeader(read: RepositoryRead, now: number) {
   if (read.snapshot === undefined || read.snapshot.reason !== undefined) {
     return ` repo ${issueField(read.repo)} — unavailable — ${issueField(read.reason || read.snapshot?.reason || "unknown")}`;
   }
-  const capturedAt = Math.min(read.capturedAt, read.snapshot.capturedAt);
-  const age = Math.max(0, now - capturedAt);
+  if (!repositoryIsFresh(read, now)) {
+    return ` repo ${issueField(read.repo)} — unavailable — stale snapshot`;
+  }
   const count = read.snapshot.records.length;
-  const stale = age > REPOSITORY_STALENESS_MS;
-  return ` repo ${issueField(read.repo)} · ${count} ticket${count === 1 ? "" : "s"}${stale ? ` · ~ ${formatElapsed(age)}` : ""}`;
+  return ` repo ${issueField(read.repo)} · ${count} ticket${count === 1 ? "" : "s"}`;
 }
 
 function repositoryRows(read: RepositoryRead) {
@@ -460,7 +382,7 @@ function repositoryList(
   if (defaulted) lines.push(" registry default: this repository only");
   reads.forEach((read, index) => {
     lines.push(repositoryHeader(read, now));
-    lines.push(...(sections[index] ?? []));
+    if (repositoryIsFresh(read, now)) lines.push(...(sections[index] ?? []));
   });
   return lines;
 }

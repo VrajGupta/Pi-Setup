@@ -1,14 +1,14 @@
 # Tickets — Vraj Pi
 
-Local-file tracker (no GitHub Project for this repo; see `docs/2026-08-04-flow-ui-and-token-savings.md`
-and the addendum `docs/2026-08-04-flow-todo-crossrepo-and-docs.md`).
+Local mirror of the canonical GitHub Project #12 board (owner `vraj-ai`; historical specs remain under `docs/`).
 Work top to bottom. A ticket is claimable only when every **Blocked-by** ticket is Done.
 Every `Verification-command` is run from the repo root and must exit 0 exactly when the ticket is complete.
 
 Status legend: `Planned` · `Agent Ready` · `Coding` · `Debugger Ready` · `Debugging` · `Review Ready` · `Reviewing` · `Done`
 
-GitHub issue mirror. Live board: **GitHub Project #12 (owner `VrajGupta`)** — its `Status` field is the
-workflow authority for stage state; this file mirrors it and carries the durable ticket text.
+The live board's **Status** field is the workflow authority; this file mirrors it and carries the durable ticket text.
+`PI-06`–`PI-39` are the 34 board-mapped tickets (see the mapping below). `PI-01`–`PI-05` predate the GitHub board and
+have no issue number; they are retained as completed local history and are never deleted to make a count match.
 
 `PI-06 → #2` · `PI-07 → #9` · `PI-08 → #10` · `PI-09 → #11` · `PI-10 → #7` · `PI-11 → #1` · `PI-18 → #17`
 `PI-12 → #6` · `PI-13 → #4` · `PI-14 → #8` · `PI-15 → #12` · `PI-16 → #3` · `PI-17 → #5` · `PI-19 → #16`
@@ -219,7 +219,7 @@ Status: **Done** · Blocked-by: PI-04 · Phase 1
 
 ## PI-06 — Adopt Ponytail and Caveman-style terseness explicitly (Phase 2)
 
-Status: **Done** · Blocked-by: PI-04 · Phase 2
+Status: **Done** · Blocked-by: none · Phase 2
 
 **What to build.** Make the already-installed Ponytail package a declared, pinned part of this configuration and give Pi a Caveman-equivalent terse-output policy: record the package in `settings.example.json`, document both in `README.md` and `SYSTEM.md`, add a `skills/terse-output/SKILL.md` porting the Caveman rules (including its safety exception for security warnings, irreversible actions, and multi-step sequences), and make `install.sh` merge rather than overwrite the user's existing `packages` list.
 

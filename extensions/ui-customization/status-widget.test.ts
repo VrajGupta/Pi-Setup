@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { visibleWidth } from "@earendil-works/pi-tui";
 import uiCustomization from "./index.ts";
+import { parseTicketSnapshot } from "../shared/ticket-snapshot.ts";
 import { readStatusWidgetMaxLines } from "./status-widget-settings.ts";
 import {
   layoutColumns,
@@ -208,10 +209,17 @@ test("PI-37: a settings value of 0 survives the factory-to-render round trip for
   // must survive the factory-to-render round trip without a 200-line cap.
   pi.events.emit("vraj:ticket-snapshot", {
     repo: "pi",
-    capturedAt: 100_000,
-    records: Array.from({ length: 201 }, (_, i) =>
-      issue({ id: `PI-${100 + i}`, status: "coding", assignee: "coder" }),
-    ),
+    capturedAt: Date.now(),
+    records: Array.from({ length: 201 }, (_, i) => ({
+      repo: "pi",
+      id: `PI-${100 + i}`,
+      title: `ticket ${i}`,
+      status: "coding",
+      assignee: "coder",
+      blockedBy: [],
+      blocking: "unblocked",
+      eta: { kind: "unknown" },
+    })),
   });
   const rendered = widget.render(80);
   assert.equal(rendered.length, 205);
@@ -583,15 +591,28 @@ test("PI-36: emitted snapshots render issue rows; malformed values keep the prio
   // One completed poll read publishes a snapshot → rows render (INV-10).
   pi.events.emit("vraj:ticket-snapshot", {
     repo: "pi",
-    capturedAt: 100_000,
+    capturedAt: Date.now(),
     records: [
-      issue({
+      {
+        repo: "pi",
         id: "PI-36",
+        title: "wire the poll",
         status: "coding",
         assignee: "coder",
-        title: "wire the poll",
-      }),
-      issue({ id: "PI-35", status: "done", assignee: "reviewer" }),
+        blockedBy: [],
+        blocking: "unblocked",
+        eta: { kind: "unknown" },
+      },
+      {
+        repo: "pi",
+        id: "PI-35",
+        title: "done",
+        status: "done",
+        assignee: "reviewer",
+        blockedBy: [],
+        blocking: "unblocked",
+        eta: { kind: "unknown" },
+      },
     ],
   });
   const rendered = widget.render(80);
@@ -637,12 +658,107 @@ test("PI-36: emitted snapshots render issue rows; malformed values keep the prio
     "previous snapshot survives malformed publishes",
   );
 
+  // PI-40 AC1/AC2: the 34-ticket baseline readback is an explicit fixture, not the
+  // live tracker file. Counts are read off the fixture, so growing it by one ticket
+  // moves the number instead of leaving a pinned 34 behind.
+  const baselineRecords = (count: number) =>
+    Array.from({ length: count }, (_, i) => ({
+      repo: "pi",
+      id: `PI-${String(i + 6).padStart(2, "0")}`,
+      title: `board ticket ${i + 6}`,
+      status: "done",
+      assignee: "reviewer",
+      blockedBy: [],
+      blocking: "unblocked",
+      eta: { kind: "unknown" },
+    }));
+
+  pi.events.emit("vraj:ticket-snapshot", {
+    repo: "pi",
+    capturedAt: Date.now(),
+    records: baselineRecords(34),
+  });
+  const canonicalRendered = widget.render(80);
+  assert.ok(
+    canonicalRendered.some((line) =>
+      line.includes("issues · 0 active · 34 done"),
+    ),
+  );
+  assert.equal(
+    canonicalRendered.find((line) => line.includes("rev-ready")),
+    undefined,
+  );
+  // Every rendered row maps to a fixture record; a done-only baseline renders none.
+  assert.equal(
+    canonicalRendered.filter((line) => /·\s+id\s+PI-|PI-\d+\s+·/.test(line))
+      .length,
+    0,
+  );
+
+  // AC2: adding a ticket changes the derived count — 34 is never hard-coded.
+  pi.events.emit("vraj:ticket-snapshot", {
+    repo: "pi",
+    capturedAt: Date.now(),
+    records: [
+      ...baselineRecords(34),
+      {
+        repo: "pi",
+        id: "PI-40",
+        title: "snapshot truthfulness",
+        status: "debugging",
+        assignee: "debugger",
+        blockedBy: [],
+        blocking: "unblocked",
+        eta: { kind: "unknown" },
+      },
+    ],
+  });
+  assert.ok(
+    widget
+      .render(80)
+      .some((line) => line.includes("issues · 1 active · 34 done")),
+  );
+
+  // The live tracker itself must still parse cleanly and carry no stale
+  // review-ready row — asserted by derivation, never against a magic total.
+  const canonical = parseTicketSnapshot(
+    readFileSync(new URL("../../tickets.md", import.meta.url), "utf8"),
+    { repo: "pi", capturedAt: Date.now() },
+  );
+  assert.equal(canonical.reason, undefined);
+  assert.ok(canonical.records.length > 0);
+  assert.equal(
+    canonical.records.some(({ status }) => status === "review-ready"),
+    false,
+  );
+  pi.events.emit("vraj:ticket-snapshot", canonical);
+  const doneCount = canonical.records.filter(
+    ({ status }) => status === "done",
+  ).length;
+  assert.ok(
+    widget
+      .render(80)
+      .some((line) => line.includes(`issues · 0 active · ${doneCount} done`)),
+    "live tracker counts are derived from its own records",
+  );
+
   // session_shutdown clears the listener; later publishes are no-ops.
   hooks.get("session_shutdown")?.({}, context);
   pi.events.emit("vraj:ticket-snapshot", {
     repo: "pi",
     capturedAt: 100_000,
-    records: [issue({ id: "PI-99" })],
+    records: [
+      {
+        repo: "pi",
+        id: "PI-99",
+        title: "new",
+        status: "planned",
+        assignee: "planner",
+        blockedBy: [],
+        blocking: "unblocked",
+        eta: { kind: "unknown" },
+      },
+    ],
   });
   assert.equal(widgets.length, 2, "widget cleared, nothing re-registered");
   assert.equal(widgets.at(-1)?.content, undefined);
@@ -1085,43 +1201,33 @@ test("INV-1: no 0% appears anywhere in output", () => {
 
 // ── PI-23: issue rows ───────────────────────────────────
 
-test("PI-23: N issue records render N rows after the issues rule", () => {
+test("PI-23: active, done, and dropped records derive counts and rows", () => {
   const result = renderStatusWidget(
     state({
       ticketSnapshot: snapshot([
-        issue({ id: "PI-20", status: "done", assignee: "reviewer" }),
         issue({
           id: "PI-21",
-          status: "agent-ready",
-          assignee: "coder",
-          title: "rich mode/route/stage rows",
-        }),
-        issue({
-          id: "PI-23",
           status: "coding",
           assignee: "coder",
-          title: "issue rows in the widget",
+          title: "active work",
         }),
-        issue({ id: "PI-22", status: "done", assignee: "reviewer" }),
+        issue({ id: "PI-20", status: "done", assignee: "reviewer" }),
+        issue({ id: "PI-22", status: "dropped", assignee: "reviewer" }),
       ]),
       now: 100_000,
     }),
   );
-  // 3 base + issues rule + 2 displayed rows (done excluded) = 6
-  assert.equal(result.length, 6);
-  assert.match(result[3], /issues · 2 active · 2 done/);
-  // Rows ordered: agent-ready before coding; done excluded
-  const idx21 = result.findIndex((l) => l.includes("PI-21"));
-  const idx23 = result.findIndex((l) => l.includes("PI-23"));
-  assert.ok(idx21 >= 0 && idx23 >= 0, "both active rows present");
-  assert.ok(idx21 < idx23, "agent-ready sorts before coding");
-  assert.ok(
-    result.find((l) => l.includes("PI-20")) === undefined,
-    "done excluded",
+  // 3 base + issues rule + 1 active row; terminal records are counted only.
+  assert.equal(result.length, 5);
+  assert.match(result[3], /issues · 1 active · 1 done/);
+  assert.ok(result.find((l) => l.includes("PI-21")));
+  assert.equal(
+    result.find((l) => l.includes("PI-20")),
+    undefined,
   );
-  assert.ok(
-    result.find((l) => l.includes("PI-22")) === undefined,
-    "done excluded",
+  assert.equal(
+    result.find((l) => l.includes("PI-22")),
+    undefined,
   );
 });
 
@@ -1176,24 +1282,26 @@ test("PI-23: no blockers renders 'blk none'", () => {
   assert.ok(row && row.includes("blk none"));
 });
 
-test("PI-23: stale snapshot renders ~ + age in the issues rule", () => {
-  // capturedAt 50_000, now 90_000 → 40s > 30s stale window
+test("PI-23: stale snapshot degrades to unavailable instead of stale rows", () => {
   const stale = renderStatusWidget(
     state({
       ticketSnapshot: snapshot([issue()], { capturedAt: 50_000 }),
       now: 90_000,
     }),
   );
-  assert.match(stale[3], /~40s/);
+  assert.equal(stale[3], "issues unavailable — stale snapshot");
+  assert.equal(
+    stale.find((line) => line.includes("PI-23")),
+    undefined,
+  );
 
-  // Fresh: capturedAt 70_000, now 90_000 → 20s <= 30s
   const fresh = renderStatusWidget(
     state({
       ticketSnapshot: snapshot([issue()], { capturedAt: 70_000 }),
       now: 90_000,
     }),
   );
-  assert.doesNotMatch(fresh[3], /~/);
+  assert.match(fresh[3], /issues · 1 active · 0 done/);
 });
 
 test("PI-23: absent or reason-carrying snapshot renders unavailable — <reason>", () => {
@@ -1560,7 +1668,7 @@ test("PI-23 debugger: only-done records show in rule but no rows", () => {
     }),
   );
   assert.equal(result.length, 4); // 3 base + 1 rule
-  assert.match(result[3], /issues · 0 active · 2 done/);
+  assert.match(result[3], /issues · 0 active · 1 done/);
   assert.ok(!result.find((l) => l.includes("PI-20")), "done excluded");
 });
 
@@ -1964,10 +2072,17 @@ test("PI-38: factory captures terminalRows once and passes it into render", () =
 
   pi.events.emit("vraj:ticket-snapshot", {
     repo: "pi",
-    capturedAt: 100_000,
-    records: Array.from({ length: 200 }, (_, i) =>
-      issue({ id: `PI-${100 + i}`, status: "coding", assignee: "coder" }),
-    ),
+    capturedAt: Date.now(),
+    records: Array.from({ length: 200 }, (_, i) => ({
+      repo: "pi",
+      id: `PI-${100 + i}`,
+      title: `ticket ${i}`,
+      status: "coding",
+      assignee: "coder",
+      blockedBy: [],
+      blocking: "unblocked",
+      eta: { kind: "unknown" },
+    })),
   });
   // 3 base + 1 rule + 200 rows = 204 > 18 → 17 visible + "+187 more".
   const rendered = widget.render(80);

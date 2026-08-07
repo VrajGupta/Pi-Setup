@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { parseTicketSnapshot } from "./ticket-snapshot.ts";
+import {
+  isValidTicketSnapshot,
+  parseTicketSnapshot,
+} from "./ticket-snapshot.ts";
 
 const capture = { repo: "VrajGupta/Pi-Setup", capturedAt: 1_000 };
 
@@ -17,10 +20,48 @@ test("parses this tracker into frozen records without I/O or input mutation", ()
   const snapshot = parseTicketSnapshot(source, capture);
   const headings = [...source.matchAll(/^## (PI-\d+) /gm)];
 
+  // Counts are derived from the tracker, never pinned to a magic total: adding a
+  // ticket must change the count rather than fail this test, and no record may be
+  // deleted from the tracker to make a hard-coded number line up.
+  assert.equal(snapshot.reason, undefined);
+  assert.ok(headings.length > 0);
   assert.equal(snapshot.records.length, headings.length);
+  assert.deepEqual(
+    snapshot.records.map(({ id }) => id),
+    headings.map((heading) => heading[1]),
+  );
+  assert.equal(
+    new Set(snapshot.records.map(({ id }) => id)).size,
+    snapshot.records.length,
+  );
+  // Board-mapped history (PI-06..PI-39) and pre-board local history (PI-01..PI-05)
+  // both survive; the latter is completed work with no GitHub issue number.
+  for (const id of ["PI-01", "PI-02", "PI-04", "PI-05"]) {
+    assert.equal(
+      snapshot.records.find((record) => record.id === id)?.status,
+      "done",
+    );
+  }
   assert.equal(
     snapshot.records.find(({ id }) => id === "PI-03")?.status,
     "dropped",
+  );
+  // The stale Review Ready rows #40 was filed against are gone.
+  assert.equal(
+    snapshot.records.find(({ id }) => id === "PI-28")?.status,
+    "done",
+  );
+  assert.equal(
+    snapshot.records.find(({ id }) => id === "PI-31")?.status,
+    "done",
+  );
+  assert.equal(
+    snapshot.records.find(({ id }) => id === "PI-39")?.status,
+    "done",
+  );
+  assert.equal(
+    snapshot.records.some(({ status }) => status === "review-ready"),
+    false,
   );
   assert.deepEqual(
     snapshot.records.find(({ id }) => id === "PI-13")?.blockedBy,
@@ -76,25 +117,60 @@ test("fails closed on empty or malformed tracker data and only emits role assign
     "no complete ticket headings",
   );
 
-  const snapshot = parseTicketSnapshot(
+  const valid = parseTicketSnapshot(
     [
-      ticket("PI-01", "not a pipeline status"),
-      ticket("PI-02", "Coding", " · Assignee: **reviewer**"),
-      ticket("PI-03", "Done", "\n\nAssignee: deployer"),
+      ticket("PI-01", "Coding", " · Assignee: **reviewer**"),
+      ticket("PI-02", "Done", "\n\nAssignee: deployer"),
+    ].join("\n"),
+    capture,
+  );
+  assert.deepEqual(
+    valid.records.map(({ status, assignee }) => ({ status, assignee })),
+    [
+      { status: "coding", assignee: "reviewer" },
+      { status: "done", assignee: "reviewer" },
+    ],
+  );
+
+  const malformed = parseTicketSnapshot(
+    [
+      ticket("PI-03", "not a pipeline status"),
       "## PI-04 — missing status\n",
       "## PI-05 — malformed status\n\nStatus: **Done** unexpected\n",
     ].join("\n"),
     capture,
   );
-  assert.deepEqual(
-    snapshot.records.map(({ status, assignee }) => ({ status, assignee })),
+  assert.deepEqual(malformed, {
+    repo: "VrajGupta/Pi-Setup",
+    capturedAt: 1_000,
+    records: [],
+    reason: "invalid status",
+  });
+
+  const contradictory = parseTicketSnapshot(
+    [ticket("PI-06", "Done", " · Blocked-by: PI-99")].join("\n"),
+    capture,
+  );
+  assert.equal(contradictory.reason, "contradictory blockers");
+
+  const malformedBlockers = parseTicketSnapshot(
+    [ticket("PI-07", "Coding", " · Blocked-by: none, PI-99")].join("\n"),
+    capture,
+  );
+  assert.equal(malformedBlockers.reason, "invalid blockers");
+
+  const duplicateBlockers = parseTicketSnapshot(
     [
-      { status: "unknown", assignee: undefined },
-      { status: "coding", assignee: "reviewer" },
-      { status: "done", assignee: "reviewer" },
-      { status: "unknown", assignee: undefined },
-      { status: "unknown", assignee: undefined },
-    ],
+      ticket("PI-08", "Coding", " · Blocked-by: PI-09, PI-09"),
+      ticket("PI-09", "Done"),
+    ].join("\n"),
+    capture,
+  );
+  assert.equal(duplicateBlockers.reason, "invalid blockers");
+
+  assert.equal(
+    isValidTicketSnapshot({ repo: "", capturedAt: 1_000, records: [] }),
+    false,
   );
 });
 
@@ -175,22 +251,22 @@ test("fails closed when duplicate ticket IDs make blocker ownership ambiguous", 
     capture,
   );
 
-  assert.equal(snapshot.records.length, 3);
-  assert.equal(snapshot.records[0]?.blocking, "unblocked");
-  assert.equal(snapshot.records[1]?.blocking, "blocked");
-  assert.deepEqual(snapshot.records[2]?.blockedBy, [
-    { id: "PI-01", satisfied: false },
-  ]);
+  assert.deepEqual(snapshot, {
+    repo: "VrajGupta/Pi-Setup",
+    capturedAt: 1_000,
+    records: [],
+    reason: "duplicate ticket id",
+  });
 
-  const eta = parseTicketSnapshot(
+  const duplicateWithEta = parseTicketSnapshot(
     [
       ticket("PI-10", "Done", "\nMeasured-stage-duration-ms: 100"),
       ticket("PI-10", "Done", "\nMeasured-stage-duration-ms: 200"),
       ticket("PI-11", "Done", "\nMeasured-stage-duration-ms: 300"),
     ].join("\n"),
     capture,
-  ).records[0]?.eta;
-  assert.deepEqual(eta, { kind: "unknown" });
+  );
+  assert.equal(duplicateWithEta.reason, "duplicate ticket id");
 });
 
 test("uses only explicit measured completed-stage durations for ETA", () => {
@@ -242,9 +318,10 @@ test("a ticket missing status never inherits from a following malformed heading"
   const source =
     "## PI-01 — valid ticket missing status\n\n## PI-02 -- malformed heading\n\nStatus: **Done**\n";
   const snapshot = parseTicketSnapshot(source, capture);
-  const pi01 = snapshot.records.find(({ id }) => id === "PI-01");
-  assert.equal(pi01?.status, "unknown");
-  assert.equal(pi01?.assignee, undefined);
-  const pi02 = snapshot.records.find(({ id }) => id === "PI-02");
-  assert.equal(pi02, undefined);
+  assert.deepEqual(snapshot, {
+    repo: "VrajGupta/Pi-Setup",
+    capturedAt: 1_000,
+    records: [],
+    reason: "invalid status",
+  });
 });

@@ -58,8 +58,13 @@ export interface TicketSnapshotCapture {
   readonly capturedAt: number;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
 type ParsedTicket = Omit<TicketRecord, "blockedBy" | "blocking" | "eta"> & {
   readonly blockerIds: readonly string[];
+  readonly blockersValid: boolean;
 };
 
 const STATUS_BY_TEXT: Readonly<Record<string, TicketStatus>> = {
@@ -126,10 +131,11 @@ function maskFencedCode(markdown: string) {
 }
 
 function statusFrom(section: string): TicketStatus {
-  const text = section.match(/^Status:\s*\*\*([^*]+)\*\*(?:\s*(?:·|$))/m)?.[1];
-  return text
-    ? (STATUS_BY_TEXT[text.trim().toLowerCase()] ?? "unknown")
-    : "unknown";
+  const matches = [
+    ...section.matchAll(/^Status:\s*\*\*([^*]+)\*\*(?=\s*(?:·|\(|$))/gm),
+  ];
+  if (matches.length !== 1) return "unknown";
+  return STATUS_BY_TEXT[matches[0]![1]!.trim().toLowerCase()] ?? "unknown";
 }
 
 function assigneeFrom(text: string | undefined, status: TicketStatus) {
@@ -157,8 +163,22 @@ function field(section: string, name: string): string | undefined {
 
 function blockerIds(section: string): readonly string[] {
   const value = field(section, "Blocked-by");
-  if (!value || /^none\b/i.test(value)) return freeze([]);
+  if (!value || /^none\s*$/i.test(value)) return freeze([]);
   return freeze([...new Set(value.match(/PI-\d+/g) ?? [])]);
+}
+
+function blockersValid(section: string) {
+  const value = field(section, "Blocked-by");
+  if (!value || /^none\s*$/i.test(value)) return true;
+  if (/^none\b/i.test(value)) return false;
+  const ids = value.match(/PI-\d+/g) ?? [];
+  const remainder = value
+    .replace(/PI-\d+/g, "")
+    .replace(/\([^\n)]*\)/g, "")
+    .replace(/[\s,]/g, "");
+  return (
+    ids.length > 0 && new Set(ids).size === ids.length && remainder.length === 0
+  );
 }
 
 function timestamp(section: string): number | undefined {
@@ -247,6 +267,125 @@ function etaFrom(records: readonly ParsedTicket[]): TicketEta {
   });
 }
 
+function isValidTicketRecord(
+  value: unknown,
+  repo: string,
+): value is TicketRecord {
+  if (
+    !isRecord(value) ||
+    value.repo !== repo ||
+    typeof value.id !== "string" ||
+    value.id.trim().length === 0 ||
+    typeof value.title !== "string" ||
+    value.title.trim().length === 0 ||
+    typeof value.status !== "string" ||
+    value.status === "unknown" ||
+    !TICKET_STATUSES.includes(value.status as TicketStatus) ||
+    !Array.isArray(value.blockedBy) ||
+    !["unblocked", "blocked", "blocked (cycle)"].includes(
+      value.blocking as string,
+    ) ||
+    (value.assignee !== undefined &&
+      !["planner", "coder", "debugger", "reviewer"].includes(
+        value.assignee as string,
+      )) ||
+    (value.verificationCommand !== undefined &&
+      (typeof value.verificationCommand !== "string" ||
+        value.verificationCommand.trim().length === 0)) ||
+    (value.updatedAt !== undefined &&
+      (typeof value.updatedAt !== "number" ||
+        !Number.isFinite(value.updatedAt))) ||
+    (value.measuredStageDurationMs !== undefined &&
+      (typeof value.measuredStageDurationMs !== "number" ||
+        !Number.isSafeInteger(value.measuredStageDurationMs) ||
+        value.measuredStageDurationMs <= 0)) ||
+    !isRecord(value.eta)
+  ) {
+    return false;
+  }
+
+  const blockerIds = new Set<string>();
+  for (const blocker of value.blockedBy) {
+    if (
+      !isRecord(blocker) ||
+      typeof blocker.id !== "string" ||
+      blocker.id.trim().length === 0 ||
+      blockerIds.has(blocker.id) ||
+      typeof blocker.satisfied !== "boolean"
+    ) {
+      return false;
+    }
+    blockerIds.add(blocker.id);
+  }
+  const hasUnsatisfiedBlocker = value.blockedBy.some(
+    (blocker) => isRecord(blocker) && blocker.satisfied === false,
+  );
+  if (
+    (value.blocking === "unblocked" && hasUnsatisfiedBlocker) ||
+    (value.blocking === "blocked" && !hasUnsatisfiedBlocker) ||
+    (value.blocking === "blocked (cycle)" && value.blockedBy.length === 0) ||
+    (value.status === "done" && value.blocking !== "unblocked")
+  ) {
+    return false;
+  }
+
+  if (value.eta.kind === "unknown") return true;
+  if (value.eta.kind !== "estimated") return false;
+  const minMs = value.eta.minMs;
+  const maxMs = value.eta.maxMs;
+  const n = value.eta.n;
+  return (
+    typeof minMs === "number" &&
+    Number.isSafeInteger(minMs) &&
+    minMs > 0 &&
+    typeof maxMs === "number" &&
+    Number.isSafeInteger(maxMs) &&
+    maxMs >= minMs &&
+    typeof n === "number" &&
+    Number.isSafeInteger(n) &&
+    n >= 3
+  );
+}
+
+/**
+ * Validates a completed tracker snapshot before any renderer consumes it.
+ * Duplicate IDs, unknown statuses, malformed blockers, and contradictory
+ * blocker/status pairs fail closed instead of becoming guessed progress.
+ */
+export function isValidTicketSnapshot(value: unknown): value is TicketSnapshot {
+  try {
+    if (
+      !isRecord(value) ||
+      typeof value.repo !== "string" ||
+      value.repo.trim().length === 0 ||
+      !Number.isFinite(value.capturedAt) ||
+      !Array.isArray(value.records) ||
+      (value.reason !== undefined &&
+        (typeof value.reason !== "string" || value.reason.trim().length === 0))
+    ) {
+      return false;
+    }
+
+    const records = value.records;
+    const ids = new Set<string>();
+    for (const record of records) {
+      if (!isValidTicketRecord(record, value.repo)) return false;
+      if (ids.has(record.id)) return false;
+      ids.add(record.id);
+    }
+    const byId = new Map(records.map((record) => [record.id, record] as const));
+    for (const record of records) {
+      for (const blocker of record.blockedBy) {
+        const target = byId.get(blocker.id);
+        if (blocker.satisfied !== (target?.status === "done")) return false;
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Parses an already-read tracker; capture time is supplied by the off-render caller. */
 export function parseTicketSnapshot(
   tracker: string,
@@ -274,14 +413,15 @@ export function parseTicketSnapshot(
     (match) => match.index ?? 0,
   );
 
+  let sectionBreakIndex = 0;
   const parsed = headings.map((heading) => {
-    const followingBreaks = sectionBreaks.filter(
-      (offset) => offset > heading.index,
-    );
-    const end =
-      followingBreaks.length > 0
-        ? Math.min(...followingBreaks)
-        : tracker.length;
+    while (
+      sectionBreakIndex < sectionBreaks.length &&
+      sectionBreaks[sectionBreakIndex]! <= heading.index
+    ) {
+      sectionBreakIndex += 1;
+    }
+    const end = sectionBreaks[sectionBreakIndex] ?? tracker.length;
     const section = searchableTracker.slice(heading.index, end);
     const status = statusFrom(section);
     const explicitAssignee = field(section, "Assignee")?.replace(
@@ -297,14 +437,46 @@ export function parseTicketSnapshot(
       title: heading[2].replace(/~~/g, ""),
       status,
       blockerIds: blockerIds(section),
+      blockersValid: blockersValid(section),
       assignee: assigneeFrom(explicitAssignee, status),
       ...(verificationCommand ? { verificationCommand } : {}),
       ...(updatedAt === undefined ? {} : { updatedAt }),
       ...(duration === undefined ? {} : { measuredStageDurationMs: duration }),
     } satisfies ParsedTicket;
   });
+  if (parsed.some((record) => record.status === "unknown")) {
+    return freeze({ ...base, records: freeze([]), reason: "invalid status" });
+  }
+  if (parsed.some((record) => !record.blockersValid)) {
+    return freeze({
+      ...base,
+      records: freeze([]),
+      reason: "invalid blockers",
+    });
+  }
+  if (new Set(parsed.map((record) => record.id)).size !== parsed.length) {
+    return freeze({
+      ...base,
+      records: freeze([]),
+      reason: "duplicate ticket id",
+    });
+  }
   const byId = uniqueRecordsById(parsed);
   const cycles = cycleIds(parsed, byId);
+  if (
+    parsed.some(
+      (record) =>
+        record.status === "done" &&
+        (record.blockerIds.some((id) => byId.get(id)?.status !== "done") ||
+          cycles.has(record.id)),
+    )
+  ) {
+    return freeze({
+      ...base,
+      records: freeze([]),
+      reason: "contradictory blockers",
+    });
+  }
   const eta = etaFrom([...byId.values()]);
   const records = freeze(
     parsed.map((record) => {
