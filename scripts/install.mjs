@@ -155,6 +155,27 @@ function readSettings(path) {
   return settings;
 }
 
+/**
+ * PI-39: drop settings that only existed for the removed automatic workflow.
+ * Every other key under `workflow` (trackerPollMs, statusWidget, repositories,
+ * routines, subagentPicker) is preserved untouched, and re-running the
+ * installer on already-migrated settings is a no-op.
+ */
+const OBSOLETE_WORKFLOW_KEYS = ["mode"];
+
+function migrateWorkflowSettings(settings) {
+  const workflow = settings.workflow;
+  if (!workflow || typeof workflow !== "object" || Array.isArray(workflow))
+    return {};
+  if (!OBSOLETE_WORKFLOW_KEYS.some((key) => key in workflow)) return {};
+  const kept = Object.fromEntries(
+    Object.entries(workflow).filter(
+      ([key]) => !OBSOLETE_WORKFLOW_KEYS.includes(key),
+    ),
+  );
+  return { workflow: kept };
+}
+
 function mergeSettings(path, dryRun) {
   const settingsPath =
     existsSync(path) && lstatSync(path).isSymbolicLink()
@@ -164,6 +185,7 @@ function mergeSettings(path, dryRun) {
   const packages = settings.packages ?? [];
   const next = {
     ...settings,
+    ...migrateWorkflowSettings(settings),
     packages: [...packages.filter((entry) => entry !== ponytail), ponytail],
     theme: "vraj-ink",
     defaultProvider: "openai-codex",

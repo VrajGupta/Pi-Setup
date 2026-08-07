@@ -30,7 +30,6 @@ function state(overrides: Partial<FooterState> = {}): FooterState {
     theme: plainTheme,
     cwdLabel: "~/repo",
     runtime: "pi/model · high",
-    rail: "flow · planner → ◉ coder → · debugger → · reviewer",
     usage: "42%/200k · $0.12 · 13 tok/s",
     pr: "main · 2 changed",
     statuses: [],
@@ -38,8 +37,8 @@ function state(overrides: Partial<FooterState> = {}): FooterState {
   };
 }
 
-test("no extension statuses renders exactly the 3 base lines", () => {
-  assert.equal(renderFooter(state()).length, 3);
+test("no extension statuses renders exactly the 2 base lines", () => {
+  assert.equal(renderFooter(state()).length, 2);
 });
 
 test("every line fits the requested width at 40, 80, 120, and 200", () => {
@@ -77,10 +76,10 @@ test("extension status lines append after the base, split and truncated, capped 
     }),
   );
   assert.equal(lines.length, 7);
-  assert.equal(lines[3], "one");
-  assert.ok(visibleWidth(lines[4]) <= 30);
-  assert.ok(lines[5].includes("three"));
-  assert.ok(lines[6].includes("four"));
+  assert.equal(lines[2], "one");
+  assert.ok(visibleWidth(lines[3]) <= 30);
+  assert.ok(lines[4].includes("three"));
+  assert.ok(lines[5].includes("four"));
 });
 
 test("the footer never exceeds 7 lines for any tested state", () => {
@@ -96,7 +95,7 @@ test("the footer never exceeds 7 lines for any tested state", () => {
 });
 
 test("PI-39: INV-4 footer clause unchanged — exactly 3 lines bare, at most 7 with 10 statuses", () => {
-  assert.equal(renderFooter(state()).length, 3);
+  assert.equal(renderFooter(state()).length, 2);
   const withTen = renderFooter(
     state({
       statuses: Array.from({ length: 10 }, (_, i) => `status ${i + 1}`),
@@ -173,10 +172,9 @@ test("ANSI width is measured visibly in the base lines", () => {
       width: 80,
       theme: ansiTheme,
       cwdLabel: "模型😀模型😀模型😀",
-      rail: "flow · planner → ◉ coder → · debugger → · reviewer",
     }),
   );
-  assert.equal(lines.length, 3);
+  assert.equal(lines.length, 2);
   for (const line of lines) assert.ok(visibleWidth(line) <= 80);
 });
 
@@ -192,7 +190,7 @@ test("theme and status rendering failures fall back to bounded base lines", () =
     }),
   );
 
-  assert.equal(lines.length, 4);
+  assert.equal(lines.length, 3);
   for (const line of lines) assert.ok(visibleWidth(line) <= 80);
 });
 
@@ -206,7 +204,6 @@ test("PI-26 dedup: footer renders no mode/route/stage-row/issue tokens", () => {
     theme: plainTheme,
     cwdLabel: "~/repo",
     runtime: "pi/model · high",
-    rail: "flow · planner → ◉ coder → · debugger → · reviewer",
     usage: "42%/200k · $0.12 · 13 tok/s",
     pr: "main · 2 changed",
     statuses: [] as readonly string[],
@@ -217,7 +214,7 @@ test("PI-26 dedup: footer renders no mode/route/stage-row/issue tokens", () => {
   } as const;
   const lines = renderFooter(legacy as unknown as FooterState);
 
-  assert.equal(lines.length, 3);
+  assert.equal(lines.length, 2);
   assert.ok(lines[0].includes("~/repo"));
   const all = lines.join("\n");
   assert.doesNotMatch(all, /mode (workflow|free)/);
@@ -225,8 +222,8 @@ test("PI-26 dedup: footer renders no mode/route/stage-row/issue tokens", () => {
   assert.doesNotMatch(all, /% ctx/);
   assert.doesNotMatch(all, /running|tracked/);
   assert.doesNotMatch(all, /deepseek-v4-flash|PI-\d+/);
-  // The workflow rail is the one allowed stage mention.
-  assert.match(all, /planner → ◉ coder/);
+  // PI-39: the stage rail is removed, so no stage token may appear at all.
+  assert.doesNotMatch(all, /planner|coder|debugger|reviewer|flow/);
 });
 
 test("live state reaches the footer as base lines plus extension statuses only", () => {
@@ -307,9 +304,9 @@ test("live state reaches the footer as base lines plus extension statuses only",
   ]);
 
   // PI-26 dedup: subagent stage rows do not reach the footer anymore; they
-  // live in the belowEditor widget. The footer stays at the 3 base lines.
+  // live in the belowEditor widget. The footer stays at the 2 base lines.
   const lines = footer.render(80);
-  assert.equal(lines.length, 3);
+  assert.equal(lines.length, 2);
   assert.ok(!lines.some((line) => line.includes("stage-agent")));
   assert.ok(!lines.some((line) => line.includes("%")));
   assert.ok(!lines.some((line) => line.includes("helper-agent")));
@@ -321,17 +318,17 @@ test("live state reaches the footer as base lines plus extension statuses only",
     getExtensionStatuses: () => new Map([["ext", "status one"]]),
   });
   const statusLines = statusFooter.render(80);
-  assert.equal(statusLines.length, 4);
-  assert.ok(statusLines[3].includes("status one"));
+  assert.equal(statusLines.length, 3);
+  assert.ok(statusLines[2].includes("status one"));
 
-  // INV-6: a throwing extension-status getter degrades to the 3 base lines.
+  // INV-6: a throwing extension-status getter degrades to the 2 base lines.
   const statusFailureFooter = footerFactory({ requestRender() {} }, theme, {
     getExtensionStatuses() {
       throw new Error("status provider unavailable");
     },
   });
   assert.doesNotThrow(() => statusFailureFooter.render(80));
-  assert.equal(statusFailureFooter.render(80).length, 3);
+  assert.equal(statusFailureFooter.render(80).length, 2);
 
   // INV-3: the shipped wrapper (index.ts) renders within budget too — the
   // pure-footer benchmark above must not be the only perf proof.

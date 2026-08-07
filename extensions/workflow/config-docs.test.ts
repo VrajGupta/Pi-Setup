@@ -68,7 +68,7 @@ test("PI-39: SYSTEM.md keeps the picker as open-view-only with explicit in-view 
   assert.match(systemText, /\(PI-11, INV-20\)/);
 });
 
-test("settings document Pi's accepted steering values and keep stages on relay", () => {
+test("settings document Pi's accepted steering values and describe direct-only operation", () => {
   const runtime = readFileSync(runtimeSettings, "utf8");
   assert.match(runtime, /`steeringMode`[\s\S]*`"all"` or `"one-at-a-time"`/);
   assert.equal(readSettings(settingsExample).steeringMode, "one-at-a-time");
@@ -81,14 +81,15 @@ test("settings document Pi's accepted steering values and keep stages on relay",
   );
   const text = readFileSync(setup, "utf8");
   assert.match(text, /"all".*"one-at-a-time"/);
-  assert.match(text, /orchestrator.*workflow send/i);
-  assert.match(
+  assert.doesNotMatch(text, /workflow send|workflow start/i);
+  // PI-39: the docs must describe direct-only operation, not a relay.
+  assert.doesNotMatch(
     readFileSync(readme, "utf8"),
-    /coordinator-mediated question relay/i,
+    /coordinator-mediated question relay|`\/flow` or \*\*F6\*\*/i,
   );
-  assert.match(
+  assert.doesNotMatch(
     readFileSync(system, "utf8"),
-    /question_batch.*coordinator.*workflow send/i,
+    /workflow send|workflow start|route fleet|mode workflow/i,
   );
   assert.doesNotMatch(
     readFileSync(system, "utf8"),
@@ -96,10 +97,8 @@ test("settings document Pi's accepted steering values and keep stages on relay",
   );
   for (const path of [readme, system]) {
     const contents = readFileSync(path, "utf8");
-    assert.match(
-      contents,
-      /Vraj messages only the coordinator[\s\S]*workflow send/,
-    );
+    // PI-39: no relay wording may survive in the active docs.
+    assert.doesNotMatch(contents, /workflow send|workflow start/);
     assert.match(contents, /Ponytail/i);
     assert.match(contents, /Caveman/i);
     assert.match(

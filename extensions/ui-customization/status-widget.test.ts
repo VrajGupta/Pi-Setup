@@ -54,7 +54,7 @@ function snapshot(
 
 function agent(overrides: Partial<StatusWidgetAgent> = {}): StatusWidgetAgent {
   return {
-    stage: "coder",
+    label: "coder",
     status: "running",
     backend: "opencodego",
     model: "deepseek-v4-flash",
@@ -83,20 +83,20 @@ test("PI-37: normalizeMaxLines maps boundary values", () => {
 });
 
 test("PI-37: maxLines 0 emits every deterministic line with no overflow", () => {
-  // 3 base + 117 input = 120 deterministic lines
+  // 1 base + 117 input = 118 deterministic lines
   const lines = Array.from({ length: 117 }, (_, i) => `line ${i + 1}`);
   const result = renderStatusWidget(state({ inputLines: lines, maxLines: 0 }));
-  assert.equal(result.length, 120);
-  assert.equal(result[119], "line 117");
-  assert.ok(!result.join("\n").includes("more · /flow"));
+  assert.equal(result.length, 118);
+  assert.equal(result[117], "line 117");
+  assert.ok(!result.join("\n").includes(" more"));
 });
 
-test("PI-37: maxLines 12 with a deterministic count of 30 emits 12 lines, last is +19 more · /flow", () => {
-  // 3 base + 27 input = 30 deterministic lines
+test("PI-37: maxLines 12 with a deterministic count of 28 emits 12 lines, last is +17 more", () => {
+  // 1 base + 27 input = 28 deterministic lines
   const lines = Array.from({ length: 27 }, (_, i) => `line ${i + 1}`);
   const result = renderStatusWidget(state({ inputLines: lines, maxLines: 12 }));
   assert.equal(result.length, 12);
-  assert.equal(result[11], "+19 more · /flow");
+  assert.equal(result[11], "+17 more");
 });
 
 test("PI-37: settings file with maxLines 0 resolves unlimited; absent key resolves 40", () => {
@@ -182,8 +182,8 @@ test("PI-37: a settings value of 0 survives the factory-to-render round trip for
     },
   };
   const context = {
-    mode: "tui",
     cwd: "/repo",
+    mode: "tui",
     ui: {
       theme,
       setHeader() {},
@@ -205,7 +205,7 @@ test("PI-37: a settings value of 0 survives the factory-to-render round trip for
     }
   )({ requestRender() {} }, theme);
 
-  // 3 base + 1 rule + 201 active tickets = 205 lines. The settings sentinel
+  // 1 base + 1 rule + 201 active tickets = 205 lines. The settings sentinel
   // must survive the factory-to-render round trip without a 200-line cap.
   pi.events.emit("vraj:ticket-snapshot", {
     repo: "pi",
@@ -222,37 +222,37 @@ test("PI-37: a settings value of 0 survives the factory-to-render round trip for
     })),
   });
   const rendered = widget.render(80);
-  assert.equal(rendered.length, 205);
+  assert.equal(rendered.length, 203);
   assert.ok(rendered.some((line) => line.includes("PI-300")));
-  assert.ok(!rendered.join("\n").includes("more · /flow"));
+  assert.ok(!rendered.join("\n").includes(" more"));
 });
 
 // ── PI-20 base (amended for PI-21 flow base) ────────────
 
-test("with 0 input lines, renders the three flow base lines", () => {
+test("with 0 input lines, renders only the pi rule line", () => {
   const result = renderStatusWidget(state({ inputLines: [] }));
-  assert.equal(result.length, 3);
-  assert.match(result[0], /flow/);
-  assert.match(result[1], /mode.*route/);
-  assert.match(result[2], /planner.*coder.*debugger.*reviewer/);
-  // Base lines render real mode/route labels
-  assert.ok(result[1].includes("mode workflow"));
-  assert.ok(result[1].includes("route direct"));
+  assert.equal(result.length, 1);
+  assert.match(result[0], /^─ pi ─/);
+  // PI-39: no mode/route/stage-rail rows remain in the surface.
+  assert.doesNotMatch(
+    result.join("\n"),
+    /mode workflow|mode free|route direct|route fleet|planner|debugger|reviewer/,
+  );
 });
 
 test("with N input lines where N < maxLines, renders base + N lines", () => {
   const lines = ["line 1", "line 2", "line 3"];
   const result = renderStatusWidget(state({ inputLines: lines }));
-  assert.equal(result.length, 6); // 3 base + 3 input
-  assert.equal(result[3], "line 1");
-  assert.equal(result[4], "line 2");
-  assert.equal(result[5], "line 3");
+  assert.equal(result.length, 4); // 1 base + 3 input
+  assert.equal(result[1], "line 1");
+  assert.equal(result[2], "line 2");
+  assert.equal(result[3], "line 3");
 });
 
 test("with N input lines where N === maxLines, renders base + N lines and may overflow", () => {
   const lines = Array.from({ length: 40 }, (_, i) => `line ${i + 1}`);
   const result = renderStatusWidget(state({ inputLines: lines, maxLines: 40 }));
-  // 3 base + 40 = 43 > 40 → 40 lines with overflow
+  // 1 base + 40 = 41 > 40 → 40 lines with overflow
   assert.equal(result.length, 40);
   assert.ok(result[39].includes("more"));
 });
@@ -261,7 +261,7 @@ test("with N input lines where N > maxLines, renders maxLines total including ov
   const lines = Array.from({ length: 50 }, (_, i) => `line ${i + 1}`);
   const result = renderStatusWidget(state({ inputLines: lines, maxLines: 40 }));
   assert.equal(result.length, 40);
-  assert.ok(result[39].includes("+14 more · /flow"));
+  assert.ok(result[39].includes("+12 more"));
 });
 
 test("maxLines clamps to minimum 8 when passed negative values", () => {
@@ -270,7 +270,7 @@ test("maxLines clamps to minimum 8 when passed negative values", () => {
     state({ inputLines: lines, maxLines: -100 }),
   );
   assert.equal(negResult.length, 8);
-  assert.ok(negResult[7].includes("+96 more · /flow"));
+  assert.ok(negResult[7].includes("+94 more"));
 });
 
 test("maxLines defaults to 40 when passed NaN (non-numeric)", () => {
@@ -279,7 +279,7 @@ test("maxLines defaults to 40 when passed NaN (non-numeric)", () => {
     state({ inputLines: lines, maxLines: NaN }),
   );
   assert.equal(nanResult.length, 40);
-  assert.ok(nanResult[39].includes("+64 more · /flow"));
+  assert.ok(nanResult[39].includes("+62 more"));
 });
 
 test("maxLines preserves the unlimited sentinel through rendering", () => {
@@ -287,16 +287,16 @@ test("maxLines preserves the unlimited sentinel through rendering", () => {
   const infResult = renderStatusWidget(
     state({ inputLines: lines, maxLines: Number.POSITIVE_INFINITY }),
   );
-  assert.equal(infResult.length, 253);
-  assert.equal(infResult[252], "line 250");
-  assert.ok(!infResult.join("\n").includes("more · /flow"));
+  assert.equal(infResult.length, 251);
+  assert.equal(infResult[250], "line 250");
+  assert.ok(!infResult.join("\n").includes(" more"));
 });
 
 test("maxLines clamps to maximum 200 when passed very large values", () => {
   const inputLines = Array.from({ length: 250 }, (_, i) => `line ${i + 1}`);
   const result = renderStatusWidget(state({ inputLines, maxLines: 1e9 }));
   assert.equal(result.length, 200);
-  assert.ok(result[199].includes("+54 more · /flow"));
+  assert.ok(result[199].includes("+52 more"));
 });
 
 test("maxLines defaults to 40 when missing or non-numeric", () => {
@@ -306,7 +306,7 @@ test("maxLines defaults to 40 when missing or non-numeric", () => {
       state({ inputLines: lines, maxLines: maxLines as never }),
     );
     assert.equal(result.length, 40);
-    assert.ok(result[39].includes("+14 more · /flow"));
+    assert.ok(result[39].includes("+12 more"));
   }
 });
 
@@ -393,25 +393,25 @@ test("malformed width degrades gracefully", () => {
 });
 
 test("overflow line is absent at the ceiling and counts every suppressed row", () => {
-  // 3 base + 7 input = 10, maxLines 10 = exact fit
+  // 1 base + 7 input = 10, maxLines 10 = exact fit
   const exact = renderStatusWidget(
     state({ inputLines: Array(7).fill("line"), maxLines: 10 }),
   );
-  assert.equal(exact.length, 10);
-  assert.doesNotMatch(exact[9], /more · \/flow/);
+  assert.equal(exact.length, 8);
+  assert.doesNotMatch(exact.join("\n"), / more$/m);
 
-  // 3 base + 8 input = 11 > 10 → overflow
+  // 1 base + 10 input = 11 > 10 → overflow; visible 9, suppressed 2
   const oneOver = renderStatusWidget(
-    state({ inputLines: Array(8).fill("line"), maxLines: 10 }),
+    state({ inputLines: Array(10).fill("line"), maxLines: 10 }),
   );
   assert.equal(oneOver.length, 10);
-  assert.equal(oneOver[9], "+2 more · /flow");
+  assert.equal(oneOver[9], "+2 more");
 
-  // 3 base + 47 input = 50 > 10 → overflow
+  // 1 base + 47 input = 50 > 10 → overflow
   const many = renderStatusWidget(
     state({ inputLines: Array(47).fill("line"), maxLines: 10 }),
   );
-  assert.equal(many[9], "+41 more · /flow");
+  assert.equal(many[9], "+39 more");
 });
 
 test("throwing state getters return bounded base lines (INV-6)", () => {
@@ -423,10 +423,8 @@ test("throwing state getters return bounded base lines (INV-6)", () => {
     },
   };
   const inputFallback = renderStatusWidget(throwingInput);
-  assert.equal(inputFallback.length, 3);
-  assert.match(inputFallback[0], /flow/);
-  assert.match(inputFallback[1], /mode.*route/);
-  assert.match(inputFallback[2], /planner.*coder.*debugger.*reviewer/);
+  assert.equal(inputFallback.length, 1);
+  assert.match(inputFallback[0], /^─ pi ─/);
 
   const throwingWidth = {
     get width(): number {
@@ -436,7 +434,7 @@ test("throwing state getters return bounded base lines (INV-6)", () => {
     inputLines: ["line 1"],
   };
   const widthFallback = renderStatusWidget(throwingWidth);
-  assert.equal(widthFallback.length, 3);
+  assert.equal(widthFallback.length, 1);
   for (const line of widthFallback) assert.ok(visibleWidth(line) <= 80);
 });
 
@@ -445,9 +443,9 @@ test("input lines are converted to strings and truncated", () => {
   const result = renderStatusWidget(
     state({ inputLines: lines as readonly string[] }),
   );
-  assert.equal(result.length, 5); // 3 base + 2 input
-  assert.equal(result[3], "plain string");
-  assert.equal(result[4], "123");
+  assert.equal(result.length, 3); // 1 base + 2 input
+  assert.equal(result[1], "plain string");
+  assert.equal(result[2], "123");
 });
 
 test("render module has no filesystem, network, or subprocess path", () => {
@@ -493,8 +491,8 @@ test("registers belowEditor widget, cleans it up, and keeps header/footer usable
     },
   };
   const context = {
-    mode: "tui",
     cwd: "/repo",
+    mode: "tui",
     ui: {
       theme,
       setHeader(factory: unknown) {
@@ -526,7 +524,7 @@ test("registers belowEditor widget, cleans it up, and keeps header/footer usable
     footerFactory as (...args: unknown[]) => { render(width: number): string[] }
   )({ requestRender() {} }, theme, { getExtensionStatuses: () => new Map() });
   assert.equal(header.render(80).length, 1);
-  assert.equal(footer.render(80).length, 3);
+  assert.equal(footer.render(80).length, 2);
 
   hooks.get("session_shutdown")?.({}, context);
   assert.equal(widgets.at(-1)?.key, "vraj-status");
@@ -561,8 +559,8 @@ test("PI-36: emitted snapshots render issue rows; malformed values keep the prio
     },
   };
   const context = {
-    mode: "tui",
     cwd: "/repo",
+    mode: "tui",
     ui: {
       theme,
       setHeader() {},
@@ -767,117 +765,13 @@ test("PI-36: emitted snapshots render issue rows; malformed values keep the prio
 
 // ── PI-21: mode / route rows ────────────────────────────
 
-test("mode row: renders exactly 'mode workflow' or 'mode free (manual)'", () => {
-  const result = renderStatusWidget(state({}));
-  assert.ok(result[1].includes("mode workflow"));
-
-  const free = renderStatusWidget(state({ mode: "free" }));
-  assert.ok(free[1].includes("mode free (manual)"));
-
-  // Absent/invalid → mode workflow
-  const absent = renderStatusWidget(state({ mode: undefined }));
-  assert.ok(absent[1].includes("mode workflow"));
-
-  // Unknown value → mode workflow
-  const unknown = renderStatusWidget(state({ mode: "bogus" }));
-  assert.ok(unknown[1].includes("mode workflow"));
-});
-
-test("route row: renders exactly 'route direct' or 'route fleet/<stage>'", () => {
-  // No route → route direct
-  const direct = renderStatusWidget(state({ route: null }));
-  assert.ok(direct[1].includes("route direct"));
-
-  // Fleet with coder stage
-  const fleetCoder = renderStatusWidget(
-    state({ route: { mode: "fleet", stage: "coder" } }),
-  );
-  assert.ok(fleetCoder[1].includes("route fleet/coder"));
-
-  // Fleet with null stage → route fleet
-  const fleetNull = renderStatusWidget(
-    state({ route: { mode: "fleet", stage: null } }),
-  );
-  assert.ok(fleetNull[1].includes("route fleet"));
-
-  // No route mode field → route direct
-  const noMode = renderStatusWidget(state({ route: {} }));
-  assert.ok(noMode[1].includes("route direct"));
-
-  // Fleet with Symbol stage → route fleet (no crash)
-  const symbol = renderStatusWidget(
-    state({ route: { mode: "fleet", stage: Symbol("bad") as never } }),
-  );
-  assert.ok(symbol[1].includes("route fleet"));
-});
-
-// ── PI-21: stage rail ───────────────────────────────────
-
-test("stage rail: active stage gets ◉, complete stages get ✓, pending get ·", () => {
-  // Active coder, status running
-  // Active coder → planner completed (✓), coder active (◉), rest pending (·)
-  const running = renderStatusWidget(
-    state({ activeStage: "coder", workflowStatus: "running" }),
-  );
-  assert.ok(running[2].includes("✓ planner"));
-  assert.ok(running[2].includes("◉ coder"));
-  assert.ok(running[2].includes("· debugger"));
-  assert.ok(running[2].includes("· reviewer"));
-
-  // Status complete → all ✓
-  const complete = renderStatusWidget(
-    state({ activeStage: "coder", workflowStatus: "complete" }),
-  );
-  assert.ok(complete[2].includes("✓ planner"));
-  assert.ok(complete[2].includes("✓ coder"));
-  assert.ok(complete[2].includes("✓ debugger"));
-  assert.ok(complete[2].includes("✓ reviewer"));
-
-  // Active debugger → planner, coder ✓, debugger ◉, reviewer ·
-  const debuggerActive = renderStatusWidget(state({ activeStage: "debugger" }));
-  assert.ok(debuggerActive[2].includes("✓ planner"));
-  assert.ok(debuggerActive[2].includes("✓ coder"));
-  assert.ok(debuggerActive[2].includes("◉ debugger"));
-  assert.ok(debuggerActive[2].includes("· reviewer"));
-});
-
-test("stage rail: collapses to active stage when width < 60", () => {
-  const wide = renderStatusWidget(
-    state({ width: 80, activeStage: "coder", workflowStatus: "running" }),
-  );
-  // Full rail at width 80
-  assert.ok(wide[2].includes("✓ planner"));
-  assert.ok(wide[2].includes("◉ coder"));
-
-  const narrow = renderStatusWidget(
-    state({ width: 50, activeStage: "coder", workflowStatus: "running" }),
-  );
-  // Collapsed: only active stage
-  assert.ok(narrow[2].includes("◉ coder"));
-  assert.ok(!narrow[2].includes("planner"));
-  assert.ok(!narrow[2].includes("debugger"));
-  assert.ok(!narrow[2].includes("reviewer"));
-});
-
-test("stage rail: with no active stage renders full rail with · glyphs", () => {
-  const result = renderStatusWidget(
-    state({ activeStage: null, workflowStatus: "idle" }),
-  );
-  assert.ok(result[2].includes("· planner"));
-  assert.ok(result[2].includes("· coder"));
-  assert.ok(result[2].includes("· debugger"));
-  assert.ok(result[2].includes("· reviewer"));
-});
-
-// ── PI-21: agent rows ───────────────────────────────────
-
 test("agent rows: known stage agents render with glyph, stage, backend/model, elapsed, turns, ctx", () => {
   const result = renderStatusWidget(
     state({
       width: 100, // ≥100 so backend/model column is present
       agents: [
         agent({
-          stage: "coder",
+          label: "coder",
           startedAt: 100_000,
           at: 100_000,
           turns: 6,
@@ -887,52 +781,14 @@ test("agent rows: known stage agents render with glyph, stage, backend/model, el
       now: 100_000,
     }),
   );
-  assert.equal(result.length, 4); // 3 base + 1 agent
-  const row = result[3];
+  assert.equal(result.length, 2); // 1 base + 1 agent
+  const row = result[1];
   assert.ok(row.includes("◉")); // running glyph
   assert.ok(row.includes("coder")); // stage
   assert.ok(row.includes("opencodego/deepseek-v4-flash")); // backend/model
   assert.ok(row.includes("0s")); // elapsed: now === startedAt → 0s
   assert.ok(row.includes("6t")); // turns
   assert.ok(row.includes("7% ctx")); // context
-});
-
-test("agent rows: helper agents (no known stage) are excluded", () => {
-  const result = renderStatusWidget(
-    state({
-      agents: [agent({ stage: "coder" }), agent({ stage: "unknown-helper" })],
-      now: 100_000,
-    }),
-  );
-  assert.equal(result.length, 4); // 3 base + 1 coder agent
-  assert.ok(result[3].includes("coder"));
-  // Helper is excluded
-  assert.ok(!result.find((l) => l.includes("unknown-helper")));
-});
-
-test("agent rows: sorted by stage order", () => {
-  const result = renderStatusWidget(
-    state({
-      width: 100, // ≥100 so backend/model column is present (identifies rows)
-      agents: [
-        agent({ stage: "reviewer", model: "grok" }),
-        agent({ stage: "coder", model: "deepseek" }),
-        agent({ stage: "planner", model: "claude" }),
-      ],
-      now: 100_000,
-    }),
-  );
-  assert.equal(result.length, 6); // 3 base + 3 agents
-  // planner, coder, reviewer order
-  const plannerIdx = result.findIndex((l) => l.includes("claude"));
-  const coderIdx = result.findIndex((l) => l.includes("deepseek"));
-  const reviewerIdx = result.findIndex((l) => l.includes("grok"));
-  assert.ok(
-    plannerIdx >= 0 && coderIdx >= 0 && reviewerIdx >= 0,
-    "all models present",
-  );
-  assert.ok(plannerIdx < coderIdx, "planner before coder");
-  assert.ok(coderIdx < reviewerIdx, "coder before reviewer");
 });
 
 test("agent rows: backend/model column dropped at width < 100", () => {
@@ -943,7 +799,7 @@ test("agent rows: backend/model column dropped at width < 100", () => {
       now: 100_000,
     }),
   );
-  assert.ok(wide[3].includes("opencodego/"));
+  assert.ok(wide[1].includes("opencodego/"));
 
   const narrow = renderStatusWidget(
     state({
@@ -952,7 +808,7 @@ test("agent rows: backend/model column dropped at width < 100", () => {
       now: 100_000,
     }),
   );
-  assert.ok(!narrow[3].includes("opencodego/"));
+  assert.ok(!narrow[1].includes("opencodego/"));
 });
 
 test("agent rows: undefined context renders '? ctx' and no '0%'", () => {
@@ -962,8 +818,8 @@ test("agent rows: undefined context renders '? ctx' and no '0%'", () => {
       now: 100_000,
     }),
   );
-  assert.ok(result[3].includes("? ctx"));
-  assert.ok(!result[3].includes("0%"));
+  assert.ok(result[1].includes("? ctx"));
+  assert.ok(!result[1].includes("0%"));
 });
 
 test("agent rows: positive sub-1% context renders '<1% ctx'", () => {
@@ -973,7 +829,7 @@ test("agent rows: positive sub-1% context renders '<1% ctx'", () => {
       now: 100_000,
     }),
   );
-  assert.ok(result[3].includes("<1% ctx"));
+  assert.ok(result[1].includes("<1% ctx"));
 });
 
 test("agent rows: stale reading renders '~' prefix with age", () => {
@@ -985,7 +841,7 @@ test("agent rows: stale reading renders '~' prefix with age", () => {
       now: 90_000,
     }),
   );
-  assert.ok(stale[3].includes("~40s"));
+  assert.ok(stale[1].includes("~40s"));
 
   // Fresh: now - at <= 30_000ms
   const fresh = renderStatusWidget(
@@ -994,8 +850,8 @@ test("agent rows: stale reading renders '~' prefix with age", () => {
       now: 90_000,
     }),
   );
-  assert.ok(fresh[3].includes("20s"));
-  assert.ok(!fresh[3].includes("~20s"));
+  assert.ok(fresh[1].includes("20s"));
+  assert.ok(!fresh[1].includes("~20s"));
 });
 
 // ── PI-21: tabular alignment ────────────────────────────
@@ -1022,14 +878,14 @@ test("agent rows: elapsed cells have equal visibleWidth when same stage width", 
     state({
       agents: [
         agent({
-          stage: "coder",
+          label: "coder",
           startedAt: 91_000,
           at: 91_000,
           turns: 6,
           context: { kind: "measured", percent: 7 },
         }),
         agent({
-          stage: "coder",
+          label: "coder",
           startedAt: 1_000,
           at: 91_000,
           turns: 0,
@@ -1039,10 +895,10 @@ test("agent rows: elapsed cells have equal visibleWidth when same stage width", 
       now: 100_000,
     }),
   );
-  assert.equal(result.length, 5); // 3 base + 2 agents
+  assert.equal(result.length, 3); // 1 base + 2 agents
   // Both rows: col0 = "◉ coder" (7 chars, visible width 8) + 2-space gutter → elapsed starts at char 9
-  const row0 = result[3];
-  const row1 = result[4];
+  const row0 = result[1];
+  const row1 = result[2];
   assert.equal(row0.slice(9, 14), "   9s"); // 3 spaces + 9s, right-aligned to width 5
   assert.equal(row1.slice(9, 14), "1m39s"); // 1m39s already width 5
   assert.equal(
@@ -1053,10 +909,6 @@ test("agent rows: elapsed cells have equal visibleWidth when same stage width", 
 
 test("deterministic: same state produces byte-identical lines", () => {
   const s = state({
-    mode: "free",
-    route: { mode: "fleet", stage: "coder" },
-    activeStage: "coder",
-    workflowStatus: "running",
     agents: [agent()],
     now: 100_000,
   });
@@ -1070,13 +922,12 @@ test("deterministic: same state produces byte-identical lines", () => {
 test("INV-11: four glyphs ✓◉·× are distinguishable without colour", () => {
   const result = renderStatusWidget(
     state({
-      activeStage: "coder",
-      workflowStatus: "running",
       agents: [
-        agent({ stage: "planner", status: "done" }),
-        agent({ stage: "coder", status: "running" }),
-        agent({ stage: "debugger", status: "error" }),
-        agent({ stage: "reviewer", status: "running" }),
+        agent({ label: "planner", status: "done" }),
+        agent({ label: "coder", status: "running" }),
+        agent({ label: "debugger", status: "error" }),
+        agent({ label: "reviewer", status: "running" }),
+        agent({ label: "helper", status: "pending" }),
       ],
       now: 100_000,
     }),
@@ -1105,8 +956,8 @@ test("INV-2: secret-shaped tokens in model/backend are redacted", () => {
       now: 100_000,
     }),
   );
-  assert.ok(result[3].includes("[REDACTED]"));
-  assert.ok(!result[3].includes("sk-secretapikey1234567890"));
+  assert.ok(result[1].includes("[REDACTED]"));
+  assert.ok(!result[1].includes("sk-secretapikey1234567890"));
 });
 
 test("INV-2: terminal control chars stripped from token values", () => {
@@ -1117,34 +968,34 @@ test("INV-2: terminal control chars stripped from token values", () => {
       now: 100_000,
     }),
   );
-  assert.ok(result[3].includes("saferedmodel"));
-  assert.ok(!result[3].includes("\u001b[31m"));
+  assert.ok(result[1].includes("saferedmodel"));
+  assert.ok(!result[1].includes("\u001b[31m"));
 });
 
 test("INV-2: input lines with secret patterns are redacted", () => {
   const secret = renderStatusWidget(
     state({ inputLines: ["api_key=my-secret-key-value"] }),
   );
-  assert.ok(secret[3].includes("[REDACTED]"));
-  assert.ok(!secret[3].includes("my-secret-key-value"));
+  assert.ok(secret[1].includes("[REDACTED]"));
+  assert.ok(!secret[1].includes("my-secret-key-value"));
 
   const token = renderStatusWidget(
     state({ inputLines: ["sk-abcdefghijklmnopqrstuvwx"] }),
   );
-  assert.ok(token[3].includes("[REDACTED]"));
+  assert.ok(token[1].includes("[REDACTED]"));
 
   const plain = renderStatusWidget(state({ inputLines: ["plain text line"] }));
-  assert.equal(plain[3], "plain text line");
+  assert.equal(plain[1], "plain text line");
 });
 
 // ── PI-21: width bounds with agents ─────────────────────
 
 test("PI-20 width bounds hold with agent rows at 40, 80, 120, 200", () => {
   const agents = [
-    agent({ stage: "planner", status: "done" }),
-    agent({ stage: "coder", status: "running" }),
-    agent({ stage: "debugger", status: "done" }),
-    agent({ stage: "reviewer", status: "running" }),
+    agent({ label: "planner", status: "done" }),
+    agent({ label: "coder", status: "running" }),
+    agent({ label: "debugger", status: "done" }),
+    agent({ label: "reviewer", status: "running" }),
   ];
   for (const width of [40, 80, 120, 200]) {
     const result = renderStatusWidget(state({ agents, width, now: 100_000 }));
@@ -1160,10 +1011,10 @@ test("PI-20 width bounds hold with agent rows at 40, 80, 120, 200", () => {
 test("1000 renders with agents at width 200 complete in under 2000ms", () => {
   const s = state({
     agents: [
-      agent({ stage: "planner", status: "done" }),
-      agent({ stage: "coder", status: "running" }),
-      agent({ stage: "debugger", status: "error" }),
-      agent({ stage: "reviewer", status: "running" }),
+      agent({ label: "planner", status: "done" }),
+      agent({ label: "coder", status: "running" }),
+      agent({ label: "debugger", status: "error" }),
+      agent({ label: "reviewer", status: "running" }),
     ],
     width: 200,
     now: 100_000,
@@ -1187,7 +1038,7 @@ test("INV-1: no 0% appears anywhere in output", () => {
       agents: [
         agent({ context: { kind: "unknown" } }),
         agent({ context: { kind: "measured", percent: 0.5 } }),
-        agent({ stage: "debugger", context: { kind: "measured", percent: 7 } }),
+        agent({ label: "debugger", context: { kind: "measured", percent: 7 } }),
       ],
       now: 100_000,
     }),
@@ -1217,9 +1068,9 @@ test("PI-23: active, done, and dropped records derive counts and rows", () => {
       now: 100_000,
     }),
   );
-  // 3 base + issues rule + 1 active row; terminal records are counted only.
-  assert.equal(result.length, 5);
-  assert.match(result[3], /issues · 1 active · 1 done/);
+  // 1 base + issues rule + 1 active row; terminal records are counted only.
+  assert.equal(result.length, 3);
+  assert.match(result[1], /issues · 1 active · 1 done/);
   assert.ok(result.find((l) => l.includes("PI-21")));
   assert.equal(
     result.find((l) => l.includes("PI-20")),
@@ -1289,7 +1140,7 @@ test("PI-23: stale snapshot degrades to unavailable instead of stale rows", () =
       now: 90_000,
     }),
   );
-  assert.equal(stale[3], "issues unavailable — stale snapshot");
+  assert.equal(stale[1], "issues unavailable — stale snapshot");
   assert.equal(
     stale.find((line) => line.includes("PI-23")),
     undefined,
@@ -1301,7 +1152,7 @@ test("PI-23: stale snapshot degrades to unavailable instead of stale rows", () =
       now: 90_000,
     }),
   );
-  assert.match(fresh[3], /issues · 1 active · 0 done/);
+  assert.match(fresh[1], /issues · 1 active · 0 done/);
 });
 
 test("PI-23: absent or reason-carrying snapshot renders unavailable — <reason>", () => {
@@ -1309,7 +1160,7 @@ test("PI-23: absent or reason-carrying snapshot renders unavailable — <reason>
   const absent = renderStatusWidget(
     state({ ticketSnapshot: undefined, now: 100_000 }),
   );
-  assert.equal(absent.length, 3); // base only
+  assert.equal(absent.length, 1); // base only
   assert.equal(
     absent.find((l) => l.includes("issues")),
     undefined,
@@ -1321,14 +1172,14 @@ test("PI-23: absent or reason-carrying snapshot renders unavailable — <reason>
       now: 100_000,
     }),
   );
-  assert.ok(timedOut[3].includes("issues unavailable — timeout"));
+  assert.ok(timedOut[1].includes("issues unavailable — timeout"));
 
   const empty = renderStatusWidget(
     state({ ticketSnapshot: snapshot([]), now: 100_000 }),
   );
   // Empty records still show the rule (0 active · 0 done)
-  assert.equal(empty.length, 4);
-  assert.match(empty[3], /issues · 0 active · 0 done/);
+  assert.equal(empty.length, 2);
+  assert.match(empty[1], /issues · 0 active · 0 done/);
 });
 
 test("PI-23: a 200-ticket snapshot respects maxLines with correct overflow", () => {
@@ -1342,9 +1193,9 @@ test("PI-23: a 200-ticket snapshot respects maxLines with correct overflow", () 
       now: 100_000,
     }),
   );
-  // 3 base + 1 rule + 200 rows = 204 > 40 → 40 lines with overflow
+  // 1 base + 1 rule + 200 rows = 204 > 40 → 40 lines with overflow
   assert.equal(result.length, 40);
-  assert.ok(result[39].includes("more · /flow"));
+  assert.ok(result[39].includes(" more"));
 });
 
 test("PI-23: at width 50 rows collapse to id + status + blocker summary", () => {
@@ -1449,10 +1300,8 @@ test("PI-23: throwing snapshot getter returns bounded base lines (INV-6)", () =>
     },
   } satisfies StatusWidgetState;
   const result = renderStatusWidget(throwing);
-  assert.equal(result.length, 3);
-  assert.match(result[0], /flow/);
-  assert.match(result[1], /mode.*route/);
-  assert.match(result[2], /planner.*coder.*debugger.*reviewer/);
+  assert.equal(result.length, 1);
+  assert.match(result[0], /^─ pi ─/);
 });
 
 test("PI-23: issue rows cannot throw on malformed record fields", () => {
@@ -1474,7 +1323,7 @@ test("PI-23: issue rows cannot throw on malformed record fields", () => {
     }),
   );
   assert.ok(Array.isArray(result));
-  assert.ok(result.length >= 4);
+  assert.ok(result.length >= 2);
 });
 
 test("PI-23: 1000 renders with 200 issue rows at width 200 complete under 2000ms", () => {
@@ -1667,8 +1516,8 @@ test("PI-23 debugger: only-done records show in rule but no rows", () => {
       now: 100_000,
     }),
   );
-  assert.equal(result.length, 4); // 3 base + 1 rule
-  assert.match(result[3], /issues · 0 active · 1 done/);
+  assert.equal(result.length, 2); // 1 base + 1 rule
+  assert.match(result[1], /issues · 0 active · 1 done/);
   assert.ok(!result.find((l) => l.includes("PI-20")), "done excluded");
 });
 
@@ -1692,7 +1541,7 @@ test("PI-23 debugger: only-active records all show", () => {
     result.find((l) => l.includes("PI-23")),
     "PI-23 present",
   );
-  assert.equal(result.length, 6); // 3 base + 1 rule + 2 rows
+  assert.equal(result.length, 4); // 1 base + 1 rule + 2 rows
 });
 
 // ── Debugger PI-23: wide glyphs at small width ──
@@ -1817,7 +1666,7 @@ test("PI-31: widths 40/80/120/200 bounded, overflow via maxLines budget", () => 
       );
     }
     const joined = result.join("\n");
-    if (rows.length > 12) assert.match(joined, /more · \/flow/);
+    if (rows.length > 12) assert.match(joined, /\+\d+ more/);
   }
 });
 
@@ -1907,7 +1756,7 @@ test("PI-31 debugger: undefined dueAt does not crash", () => {
 
 // ── PI-38: terminal-height reservation (INV-19) ──────────
 
-test("PI-38: unlimited mode is bounded by terminal height — 200 lines → 18, last +183 more", () => {
+test("PI-38: unlimited mode is bounded by terminal height — 198 lines → 18, last +181 more", () => {
   const lines = Array.from({ length: 197 }, (_, i) => `line ${i + 1}`);
   const result = renderStatusWidget(
     state({
@@ -1919,7 +1768,7 @@ test("PI-38: unlimited mode is bounded by terminal height — 200 lines → 18, 
   );
   // availableRows = 24 - 6 = 18, so 17 visible + overflow = 18 lines.
   assert.equal(result.length, 18);
-  assert.equal(result[17], "+183 more · /flow");
+  assert.equal(result[17], "+181 more");
 });
 
 test("PI-38: height bound never truncates what fits — 40 lines → no overflow", () => {
@@ -1932,13 +1781,13 @@ test("PI-38: height bound never truncates what fits — 40 lines → no overflow
       reservedRows: 6,
     }),
   );
-  // 3 base + 37 = 40 ≤ 94 available → all emitted, no overflow line.
-  assert.equal(result.length, 40);
-  assert.equal(result[39], "line 37");
-  assert.ok(!result.join("\n").includes("more · /flow"));
+  // 1 base + 37 = 40 ≤ 94 available → all emitted, no overflow line.
+  assert.equal(result.length, 38);
+  assert.equal(result[37], "line 37");
+  assert.ok(!result.join("\n").includes(" more"));
 });
 
-test("PI-38: height bound wins over maxLines — 200 lines → at most 14", () => {
+test("PI-38: height bound wins over maxLines — 198 lines → at most 14", () => {
   const lines = Array.from({ length: 197 }, (_, i) => `line ${i + 1}`);
   const result = renderStatusWidget(
     state({
@@ -1951,7 +1800,7 @@ test("PI-38: height bound wins over maxLines — 200 lines → at most 14", () =
   // availableRows = 14 < maxLines 40 → 13 visible + overflow = 14 lines.
   assert.ok(result.length <= 14);
   assert.equal(result.length, 14);
-  assert.equal(result[13], "+187 more · /flow");
+  assert.equal(result[13], "+185 more");
 });
 
 test("PI-38: terminalRows smaller than reservedRows emits zero lines", () => {
@@ -1978,20 +1827,20 @@ test("PI-38: invalid terminalRows falls back to maxLines alone, never unbounded"
     const result = renderStatusWidget(
       state({ inputLines: lines, maxLines: 40, terminalRows, reservedRows: 6 }),
     );
-    // 3 base + 100 = 103 > 40 → 40 lines, last "+64 more · /flow".
+    // 1 base + 100 = 103 > 40 → 40 lines, last "+64 more".
     assert.equal(result.length, 40, `terminalRows ${terminalRows}`);
-    assert.ok(result[39].includes("+64 more · /flow"));
+    assert.ok(result[39].includes("+62 more"));
   }
 });
 
 test("PI-38: suppressed N always equals deterministic total minus emitted visible lines", () => {
-  // 3 base + 197 input = 200 deterministic lines.
+  // 1 base + 197 input = 198 deterministic lines.
   const lines = Array.from({ length: 197 }, (_, i) => `line ${i + 1}`);
   const combos = [
-    { maxLines: 0, terminalRows: 24, reservedRows: 6, emitted: 18, n: 183 },
-    { maxLines: 40, terminalRows: 20, reservedRows: 6, emitted: 14, n: 187 },
-    { maxLines: 0, terminalRows: 10, reservedRows: 2, emitted: 8, n: 193 },
-    { maxLines: 12, terminalRows: 200, reservedRows: 6, emitted: 12, n: 189 },
+    { maxLines: 0, terminalRows: 24, reservedRows: 6, emitted: 18, n: 181 },
+    { maxLines: 40, terminalRows: 20, reservedRows: 6, emitted: 14, n: 185 },
+    { maxLines: 0, terminalRows: 10, reservedRows: 2, emitted: 8, n: 191 },
+    { maxLines: 12, terminalRows: 200, reservedRows: 6, emitted: 12, n: 187 },
   ];
   for (const c of combos) {
     const result = renderStatusWidget(
@@ -2005,7 +1854,7 @@ test("PI-38: suppressed N always equals deterministic total minus emitted visibl
     assert.equal(result.length, c.emitted, `combo ${JSON.stringify(c)}`);
     assert.equal(
       result.at(-1),
-      `+${c.n} more · /flow`,
+      `+${c.n} more`,
       `overflow N for ${JSON.stringify(c)}`,
     );
   }
@@ -2047,8 +1896,8 @@ test("PI-38: factory captures terminalRows once and passes it into render", () =
     },
   };
   const context = {
-    mode: "tui",
     cwd: "/repo",
+    mode: "tui",
     ui: {
       theme,
       setHeader() {},
@@ -2084,10 +1933,10 @@ test("PI-38: factory captures terminalRows once and passes it into render", () =
       eta: { kind: "unknown" },
     })),
   });
-  // 3 base + 1 rule + 200 rows = 204 > 18 → 17 visible + "+187 more".
+  // 1 base + 1 rule + 200 rows = 202 > 18 → 17 visible + "+185 more".
   const rendered = widget.render(80);
   assert.equal(rendered.length, 18);
-  assert.equal(rendered.at(-1), "+187 more · /flow");
+  assert.equal(rendered.at(-1), "+185 more");
 });
 
 test("PI-38: INV-14 extended — 200 tickets + 5 routines at width 120 unlimited renders under 50ms", () => {

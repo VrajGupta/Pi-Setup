@@ -154,7 +154,7 @@ test("tracker reads are bounded, read-only, timestamped, and map failures to per
 
   const crossRepoSource = source.slice(
     source.indexOf("export function resolveRepositories"),
-    source.indexOf("export class FlowPanel"),
+    source.indexOf("/** Persist a full settings object atomically"),
   );
   assert.match(crossRepoSource, /readFile/);
   assert.doesNotMatch(

@@ -9,7 +9,7 @@ import uiCustomization from "./index.ts";
 const theme = { fg: (_color: string, text: string) => text };
 type Theme = typeof theme;
 
-test("header keeps only identity while footer retains workflow status", () => {
+test("header keeps only identity and the footer carries no workflow status", () => {
   type EventHandler = (value: unknown) => void;
   const listeners = new Map<string, Set<EventHandler>>();
   const hooks = new Map<string, (...args: unknown[]) => void>();
@@ -100,9 +100,10 @@ test("header keeps only identity while footer retains workflow status", () => {
     /FLOW|AGENTS|fleet\/coder|running|coder|1 running|2 tracked/i,
   );
 
+  // PI-39: the footer no longer carries a workflow rail or route/stage status.
   const footerOutput = footer.render(200).join("\n");
-  assert.match(footerOutput, /fleet\/coder/);
-  assert.match(footerOutput, /running/);
-  assert.match(footerOutput, /coder/);
-  assert.match(footerOutput, /1 running · 2 tracked/);
+  assert.doesNotMatch(
+    footerOutput,
+    /FLOW|fleet\/coder|route (direct|fleet)|mode (workflow|free)|planner|debugger|reviewer|tracked/i,
+  );
 });

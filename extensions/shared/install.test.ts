@@ -128,6 +128,43 @@ test("installer is idempotent and its forced symlink failure copies resources", 
   }
 });
 
+test("PI-39: installer drops workflow.mode, keeps other workflow settings, idempotently", () => {
+  const temporary = join(
+    tmpdir(),
+    `pi-agent-migrate-${process.pid}-${Date.now()}`,
+  );
+  const agentDir = join(temporary, "agent");
+
+  try {
+    mkdirSync(agentDir, { recursive: true });
+    writeFileSync(
+      join(agentDir, "settings.json"),
+      JSON.stringify({
+        preserved: true,
+        workflow: {
+          mode: "workflow",
+          trackerPollMs: 10_000,
+          routines: [{ name: "standup" }],
+        },
+      }),
+    );
+
+    runInstaller(["--agent-dir", agentDir]);
+    const once = readFileSync(join(agentDir, "settings.json"), "utf8");
+    const settings = JSON.parse(once);
+    assert.equal("mode" in settings.workflow, false);
+    assert.equal(settings.workflow.trackerPollMs, 10_000);
+    assert.deepEqual(settings.workflow.routines, [{ name: "standup" }]);
+    assert.equal(settings.preserved, true);
+
+    // Idempotent: a second run over already-migrated settings changes nothing.
+    runInstaller(["--agent-dir", agentDir]);
+    assert.equal(readFileSync(join(agentDir, "settings.json"), "utf8"), once);
+  } finally {
+    rmSync(temporary, { recursive: true, force: true });
+  }
+});
+
 test("installer refuses checkout-internal targets and empty env paths safely", () => {
   const fixture = createFixture();
   const temporary = mkdtempSync(join(tmpdir(), "pi-agent-installer-target-"));

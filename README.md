@@ -1,17 +1,17 @@
 # Vraj Pi
 
 Personal configuration for **Pi**, the terminal agent host this repo installs into
-(`~/.pi/agent`). It turns a stock Pi into a four-stage delivery machine —
-**planner → coder → debugger → reviewer** — driven from the prompt, the
-belowEditor status surface, and a GitHub Projects board.
+(`~/.pi/agent`). Pi runs **direct-only**: every request is handled by the normal agent
+path, with manual subagents, routines, and a truthful todo/status surface below the
+prompt. Nothing is classified or routed automatically.
 
 ## What this repo is
 
 Everything here gets linked (or copied) into `~/.pi/agent` by `./install.sh`:
 
-- `SYSTEM.md` — coordinator policy: fleet protocol, stage boundaries, approved model map, invariants.
+- `SYSTEM.md` — coordinator policy: direct-only operation, manual stage sessions, approved model map, invariants.
 - `AGENTS.md` — agent rules for this repo: check/format/lint, type safety, test economy.
-- `extensions/workflow` — risk-based routing, pinned stage launch, coordinator-mediated question relay, recovery state, `/mode`, `/flow`/F6 command center, `/routine` commands, the routines scheduler.
+- `extensions/workflow` — the off-render tracker poll that publishes todo snapshots, `/routine` commands, and the routines scheduler. There is no automatic routing, stage launch, or relay.
 - `extensions/ui-customization` — the belowEditor status surface (mode/route/stage rows, issue rows, routines section), compact `π + project` header, technical footer.
 - `extensions/subagents` — the multi-harness engine plus the workflow bridge and safe `subagent_send` tool.
 - `skills/` — local skill packages (background-terminals, subagents, terse-output).
@@ -70,12 +70,12 @@ traffic through an unmeasured proxy. Adoption requires a new planner run, new
 invariants, and explicit approval — see `docs/2026-08-04-proxy-evaluation.md`.
 
 **Trust boundary:** credentials, API keys, tokens, and provider URLs never reach the
-footer, `/flow`, handoffs, or third parties (INV-2) — redaction is defense in depth,
+footer, the status surface, handoffs, or third parties (INV-2) — redaction is defense in depth,
 not permission to be careless.
 
 ## Extending Pi
 
-- **Commands** (`/mode`, `/flow`, `/routine`, …): `extensions/workflow/index.ts` — register with `registerCommand`.
+- **Commands** (`/routine`, …): `extensions/workflow/index.ts` — register with `registerCommand`.
 - **Status surface**: `extensions/ui-customization/status-widget.ts` (pure renderer) + `index.ts` (wiring).
 - **Scheduled prompts**: add a `workflow.routines` entry in `settings.example.json` (see Routines below).
 - **Skills**: `skills/<name>/SKILL.md` — the loader reads these when a task matches.
@@ -92,11 +92,16 @@ Verification-command before finishing any change (see Checks below).
 
 The installer backs up current runtime resources before linking this repo into `~/.pi/agent`. Restart Pi or run `/reload` afterward.
 
-## Workflow
+## Direct-only operation
 
-Normal requests are classified automatically. Small reversible work stays direct. Risky or broad work is routed to the fleet. Routing mode is set by `workflow.mode` in `settings.example.json` (accepted values: `"workflow"`, the default, which auto-routes risky or broad work to the fleet; `"free"`, which routes everything direct unless an explicit `planner|coder|debugger|reviewer` or legacy `part1-4` stage is named). The explicit-stage override works in both modes; the mode changes routing only, never authz or data exposure. Vraj messages only the coordinator; the initial task goes to a stage through `workflow start`, and subsequent user or decision text reaches stages solely through the coordinator's explicit `workflow send` relay. Use `/flow` or **F6** for the command center.
+Every request is handled by the normal Pi agent path. Nothing is classified, routed, or handed to a
+pipeline stage automatically. There is no `/flow`, no `/mode`, no `workflow` tool, no F6 binding, and
+no planner/coder/debugger/reviewer rail.
 
-Stage rows show elapsed time, completed assistant turns (`1t` = one turn), and measured context-window use (`<1% ctx`, for example). Context use is not task-completion progress; unavailable usage shows no percentage.
+Subagents are **manual**: you spawn them explicitly with the subagent tools when you want one. They
+are never selected for you, and no model is chosen on your behalf by a routing decision.
+
+Agent rows show elapsed time, completed assistant turns (`1t` = one turn), and measured context-window use (`<1% ctx`, for example). Context use is not task-completion progress; unavailable usage shows no percentage.
 
 Stage profiles:
 
@@ -121,11 +126,9 @@ A stage child cannot spawn children. It may return a validated `helper_request`;
 
 ## Status surface
 
-The primary status and control surface is the **belowEditor** widget — a live panel rendered below the prompt that shows the current routing mode, fleet route, active stage pipeline, per-agent progress, and active issue rows. The footer handles telemetry (cwd, runtime/model, usage, git/PR) and the workflow rail only; rich status lives below the prompt.
+The primary status surface is the **belowEditor** widget — a live panel rendered below the prompt showing any running manual subagents and the active issue rows. The footer handles telemetry only (cwd, runtime/model, usage, git/PR).
 
-Mode labels are `mode free (manual)` (everything direct unless a stage is named) and `mode workflow` (auto-route risky or broad work to the fleet). Route labels are `route direct` and `route fleet/<stage>`. Use `/mode` to switch between `workflow` and `free (manual)` — bare `/mode` opens a native picker; partial input triggers completions; invalid input shows a warning, never an error. Use `/flow` or **F6** for the full command center (all tabs, full issue strings, capabilities, session details).
-
-The current mode persists across restarts via `workflow.mode` in settings. The tracker poll interval (`workflow.trackerPollMs`, default 10000) and the surface runaway ceiling (`workflow.statusWidget.maxLines`, default 40) are configurable in `settings.example.json`.
+The surface carries no mode, route, or stage labels — those concepts no longer exist. The tracker poll interval (`workflow.trackerPollMs`, default 10000) and the surface runaway ceiling (`workflow.statusWidget.maxLines`, default 40) are configurable in `settings.example.json`.
 
 **Subagent picker.** DOWN opens the subagent picker only when a subagent is running; `alt+down` opens it anytime. DOWN opens a view only — sending to a subagent remains the explicit in-view send action (PI-11, INV-20). The picker trigger can be disabled with `workflow.subagentPicker.downArrow: false` in `settings.example.json`.
 
@@ -143,7 +146,7 @@ Periodic scheduled prompts (like Claude Code routines) are configured under `wor
 
 ### Surface
 
-Due routines appear as a `─ routines · N due ─` section in the belowEditor widget, with name, schedule summary, and status token (`due now`, `~5m`, `snoozed (30m)`, `disabled`). The `/flow` Routines tab shows the full list with prompt previews.
+Due routines appear as a `─ routines · N due ─` section in the belowEditor widget, with name, schedule summary, and status token (`due now`, `~5m`, `snoozed (30m)`, `disabled`). A due routine only ever shows a banner; it never runs itself and is never routed anywhere.
 
 ### Scheduler semantics
 
@@ -154,7 +157,7 @@ Due routines appear as a `─ routines · N due ─` section in the belowEditor 
 - **Concurrency:** single-flight per routine; a slow handler never overlaps.
 - **Failure:** per-routine isolation; a broken routine never kills the scheduler.
 
-Routine prompts route through `classifyRequest` with the current routing mode (INV-8); the routine system never spawns or sends on the subagent bridge by itself.
+A routine is surfaced only; it is never classified, routed, or auto-sent, and the routine system never spawns or sends on the subagent bridge by itself.
 
 Routine definitions are stored in `settings.json` → `workflow.routines`. The scheduler starts at session start and stops on session shutdown (no leaked timers, INV-18). Settings changes via `/routine` refresh the scheduler without leaking timers.
 

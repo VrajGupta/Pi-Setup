@@ -4,7 +4,6 @@ import { columns } from "./footer.ts";
 
 const DEFAULT_MAX_LINES = 40;
 const DEFAULT_WIDTH = 80;
-const STAGE_ORDER = ["planner", "coder", "debugger", "reviewer"] as const;
 
 const SECRET_TOKEN_PATTERN =
   /\b(sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9_]{12,}|eyJ[A-Za-z0-9_-]{12,}\.[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,})\b/g;
@@ -16,7 +15,7 @@ export type StatusWidgetContext =
   | { readonly kind: "unknown" };
 
 export interface StatusWidgetAgent {
-  readonly stage: string;
+  readonly label: string;
   readonly status: string;
   readonly backend: string;
   readonly model: string;
@@ -58,10 +57,6 @@ export interface StatusWidgetState {
   inputLines: readonly string[];
   terminalRows?: unknown;
   reservedRows?: unknown;
-  mode?: unknown;
-  route?: unknown;
-  activeStage?: unknown;
-  workflowStatus?: unknown;
   now?: number;
   agents?: readonly StatusWidgetAgent[];
   ticketSnapshot?: StatusWidgetSnapshotView;
@@ -147,55 +142,9 @@ function safeToken(value: unknown, fallback: string) {
 // ── row builders ─────────────────────────────────────────
 
 function ruleLine(width: number) {
-  const head = "─ flow ─";
+  const head = "─ pi ─";
   const fill = "─".repeat(Math.max(0, width - visibleWidth(head)));
   return safeTruncate(head + fill, width);
-}
-
-function modeLabel(mode: unknown) {
-  return mode === "free" ? "mode free (manual)" : "mode workflow";
-}
-
-function routeLabel(route: unknown) {
-  const r =
-    route && typeof route === "object"
-      ? (route as Record<string, unknown>)
-      : null;
-  if (r && r.mode === "fleet") {
-    const stage = r.stage != null ? safeToken(r.stage, "") : "";
-    return stage ? `route fleet/${stage}` : "route fleet";
-  }
-  return "route direct";
-}
-
-function railLine(
-  activeStage: unknown,
-  workflowStatus: unknown,
-  width: number,
-) {
-  const active = (STAGE_ORDER as readonly string[]).includes(
-    safeString(activeStage),
-  )
-    ? String(activeStage)
-    : null;
-  const activeIndex = active
-    ? STAGE_ORDER.indexOf(active as (typeof STAGE_ORDER)[number])
-    : -1;
-  const complete = safeString(workflowStatus) === "complete";
-
-  if (width < 60) {
-    const label = active ? `◉ ${active}` : "· idle";
-    return safeTruncate(label, width);
-  }
-
-  const parts = STAGE_ORDER.map((stage) => {
-    if (complete) return `✓ ${stage}`;
-    if (stage === active) return `◉ ${stage}`;
-    if (activeIndex >= 0 && STAGE_ORDER.indexOf(stage) < activeIndex)
-      return `✓ ${stage}`;
-    return `· ${stage}`;
-  });
-  return safeTruncate(parts.join("  →  "), width);
 }
 
 function agentGlyph(status: unknown) {
@@ -298,20 +247,17 @@ function agentRows(
   width: number,
 ) {
   const showBackend = width >= 100;
+  // Manual subagents carry a free-form label, not a pipeline stage, so rows are
+  // ordered by start time and nothing is filtered out by a stage allowlist.
   const rows = agents
-    .filter((a) => (STAGE_ORDER as readonly string[]).includes(a.stage))
-    .sort((a, b) => {
-      const ai = (STAGE_ORDER as readonly string[]).indexOf(a.stage);
-      const bi = (STAGE_ORDER as readonly string[]).indexOf(b.stage);
-      return ai - bi;
-    })
+    .filter((a) => a != null && typeof a === "object")
     .map((agent) => {
-      const stage = safeToken(agent.stage, "?");
+      const label = safeToken(agent.label, "agent");
       const glyph = agentGlyph(agent.status);
       const elapsed = formatElapsed(safeElapsed(now, agent.startedAt));
       const stale = staleAgentAt(now, agent.at);
       return [
-        `${glyph} ${stage}`,
+        `${glyph} ${label}`,
         showBackend
           ? `${safeToken(agent.backend, "?")}/${safeToken(agent.model, "?")}`
           : null,
@@ -651,11 +597,7 @@ function routineSection(
 // ── base lines (fallback) ───────────────────────────────
 
 function baseLines(width: number) {
-  return [
-    ruleLine(width),
-    columns(modeLabel(undefined), routeLabel(undefined), width),
-    railLine(undefined, undefined, width),
-  ];
+  return [ruleLine(width)];
 }
 
 // ── public API ───────────────────────────────────────────
@@ -693,12 +635,7 @@ export function renderStatusWidget(state: StatusWidgetState): string[] {
         : Date.now();
     const agents = Array.isArray(state.agents) ? state.agents : [];
 
-    const base = [
-      ruleLine(width),
-      columns(modeLabel(state.mode), routeLabel(state.route), width),
-      railLine(state.activeStage, state.workflowStatus, width),
-      ...agentRows(agents, now, width),
-    ];
+    const base = [ruleLine(width), ...agentRows(agents, now, width)];
     let snapshot: StatusWidgetSnapshotView | undefined;
     try {
       snapshot = state.ticketSnapshot;
@@ -738,10 +675,7 @@ export function renderStatusWidget(state: StatusWidgetState): string[] {
 
     const visibleLines = lines.slice(0, cap - 1);
     const suppressedCount = lines.length - visibleLines.length;
-    return [
-      ...visibleLines,
-      safeTruncate(`+${suppressedCount} more · /flow`, width),
-    ];
+    return [...visibleLines, safeTruncate(`+${suppressedCount} more`, width)];
   } catch {
     return baseLines(width);
   }

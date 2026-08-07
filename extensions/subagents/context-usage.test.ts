@@ -200,12 +200,11 @@ test("Codex non-positive or non-finite occupancy stays unknown through stage row
       theme,
       cwdLabel: "~/repo",
       runtime: "pi/model",
-      rail: "flow",
       usage: "",
       pr: "",
       statuses: [],
     });
-    assert.equal(lines.length, 3);
+    assert.equal(lines.length, 2);
     assert.doesNotMatch(lines.join(" "), /%/);
   }
 });

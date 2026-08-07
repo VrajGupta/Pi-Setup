@@ -41,8 +41,6 @@ import {
   type StatusWidgetState,
 } from "./status-widget.ts";
 
-const STAGES: StageName[] = ["planner", "coder", "debugger", "reviewer"];
-
 // INV-19: rows reserved for the editor, the footer, and one spare row. The
 // surface emits at most `terminalRows - RESERVED_ROWS` lines so it never
 // occludes the prompt.
@@ -70,28 +68,6 @@ function isWorkflowState(value: unknown): value is WorkflowState {
   );
 }
 
-function stageLabel(
-  stage: StageName,
-  activeStage: StageName | null,
-  status: WorkflowState["status"],
-  theme: ExtensionContext["ui"]["theme"],
-) {
-  const index = STAGES.indexOf(stage);
-  const activeIndex = activeStage ? STAGES.indexOf(activeStage) : -1;
-  const color =
-    stage === "planner"
-      ? "mdHeading"
-      : stage === "coder"
-        ? "accent"
-        : stage === "debugger"
-          ? "warning"
-          : "success";
-  if (stage === activeStage) return theme.fg(color, `◉ ${stage}`);
-  if (status === "complete" || (activeIndex >= 0 && index < activeIndex))
-    return theme.fg("success", `✓ ${stage}`);
-  return theme.fg("dim", `· ${stage}`);
-}
-
 function titleFor(
   ctx: ExtensionContext,
   workflow: WorkflowState,
@@ -105,8 +81,7 @@ function titleFor(
         : activity === "done"
           ? "✓"
           : "?";
-  const stage = workflow.activeStage ?? "idle";
-  return `${glyph} π ${formatDirectory(ctx.cwd)} · ${stage}`;
+  return `${glyph} π ${formatDirectory(ctx.cwd)}`;
 }
 
 /**
@@ -241,9 +216,6 @@ export default function uiCustomization(
             ? `${modelInfo.provider}/${modelInfo.modelId}`
             : modelInfo.modelId;
           const runtime = `${model} · ${modelInfo.thinking}`;
-          const flow = STAGES.map((stage) =>
-            stageLabel(stage, workflow.activeStage, workflow.status, theme),
-          ).join(theme.fg("dim", "  →  "));
           const context =
             modelInfo.contextPercent === null
               ? "?"
@@ -279,7 +251,6 @@ export default function uiCustomization(
               theme,
               cwdLabel: formatDirectory(ctx.cwd),
               runtime,
-              rail: `${theme.fg("accent", "flow")} ${flow}`,
               usage,
               pr,
               statuses: [],
@@ -290,7 +261,6 @@ export default function uiCustomization(
             theme,
             cwdLabel: formatDirectory(ctx.cwd),
             runtime,
-            rail: `${theme.fg("accent", "flow")} ${flow}`,
             usage,
             pr,
             statuses,
@@ -323,13 +293,8 @@ export default function uiCustomization(
         return {
           render(width: number) {
             const now = Date.now();
-            const stageAgents: StatusWidgetAgent[] = [];
+            const widgetAgents: StatusWidgetAgent[] = [];
             for (const agent of agents) {
-              if (
-                !agent.stage ||
-                !(STAGES as readonly string[]).includes(agent.stage)
-              )
-                continue;
               const context: StatusWidgetContext =
                 typeof agent.contextTokens === "number" &&
                 Number.isFinite(agent.contextTokens) &&
@@ -343,8 +308,8 @@ export default function uiCustomization(
                         (agent.contextTokens / agent.contextWindow) * 100,
                     }
                   : { kind: "unknown" as const };
-              stageAgents.push({
-                stage: agent.stage,
+              widgetAgents.push({
+                label: agent.title || agent.id || "agent",
                 status: agent.status,
                 backend: agent.backend,
                 model: agent.modelLabel ?? "?",
@@ -360,12 +325,8 @@ export default function uiCustomization(
               terminalRows,
               reservedRows: RESERVED_ROWS,
               inputLines: [],
-              mode: workflow.mode,
-              route: workflow.route,
-              activeStage: workflow.activeStage,
-              workflowStatus: workflow.status,
               now,
-              agents: stageAgents,
+              agents: widgetAgents,
               ticketSnapshot,
               routines: routinesSnapshot,
             });

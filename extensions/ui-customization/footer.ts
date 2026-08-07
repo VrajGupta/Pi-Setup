@@ -9,7 +9,6 @@ export interface FooterState {
   theme: FooterTheme;
   cwdLabel: string;
   runtime: string;
-  rail: string;
   usage: string;
   pr: string;
   statuses: readonly string[];
@@ -74,7 +73,6 @@ function baseLines(state: FooterState, width: number) {
       paint(state.theme, "muted", state.runtime),
       width,
     ),
-    safeTruncate(oneLine(state.rail), width),
     columns(
       paint(state.theme, "muted", state.usage),
       paint(state.theme, "muted", state.pr),
@@ -101,7 +99,7 @@ export function renderFooter(state: FooterState) {
       const statuses = Array.isArray(state.statuses)
         ? statusLines(state.statuses, width)
         : [];
-      // INV-4: the footer is still capped at 7 lines total (3 base + ≤4
+      // INV-4: the footer is still capped at 7 lines total (2 base + ≤5
       // extension status lines). Stage rows were removed per PI-26 dedup;
       // they live in the belowEditor status widget.
       const budget = 7 - base.length;
