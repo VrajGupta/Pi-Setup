@@ -963,7 +963,7 @@ Parallel entry points: **PI-28** and **PI-29**.
 
 ## PI-28 — Scheduler engine (off-render, injectable timers, per-routine isolation)
 
-Status: **Review Ready** · Blocked-by: none · GitHub issue #27
+Status: **Done** · Blocked-by: none · GitHub issue #27
 
 **What to build.** `extensions/workflow/routines-scheduler.ts`: off-render, fixed-interval, single-flight-per-routine scheduler with injectable timers. `startRoutineScheduler({ routines, now, setTimer, clearTimer, onDue })` returning `{ getDueRoutineNames(), getSnapshot(), stop() }`. Tick interval is the gcd of all routine intervals, clamped [5000, 60000], default 10000. Per-routine isolation (INV-15, INV-16). No filesystem I/O (INV-3).
 
@@ -1063,7 +1063,7 @@ Status: **Done** · Blocked-by: PI-28, PI-29 · GitHub issue #28
 
 ## PI-31 — belowEditor section and /flow Routines tab
 
-**Status: Done** (reviewer PASS at `bf29074`, 2026-08-05) · Blocked-by: PI-30 · GitHub issue #29
+Status: **Done** (reviewer PASS at `bf29074`, 2026-08-05) · Blocked-by: PI-30 · GitHub issue #29
 
 **What to build.** belowEditor routines section (rule `─ routines · 1 due ───`, rows per due/snoozed/disabled routine). `/flow` Routines tab with full details. Width-safe, secret-redacted, terminal-safe, INV-11 glyphs.
 
@@ -1242,6 +1242,7 @@ read-only dependency.
 **Verification-command.** `node --test --experimental-strip-types extensions/ui-customization/status-widget.test.ts extensions/workflow/tracker-poll.test.ts && npm run check`
 
 **Reviewer verdict (2026-08-06): PASS (90/100, diagnostic).** Bounce: 1 of 3 (first review; debugger stage skipped by coordinator under time pressure — this review is the sole independent gate).
+
 - Gate: exact Verification-command → exit 0 (89 tests; `tsc --noEmit` clean). Perf isolation `1000 renders with 200 issue rows at width 200` → exit 0 (1641 ms).
 - Blind inputs only: ticket PI-36 / issue #34, spec INV-10/INV-13 (+ INV-2/5/6/3 as named), mounted PI-36 diff on the five named files. No coder handoff read before verdict.
 - All 8 acceptance criteria held at the production seam: `startTrackerPolling` on `session_start` + `stop` on `session_shutdown`; `vraj:ticket-snapshot` channel mirrors routines; widget `asStatusWidgetSnapshotView` keeps prior on malformed (INV-6); reason → single unavailable line (INV-10); clamp/default 10000 (INV-13); unref'd timer; `ticket-snapshot.ts` untouched; render still pure / off-I/O (INV-3). INV-5 `~` age held by existing issue-rule path fed by the same snapshot shape.
@@ -1319,7 +1320,7 @@ surface emits nothing.
 
 ## PI-39 — Docs, settings, and closing regression for both features
 
-Status: **Review Ready** · Blocked-by: PI-34, PI-35, PI-36, PI-38 · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
+Status: **Done** · Blocked-by: PI-34, PI-35, PI-36, PI-38 · Spec: `docs/2026-08-06-subagent-picker-and-unbounded-todo.md`
 
 **What to build.** Document both features and lock the invariants in the suite. Add
 `workflow.subagentPicker.downArrow` to `settings.example.json` and document
